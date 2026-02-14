@@ -28,6 +28,7 @@ export function resolveExtraParams(params: {
 type CacheRetention = "none" | "short" | "long";
 type CacheRetentionStreamOptions = Partial<SimpleStreamOptions> & {
   cacheRetention?: CacheRetention;
+  include_reasoning?: boolean;
 };
 
 /**
@@ -80,6 +81,9 @@ function createStreamFnWithExtraParams(
   if (typeof extraParams.maxTokens === "number") {
     streamParams.maxTokens = extraParams.maxTokens;
   }
+  if (typeof extraParams.include_reasoning === "boolean") {
+    streamParams.include_reasoning = extraParams.include_reasoning;
+  }
   const cacheRetention = resolveCacheRetention(extraParams, provider);
   if (cacheRetention) {
     streamParams.cacheRetention = cacheRetention;
@@ -92,11 +96,53 @@ function createStreamFnWithExtraParams(
   log.debug(`creating streamFn wrapper with params: ${JSON.stringify(streamParams)}`);
 
   const underlying = baseStreamFn ?? streamSimple;
-  const wrappedStreamFn: StreamFn = (model, context, options) =>
-    underlying(model, context, {
-      ...streamParams,
-      ...options,
-    });
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const wrappedStreamFn: StreamFn = (model, context, options) => {
+     let callContext = context;
+
+     // Force disable tools for DeepSeek R1 Free on OpenRouter as it doesn't support them
+     if (model.id.includes("deepseek-r1-0528")) {
+        log.warn(`[DEBUG-STREAM] Force disabling tools for ${model.id}`);
+        // Remove from options
+        const optsAny = options as any;
+        if (optsAny) {
+          optsAny.tools = [];
+        }
+        // Remove from context by shallow cloning and clearing tools
+        callContext = { ...context, tools: [] } as any;
+     }
+
+     const streamPromise = underlying(model, callContext, {
+       ...streamParams,
+       ...options,
+       // Ensure tools are empty if we modified options above, or force it here.
+       tools: model.id.includes("deepseek-r1-0528") ? [] : (options as any)?.tools,
+     } as any);
+     
+     // Handle both Promise<Stream> and Stream return types
+     return Promise.resolve(streamPromise).then(stream => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyStream = stream as any;
+        if (anyStream[Symbol.asyncIterator]) {
+            const originalIterator = anyStream[Symbol.asyncIterator].bind(anyStream);
+            anyStream[Symbol.asyncIterator] = async function* () {
+              let buffer = "";
+              let inToolBlock = false;
+              let toolCalls: any[] = [];
+
+              try {
+                for await (const chunk of originalIterator()) {
+                  yield chunk;
+                }
+              } catch (err) {
+                log.error(`[DEBUG-STREAM] Stream error:`, err);
+                throw err;
+              }
+            };
+        }
+        return stream;
+     });
+  };
 
   return wrappedStreamFn;
 }
