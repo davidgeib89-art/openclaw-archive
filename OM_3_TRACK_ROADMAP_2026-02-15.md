@@ -12,14 +12,28 @@ Started: 2026-02-15
 - `S1 Heartbeat Singleton`: completed and production-verified (`1 pulse/min` stable from `20:01` through `20:31+`, no duplicate minute buckets)
 - `S2 Path Guardrails (write/edit)`: implemented + unit tests passed
 - `S3 Secret Hygiene`: completed (`tools/analyze-image.ps1` now reads env vars and fails clearly when missing key; no hardcoded API key)
+- `S4 Voice Mood Path Correction`: completed (`scripts/om_speak.ps1` now resolves mood path deterministically: env override -> repo `knowledge/sacred/MOOD.md` -> workspace fallback)
+- `S5 Log Taxonomy`: completed (blocked runtime actions now emit normalized reason tokens in `OM_ACTIVITY.log`: `LOOP`, `REDUNDANT`, `PATH_INVALID`, `SECRET_MISSING`)
 - `S6 Stability Smoke Gates`: passed live (3/3: `GATEWAY_OK`, `GATEWAY_STABLE_OK`, `FINAL_OK`)
 - `M1 Complete Baseline File`: completed (`OIAB_ROUND_000_BASELINE.md` has no unresolved placeholders; current `OIAB_total=67.7`, hard gates still failing on `T9` and `B4`)
+- `M2 Freeze Protocol Enforcement`: completed (new guard script enforces channel/model/warm-up/prompt/architecture lock with explicit drift failures)
 
 ## Latest Verification Snapshot (2026-02-15, Europe/Berlin)
 
 - `S2` verification: `pnpm -C C:\Users\holyd\openclaw test -- src/agents/om-scaffolding.test.ts` -> `11/11` tests passed.
+- `S4` verification: `powershell -ExecutionPolicy Bypass -File .\scripts\om_speak.ps1 -Text "Mood path check" -NoPlay -SaveTo "temp\hearing\mood_path_check.mp3"` read sacred mood successfully (`Mood: neutral (8/10)`).
+- `S5` verification: direct runtime checks produced normalized token lines in `OM_ACTIVITY.log`, including:
+  - `[PATH-GUARD] BLOCKED PATH_INVALID`
+  - `[WRITE-GUARD] BLOCKED REDUNDANT`
+  - `[LOOP-DETECT] BLOCKED LOOP`
+  - `[TOOL] ANALYZE-IMAGE -> FAIL | SECRET_MISSING | OPENROUTER_API_KEY`
 - `S6` verification: `node dist/entry.js agent --to +15555550123 --message "<token prompt>" --json` returned exact tokens for all three smoke checks.
 - `S1` final verification: window `2026-02-15T20:01:36` to `2026-02-15T20:31:36` produced `30` pulse entries, `30` minute buckets, `0` duplicate buckets.
+- `M2` verification:
+  - `powershell -ExecutionPolicy Bypass -File .\OM_OIAB_FREEZE_GUARD_2026-02-15.ps1 -Mode start -Round OIAB-R001 -Channel WebGUI` -> `START OK`.
+  - `... -Mode check -Round OIAB-R001 -Channel WebGUI -WarmupCount 2` -> `CHECK OK`.
+  - `... -Mode check -Round OIAB-R001 -Channel WhatsApp -WarmupCount 2` -> `CHECK FAIL` (`CHANNEL_DRIFT`), proving enforcement.
+  - `... -Mode end -Round OIAB-R001` -> `END OK`.
 
 ### S1 Unblock Runbook (Requires Elevated Admin Shell)
 
@@ -48,8 +62,10 @@ Read in this order:
 2. `OM_3_TRACK_ROADMAP_2026-02-15.md` (this file)
 3. `OM_INTELLIGENCE_AB_TEST_PLAN.md`
 4. `OIAB_ROUND_000_BASELINE.md`
-5. `src/agents/om-scaffolding.ts`
-6. `src/agents/om-scaffolding.test.ts`
+5. `OIAB_PROMPT_SET_V1.md`
+6. `OIAB_FREEZE_RUNBOOK_2026-02-15.md`
+7. `src/agents/om-scaffolding.ts`
+8. `src/agents/om-scaffolding.test.ts`
 
 If runtime behavior is relevant, also read:
 
@@ -205,6 +221,13 @@ Actions:
 Done criteria:
 
 - run logs show no protocol drift.
+
+Implementation artifacts (2026-02-15):
+
+- `OM_OIAB_FREEZE_GUARD_2026-02-15.ps1` (`start/check/end/status`)
+- `OIAB_PROMPT_SET_V1.md` (canonical prompts)
+- `OIAB_FREEZE_ARCH_FILES.txt` (watched architecture files)
+- `OIAB_FREEZE_RUNBOOK_2026-02-15.md` (operator instructions)
 
 ### M3. A/B Engine Start (Single Variable Rule)
 

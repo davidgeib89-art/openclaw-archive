@@ -94,6 +94,20 @@ export function logSession(event: string): void {
   } catch { /* silent */ }
 }
 
+type OmReasonToken = "LOOP" | "REDUNDANT" | "PATH_INVALID" | "SECRET_MISSING";
+
+function logBlockedAction(params: {
+  toolName: string;
+  guardian: string;
+  reason: OmReasonToken;
+  target?: string;
+  detail?: string;
+}): void {
+  const suffix = params.detail ? `${params.reason} | ${params.detail}` : params.reason;
+  logGuardian(params.guardian, `BLOCKED ${params.reason}`, params.target);
+  logToolResult(params.toolName, false, suffix);
+}
+
 // ─── CONFIGURATION ─────────────────────────────────────────────────────────────
 
 /** Files/directories considered "sacred" — auto-backed-up before write overwrites. */
@@ -380,8 +394,13 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
       } catch (error) {
         logToolCall("edit", rawPath);
         if (error instanceof Error && error.name === "OmToolBlockedError") {
-          logGuardian("PATH-GUARD", "Blocked edit execution", rawPath);
-          logToolResult("edit", false, "blocked invalid path");
+          logBlockedAction({
+            toolName: "edit",
+            guardian: "PATH-GUARD",
+            reason: "PATH_INVALID",
+            target: rawPath,
+            detail: "invalid path",
+          });
         }
         throw error;
       }
@@ -390,8 +409,13 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
       // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("edit", filePath);
       if (loopWarning) {
-        logGuardian("LOOP-DETECT", "Blocked edit execution", filePath);
-        logToolResult("edit", false, "blocked by loop detector");
+        logBlockedAction({
+          toolName: "edit",
+          guardian: "LOOP-DETECT",
+          reason: "LOOP",
+          target: filePath,
+          detail: "loop detector",
+        });
         throwToolBlocked(loopWarning);
       }
 
@@ -520,8 +544,13 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
       } catch (error) {
         logToolCall("write", rawPath);
         if (error instanceof Error && error.name === "OmToolBlockedError") {
-          logGuardian("PATH-GUARD", "Blocked write execution", rawPath);
-          logToolResult("write", false, "blocked invalid path");
+          logBlockedAction({
+            toolName: "write",
+            guardian: "PATH-GUARD",
+            reason: "PATH_INVALID",
+            target: rawPath,
+            detail: "invalid path",
+          });
         }
         throw error;
       }
@@ -531,8 +560,13 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
       // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("write", filePath);
       if (loopWarning) {
-        logGuardian("LOOP-DETECT", "Blocked write execution", filePath);
-        logToolResult("write", false, "blocked by loop detector");
+        logBlockedAction({
+          toolName: "write",
+          guardian: "LOOP-DETECT",
+          reason: "LOOP",
+          target: filePath,
+          detail: "loop detector",
+        });
         throwToolBlocked(loopWarning);
       }
 
@@ -541,8 +575,13 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
         try {
           const existingContent = fs.readFileSync(filePath, "utf-8");
           if (existingContent === newContent) {
-            logGuardian("WRITE-GUARD", "Blocked redundant write (content unchanged)", filePath);
-            logToolResult("write", false, "blocked redundant write");
+            logBlockedAction({
+              toolName: "write",
+              guardian: "WRITE-GUARD",
+              reason: "REDUNDANT",
+              target: filePath,
+              detail: "content unchanged",
+            });
             throwToolBlocked(`⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`);
           }
         } catch (error) {
@@ -678,8 +717,13 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
       // ØM Layer 3b: Loop Detector — block if stuck in an exec loop
       const loopWarning = checkForLoop("exec", commandKey);
       if (loopWarning) {
-        logGuardian("LOOP-DETECT", "Blocked exec execution", commandKey);
-        logToolResult("exec", false, "blocked by loop detector");
+        logBlockedAction({
+          toolName: "exec",
+          guardian: "LOOP-DETECT",
+          reason: "LOOP",
+          target: commandKey,
+          detail: "loop detector",
+        });
         throwToolBlocked(`⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`);
       }
 

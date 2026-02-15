@@ -19,7 +19,29 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
-$OpenClawDir = "C:\Users\holyd\openclaw"
+
+function Resolve-MoodFilePath {
+    param([string]$OverridePath)
+
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $candidates = @()
+
+    if ($OverridePath) {
+        $candidates += $OverridePath
+    }
+
+    # Canonical project location first, workspace fallback second.
+    $candidates += (Join-Path $repoRoot "knowledge\sacred\MOOD.md")
+    $candidates += (Join-Path $env:USERPROFILE ".openclaw\workspace\knowledge\sacred\MOOD.md")
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
 
 # ─── 0. LIST VOICES ─────────────────────────────────────────────────────────────
 if ($ListVoices) {
@@ -46,8 +68,8 @@ $Intensity = 5 # Default intensity (1-10)
 $SelectedVoice = $Voice
 
 if ($Mood -eq "auto") {
-    $MoodFile = "C:\Users\holyd\.openclaw\workspace\knowledge\sacred\MOOD.md"
-    if (Test-Path $MoodFile) {
+    $MoodFile = Resolve-MoodFilePath -OverridePath $env:OM_SACRED_MOOD_PATH
+    if ($MoodFile -and (Test-Path -LiteralPath $MoodFile -PathType Leaf)) {
         $MoodContent = Get-Content $MoodFile -Raw -ErrorAction SilentlyContinue
         
         # Parse Line: "**Current Mood:** Keyword (X/10)"

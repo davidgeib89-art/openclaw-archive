@@ -1,0 +1,20 @@
+# OIAB freeze guard file watch list
+# Lines starting with # are ignored.
+# Relative paths are resolved from repo root.
+# Absolute paths are allowed.
+
+# Core Om scaffolding
+src/agents/om-scaffolding.ts
+src/agents/om-scaffolding.test.ts
+
+# Canonical benchmark/prompt docs
+OM_3_TRACK_ROADMAP_2026-02-15.md
+OM_INTELLIGENCE_AB_TEST_PLAN.md
+OIAB_PROMPT_SET_V1.md
+
+# Workspace architecture/identity anchors
+%USERPROFILE%\.openclaw\workspace\AGENTS.md
+%USERPROFILE%\.openclaw\workspace\HEARTBEAT.md
+%USERPROFILE%\.openclaw\workspace\IDENTITY.md
+%USERPROFILE%\.openclaw\workspace\SOUL.md
+%USERPROFILE%\.openclaw\workspace\knowledge\sacred\THINKING_PROTOCOL.md

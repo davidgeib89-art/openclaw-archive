@@ -13,6 +13,9 @@
 - Gateway-Smokegates frisch live bestaetigt: `GATEWAY_OK`, `GATEWAY_STABLE_OK`, `FINAL_OK`.
 - `OIAB_ROUND_000_BASELINE.md` wurde vollstaendig ausgefuellt (`OIAB_total=67.7`, Level `Strong`).
 - Secret-Hygiene umgesetzt: `tools/analyze-image.ps1` nutzt jetzt Env-Var (`OPENROUTER_API_KEY` oder `OM_OPENROUTER_API_KEY`) statt hardcoded Key.
+- Voice-Mood-Pfad korrigiert: `scripts/om_speak.ps1` liest Mood jetzt deterministisch (Env override -> `knowledge/sacred/MOOD.md` -> Workspace-Fallback).
+- Log-Taxonomie normalisiert: Block-/Fail-Pfade loggen jetzt feste Reason-Tokens (`LOOP`, `REDUNDANT`, `PATH_INVALID`, `SECRET_MISSING`) fuer grep-festes Monitoring.
+- OIAB-Freeze-Enforcement aktiv: `OM_OIAB_FREEZE_GUARD_2026-02-15.ps1` blockt Protocol-Drift (channel/model/warm-up/prompt-set/architecture hashes).
 
 ## Relevante Code-Aenderungen
 - `src/agents/om-scaffolding.ts`
@@ -26,6 +29,18 @@
   - Path-Guard-Tests fuer `write` und `edit` (directory + missing path) hinzugefuegt.
 - `src/agents/pi-embedded-runner/extra-params.ts`
   - Stream-Debug-Logging auf Env-gesteuertes Verhalten reduziert.
+- `scripts/om_speak.ps1`
+  - Mood-Datei-Aufloesung robust und deterministisch gemacht (inkl. `OM_SACRED_MOOD_PATH` override).
+- `src/agents/om-scaffolding.ts`
+  - Einheitliche Block-Logik fuer `write`/`edit`/`exec` mit festen Reason-Tokens in `OM_ACTIVITY.log`.
+- `..\\.openclaw\\workspace\\tools\\analyze-image.ps1`
+  - `SECRET_MISSING` + `PATH_INVALID` als explizite Token bei Fehlern inkl. Activity-Logeintrag.
+- `OM_OIAB_FREEZE_GUARD_2026-02-15.ps1`
+  - Modi `start/check/end/status` mit Drift-Erkennung und Audit-Logging.
+- `OIAB_PROMPT_SET_V1.md`
+  - Kanonische Prompt-Quelle fuer wiederholbare OIAB-Runden.
+- `OIAB_FREEZE_ARCH_FILES.txt`
+  - Watchlist der waehrend eines aktiven OIAB-Runs gesperrten Architekturdateien.
 
 ## Verifizierter Laufzustand
 - Gateway: `ws://127.0.0.1:18789` (loopback) funktional.
@@ -45,9 +60,9 @@
 - `S1` ist damit produktiv abgeschlossen (30-Minuten-Fenster ohne doppelte Minute-Buckets).
 
 ## Produktive Naechste Schritte
-1. `M2` starten (Freeze-Protocol enforcement / Drift-Schutz im Run-Prozess).
-2. Gezielten Re-Run fuer Hard-Gates `T9` und `B4` vorbereiten.
-3. Danach A/B-Zyklus mit Single-Variable-Regel fortsetzen.
+1. Gezielten Re-Run fuer Hard-Gates `T9` und `B4` unter aktivem Freeze-Guard starten.
+2. `M3` beginnen (A/B Engine mit Single-Variable-Regel, Start bei `E00`).
+3. Erste standardisierte Round-Artefakte nach `M5`-Schema ablegen.
 
 ## Canonical Continuation File
 - Primaerer Ausfuehrungsplan: `OM_3_TRACK_ROADMAP_2026-02-15.md`
