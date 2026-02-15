@@ -36,6 +36,27 @@ export default defineConfig(() => {
       host: true,
       port: 5173,
       strictPort: true,
+      // Move Vite HMR to a dedicated path so root WebSocket can be proxied to the gateway
+      hmr: {
+        path: "/__vite_hmr__",
+      },
+      proxy: {
+        // Proxy API requests (TTS, avatar, etc.) to the gateway
+        "/api": {
+          target: "http://127.0.0.1:18789",
+          changeOrigin: true,
+        },
+        // Proxy avatar requests
+        "/avatar": {
+          target: "http://127.0.0.1:18789",
+          changeOrigin: true,
+        },
+        // Proxy root WebSocket connections to the gateway (for JSON-RPC)
+        "^/$": {
+          target: "ws://127.0.0.1:18789",
+          ws: true,
+        },
+      },
     },
   };
 });
