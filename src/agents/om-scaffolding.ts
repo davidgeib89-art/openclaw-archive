@@ -111,6 +111,12 @@ const SACRED_SHRINK_THRESHOLD = 0.8;
 
 /** Max consecutive identical tool+path calls before the loop detector fires. */
 const LOOP_DETECT_THRESHOLD = 3;
+/** Max repeated identical tool+path calls inside the rolling window. */
+const LOOP_REPEAT_THRESHOLD = 5;
+/** Rolling time window for non-consecutive loop detection. */
+const LOOP_WINDOW_MS = 90_000;
+/** Cooldown after loop detection; repeated calls are rejected during this period. */
+const LOOP_COOLDOWN_MS = 90_000;
 
 // ─── LAYER 1: EDIT-GUARDIAN ─────────────────────────────────────────────────────
 
@@ -343,6 +349,24 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
         return { content: [{ type: "text", text: loopWarning }] };
       }
 
+      // Block no-op rewrites that keep writing identical content.
+      if (filePath && typeof newContent === "string" && fs.existsSync(filePath)) {
+        try {
+          const existingContent = fs.readFileSync(filePath, "utf-8");
+          if (existingContent === newContent) {
+            logGuardian("WRITE-GUARD", "Blocked redundant write (content unchanged)", filePath);
+            return {
+              content: [{
+                type: "text",
+                text: `⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
+              }],
+            };
+          }
+        } catch {
+          // If content cannot be read, continue with normal write behavior.
+        }
+      }
+
       if (filePath && isSacredPath(filePath)) {
         // AUTO-BACKUP before any write to a sacred file
         logGuardian("SACRED-GUARD", "Auto-backup before write", filePath);
@@ -378,6 +402,8 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
 
 /** Tracks recent tool calls to detect loops. */
 const recentCalls: Array<{ tool: string; path: string; timestamp: number }> = [];
+/** Tracks temporary cooldown blocks after a loop was detected. */
+const blockedKeysUntil = new Map<string, number>();
 
 /**
  * Check if the current tool+path call is part of a repetitive loop.
@@ -387,12 +413,27 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   const now = Date.now();
   const key = `${toolName}:${filePath}`;
 
+  // Respect active cooldown first.
+  const cooldownUntil = blockedKeysUntil.get(key);
+  if (cooldownUntil !== undefined) {
+    if (now < cooldownUntil) {
+      const waitSeconds = Math.max(1, Math.ceil((cooldownUntil - now) / 1000));
+      return `⚠️ LOOP COOLDOWN ACTIVE: "${toolName}" on "${filePath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
+    }
+    blockedKeysUntil.delete(key);
+  }
+
   // Add new call
   recentCalls.push({ tool: toolName, path: filePath, timestamp: now });
 
-  // Prune old calls (older than 60 seconds)
-  while (recentCalls.length > 0 && now - recentCalls[0].timestamp > 60000) {
+  // Prune old calls outside the rolling loop window.
+  while (recentCalls.length > 0 && now - recentCalls[0].timestamp > LOOP_WINDOW_MS) {
     recentCalls.shift();
+  }
+
+  // Prune expired cooldown entries.
+  for (const [cooldownKey, until] of blockedKeysUntil) {
+    if (until <= now) blockedKeysUntil.delete(cooldownKey);
   }
 
   // Count consecutive identical calls
@@ -406,9 +447,23 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
     }
   }
 
+  // Also detect repeated retries even when interleaved with other calls.
+  const repeatedInWindow = recentCalls.filter(
+    (call) => `${call.tool}:${call.path}` === key,
+  ).length;
+
   if (consecutive >= LOOP_DETECT_THRESHOLD) {
+    blockedKeysUntil.set(key, now + LOOP_COOLDOWN_MS);
     console.error(`[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(filePath)}`);
     return `⚠️ LOOP DETECTED: You have called "${toolName}" on "${filePath}" ${consecutive} times in a row. This suggests you are stuck in a loop. Please try a DIFFERENT approach or tool. If editing fails, try using "write" with the COMPLETE file content. If writing fails, try reading the file first to understand its current state.`;
+  }
+
+  if (repeatedInWindow >= LOOP_REPEAT_THRESHOLD) {
+    blockedKeysUntil.set(key, now + LOOP_COOLDOWN_MS);
+    console.error(
+      `[Om Loop-Detector] Detected ${repeatedInWindow}x repeated ${toolName} on ${path.basename(filePath)} in ${Math.round(LOOP_WINDOW_MS / 1000)}s`,
+    );
+    return `⚠️ REPEAT LOOP DETECTED: "${toolName}" on "${filePath}" was retried ${repeatedInWindow} times within ${Math.round(LOOP_WINDOW_MS / 1000)}s. This call is blocked for ${Math.ceil(LOOP_COOLDOWN_MS / 1000)}s. Stop retrying this path and choose a different next step.`;
   }
 
   return null;
@@ -455,5 +510,13 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
 }
 
 // ─── EXPORTS ────────────────────────────────────────────────────────────────────
+
+/**
+ * Test helper: clear loop detector state between tests.
+ */
+export function resetLoopDetectorForTests(): void {
+  recentCalls.length = 0;
+  blockedKeysUntil.clear();
+}
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };

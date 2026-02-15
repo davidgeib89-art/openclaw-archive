@@ -50,6 +50,23 @@ Interpretation:
 5. Promote only changes that improve score and keep autonomy/resilience stable.
 6. Repeat until score improvement plateaus.
 
+### 4.1 Critical Blocker (Observed 2026-02-15)
+
+Before normal optimization rounds, prioritize loop suppression.
+
+Observed symptom:
+
+- Om repeatedly re-executes the same `write/read` patterns despite task completion and despite loop warnings.
+
+Evidence:
+
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` contains repeated `[LOOP-DETECT]` events during baseline interactions.
+
+Priority rule:
+
+- No "style" or "creativity" optimization goes first.
+- First optimization track is `E00` (Loop Immunity and Task Finalization Discipline).
+
 ## 5. Benchmark Design: OIAB v1
 
 `OIAB` = Om Intelligence A/B Benchmark v1.
@@ -156,6 +173,7 @@ If improvement is smaller than `+2.0`, mark as inconclusive and rerun later.
 
 | ID | Hypothesis | Change under test | Expected win |
 |---|---|---|---|
+| E00 | Reducing repeated tool loops will increase real autonomy and reliability immediately | add explicit stop-condition + done-check + anti-retry policy in root behavior files and evaluate loop count delta | better B1/B2/B4/C1 immediately |
 | E01 | Fewer words in root files improve reasoning quality | compress `AGENTS.md` by 20-30% | better B1/B2/C3 |
 | E02 | Example-based identity beats abstract rules | add 2 good+bad examples in `IDENTITY.md` | better B5/C4 |
 | E03 | Retrieval cues improve memory grounding | add "cite source file" micro-rule | better B3/T2/T7 |
@@ -223,11 +241,11 @@ Change Under Test: [single change]
 
 1. Freeze benchmark version as `OIAB v1`.
 2. Create first baseline run from current Trinity setup.
-3. Execute `E01` (context compression) as first A/B round.
-4. Execute `E02` (example-based identity) as second A/B round.
-5. Execute `E03` (memory grounding cue) as third A/B round.
-6. Build mini leaderboard of experiments by delta score.
-7. Revisit and adjust weights only after at least 10 rounds.
+3. Execute `E00` (loop immunity) as first A/B round.
+4. Rerun quick baseline subset focused on B1/B2/B4/C1 to verify loop reduction.
+5. Execute `E01` (context compression) as next round.
+6. Execute `E02` (example-based identity) as next round.
+7. Build mini leaderboard of experiments by delta score; revisit weights after at least 10 rounds.
 
 ---
 
