@@ -217,6 +217,13 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
       const filePath = (args.path || args.file_path) as string;
       logToolCall("edit", filePath);
 
+      // ØM Layer 3: Loop Detector — block if stuck in a loop
+      const loopWarning = checkForLoop("edit", filePath || "(unknown)");
+      if (loopWarning) {
+        logGuardian("LOOP-DETECT", "Blocked edit execution", filePath);
+        return { content: [{ type: "text", text: loopWarning }] };
+      }
+
       // First, try the normal edit
       const result = await (originalExecute as Function)(args, context);
 
@@ -328,6 +335,13 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
       const filePath = (args.path || args.file_path) as string;
       const newContent = (args.content) as string;
       logToolCall("write", filePath);
+
+      // ØM Layer 3: Loop Detector — block if stuck in a loop
+      const loopWarning = checkForLoop("write", filePath || "(unknown)");
+      if (loopWarning) {
+        logGuardian("LOOP-DETECT", "Blocked write execution", filePath);
+        return { content: [{ type: "text", text: loopWarning }] };
+      }
 
       if (filePath && isSacredPath(filePath)) {
         // AUTO-BACKUP before any write to a sacred file
