@@ -14,15 +14,21 @@ export function stripMinimaxToolCallXml(text: string): string {
   if (!text) {
     return text;
   }
-  if (!/minimax:tool_call/i.test(text)) {
-    return text;
+  
+  let cleaned = text;
+
+  // Emergency strip MiniMax/Arcee tool markers from user-facing text
+  // Matches: <|tool...|>, <tool...>, and variants without brackets but with block chars
+  cleaned = cleaned.replace(/<[^>]*?tool[^>]*?calls?[^>]*?begin[^>]*?>[\s\S]*?<[^>]*?tool[^>]*?calls?[^>]*?end[^>]*?>/gi, "");
+  cleaned = cleaned.replace(/<[^>]*?tool[^>]*?>/gi, "");
+  cleaned = cleaned.replace(/[｜|│┃▁▅▆▇▧▨]+tool[｜|│┃▁▅▆▇▧▨]+/gi, "");
+
+  if (/minimax:tool_call/i.test(cleaned)) {
+    // Remove <invoke ...>...</invoke> blocks (non-greedy to handle multiple).
+    cleaned = cleaned.replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, "");
+    // Remove stray minimax tool tags.
+    cleaned = cleaned.replace(/<\/?minimax:tool_call>/gi, "");
   }
-
-  // Remove <invoke ...>...</invoke> blocks (non-greedy to handle multiple).
-  let cleaned = text.replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, "");
-
-  // Remove stray minimax tool tags.
-  cleaned = cleaned.replace(/<\/?minimax:tool_call>/gi, "");
 
   return cleaned;
 }
