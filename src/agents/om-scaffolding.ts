@@ -214,7 +214,7 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
   const wrappedTool = {
     ...editTool,
     execute: async (args: Record<string, unknown>, context?: unknown) => {
-      const filePath = (args.path || args.file_path) as string;
+      const filePath = (args.path || args.file_path || args.TargetFile) as string;
       logToolCall("edit", filePath);
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
@@ -332,7 +332,7 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
   const wrappedTool = {
     ...writeTool,
     execute: async (args: Record<string, unknown>, context?: unknown) => {
-      const filePath = (args.path || args.file_path) as string;
+      const filePath = (args.path || args.file_path || args.TargetFile) as string;
       const newContent = (args.content) as string;
       logToolCall("write", filePath);
 
