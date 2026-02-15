@@ -99,7 +99,8 @@ function createStreamFnWithExtraParams(
 
       return Promise.resolve(streamPromise).then(stream => {
         const anyStream = stream as any;
-        const isMiniMax = model.id.toLowerCase().includes("minimax") || model.id.toLowerCase().includes("deepseek");
+        const modelIdLower = model.id.toLowerCase();
+        const isMiniMax = modelIdLower.includes("minimax") || modelIdLower.includes("deepseek") || modelIdLower.includes("trinity") || modelIdLower.includes("arcee");
         
         if (anyStream[Symbol.asyncIterator]) {
             const originalIterator = anyStream[Symbol.asyncIterator].bind(anyStream);
@@ -158,6 +159,11 @@ function createStreamFnWithExtraParams(
                       if (buffer.length > 0 && currentText.length > 50 && currentText.startsWith(buffer)) buffer = currentText;
                       else buffer += currentText;
 
+                      // Alive-Check: Log every ~500 chars to show activity without flooding
+                      if (buffer.length % 500 < 20) {
+                          process.stdout.write("."); // Minimal alive tick
+                      }
+
                       let changed = true;
                       while (changed) {
                           changed = false;
@@ -165,13 +171,14 @@ function createStreamFnWithExtraParams(
                               const match = buffer.match(START_REGEX);
                               if (match && match.index !== undefined) {
                                   const sIdx = match.index;
-                                  console.error(`[Stream-Debug] FOUND START MARKER at ${sIdx}: ${match[0]}`);
+                                  console.error(`\n[Stream-Debug] FOUND START MARKER at ${sIdx}: ${match[0]}`);
                                   if (sIdx > 0) yield { type: "text_delta", delta: buffer.substring(0, sIdx) } as any;
                                   buffer = buffer.substring(sIdx + match[0].length);
                                   inToolBlock = true;
                                   changed = true;
-                              } else if (buffer.length > 500) {
-                                  const safeLen = buffer.length - 200;
+                              } else if (buffer.length > 150) {
+                                  // Increased flush rate (was 500->200, now 150->50) to prevent timeouts
+                                  const safeLen = buffer.length - 50;
                                   yield { type: "text_delta", delta: buffer.substring(0, safeLen) } as any;
                                   buffer = buffer.substring(safeLen);
                               }
