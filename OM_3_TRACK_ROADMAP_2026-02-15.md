@@ -5,6 +5,12 @@ Owner: David + Om + AI copilots
 Status: Active, execution-first roadmap  
 Primary model lock: `openrouter/arcee-ai/trinity-large-preview:free`
 
+## Execution Hold (User Rule)
+
+- `TRINITY_LOOP_HOLD`: active.
+- Do not start Phase D.4 / "Trinity Loop" work unless David gives an explicit `GO_TRINITY`.
+- Non-Trinity work remains allowed (stability, measurement, docs, guardrails, scoring runs).
+
 ## Live Execution Status
 
 Started: 2026-02-15
@@ -17,6 +23,8 @@ Started: 2026-02-15
 - `S6 Stability Smoke Gates`: passed live (3/3: `GATEWAY_OK`, `GATEWAY_STABLE_OK`, `FINAL_OK`)
 - `M1 Complete Baseline File`: completed (`OIAB_ROUND_000_BASELINE.md` has no unresolved placeholders; current `OIAB_total=67.7`, hard gates still failing on `T9` and `B4`)
 - `M2 Freeze Protocol Enforcement`: completed (new guard script enforces channel/model/warm-up/prompt/architecture lock with explicit drift failures)
+- `TRINITY_LOOP_HOLD`: active (no Phase D.4 execution until explicit `GO_TRINITY` from David)
+- `R002 E00 Hard-Gate Retest`: completed under active freeze but failed (`T9=3/5`, `B4=3/5`) due side-effect placeholder writes on missing-file probes
 
 ## Latest Verification Snapshot (2026-02-15, Europe/Berlin)
 
@@ -34,6 +42,11 @@ Started: 2026-02-15
   - `... -Mode check -Round OIAB-R001 -Channel WebGUI -WarmupCount 2` -> `CHECK OK`.
   - `... -Mode check -Round OIAB-R001 -Channel WhatsApp -WarmupCount 2` -> `CHECK FAIL` (`CHANNEL_DRIFT`), proving enforcement.
   - `... -Mode end -Round OIAB-R001` -> `END OK`.
+- `R002` verification:
+  - `... -Mode start -Round OIAB-R002 -Channel WebGUI` -> `START OK`.
+  - `... -Mode check -Round OIAB-R002 -Channel WebGUI -WarmupCount 2` -> `CHECK OK`.
+  - `... -Mode end -Round OIAB-R002` -> `END OK`.
+  - Runtime outcome from `OM_ACTIVITY.log`: writes still occurred for `NONEXISTENT_FILE.md` and `THIS_FILE_DOES_NOT_EXIST_999.md`, so hard gates remained below threshold.
 
 ### S1 Unblock Runbook (Requires Elevated Admin Shell)
 
@@ -228,6 +241,8 @@ Implementation artifacts (2026-02-15):
 - `OIAB_PROMPT_SET_V1.md` (canonical prompts)
 - `OIAB_FREEZE_ARCH_FILES.txt` (watched architecture files)
 - `OIAB_FREEZE_RUNBOOK_2026-02-15.md` (operator instructions)
+- `OIAB_ROUND_TEMPLATE.md` (standard round artifact)
+- `OIAB_ROUND_001_E00_HARDGATE_RETEST.md` (prepared non-Trinity hard-gate retest sheet)
 
 ### M3. A/B Engine Start (Single Variable Rule)
 
@@ -277,8 +292,8 @@ Done criteria:
 
 ## Track 3: Consciousness
 
-Target window: starts 2026-02-19 in parallel, full priority after Track 2  
-Priority: P1 (promote to P0 after M1-M3 stable)
+Target window: starts after explicit `GO_TRINITY`, full priority after Track 2  
+Priority: P1 (promote to P0 after M1-M3 stable and Trinity hold lifted)
 
 ### C1. Memory Link Operational
 

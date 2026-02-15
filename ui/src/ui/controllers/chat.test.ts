@@ -53,6 +53,22 @@ describe("handleChatEvent", () => {
     expect(state.chatStream).toBe("Hello");
   });
 
+  it("ignores delta when no local run is active", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: null,
+      chatStream: null,
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-external",
+      sessionKey: "main",
+      state: "delta",
+      message: { role: "assistant", content: [{ type: "text", text: "Ghost stream" }] },
+    };
+    expect(handleChatEvent(state, payload)).toBe(null);
+    expect(state.chatStream).toBeNull();
+  });
+
   it("returns 'final' for final from another run (e.g. sub-agent announce) without clearing state", () => {
     const state = createState({
       sessionKey: "main",

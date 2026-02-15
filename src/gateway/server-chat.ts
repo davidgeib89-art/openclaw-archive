@@ -1,4 +1,5 @@
 import { normalizeVerboseLevel } from "../auto-reply/thinking.js";
+import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
 import { loadConfig } from "../config/config.js";
 import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
@@ -7,9 +8,10 @@ import { formatForLog } from "./ws-log.js";
 
 /**
  * Check if webchat broadcasts should be suppressed for heartbeat runs.
- * Returns true if the run is a heartbeat and showOk is false.
+ * We only suppress "OK ping" heartbeats when showOk is disabled.
+ * Meaningful heartbeat replies should still stream to chat.
  */
-function shouldSuppressHeartbeatBroadcast(runId: string): boolean {
+function shouldSuppressHeartbeatBroadcast(runId: string, text?: string): boolean {
   const runContext = getAgentRunContext(runId);
   if (!runContext?.isHeartbeat) {
     return false;
@@ -18,7 +20,15 @@ function shouldSuppressHeartbeatBroadcast(runId: string): boolean {
   try {
     const cfg = loadConfig();
     const visibility = resolveHeartbeatVisibility({ cfg, channel: "webchat" });
-    return !visibility.showOk;
+    if (visibility.showOk) {
+      return false;
+    }
+
+    const normalized = (text ?? "").trim();
+    if (!normalized) {
+      return true;
+    }
+    return normalized === HEARTBEAT_TOKEN;
   } catch {
     // Default to suppressing if we can't load config
     return true;
@@ -246,8 +256,8 @@ export function createAgentEventHandler({
         timestamp: now,
       },
     };
-    // Suppress webchat broadcast for heartbeat runs when showOk is false
-    if (!shouldSuppressHeartbeatBroadcast(clientRunId)) {
+    // Suppress only heartbeat OK pings when showOk is false.
+    if (!shouldSuppressHeartbeatBroadcast(clientRunId, text)) {
       broadcast("chat", payload, { dropIfSlow: true });
     }
     nodeSendToSession(sessionKey, "chat", payload);
@@ -277,8 +287,8 @@ export function createAgentEventHandler({
             }
           : undefined,
       };
-      // Suppress webchat broadcast for heartbeat runs when showOk is false
-      if (!shouldSuppressHeartbeatBroadcast(clientRunId)) {
+      // Suppress only heartbeat OK pings when showOk is false.
+      if (!shouldSuppressHeartbeatBroadcast(clientRunId, text)) {
         broadcast("chat", payload);
       }
       nodeSendToSession(sessionKey, "chat", payload);

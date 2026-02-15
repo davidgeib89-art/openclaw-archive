@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerAgentRunContext, resetAgentRunContextForTest } from "../infra/agent-events.js";
+import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import * as configModule from "../config/config.js";
+import * as heartbeatVisibilityModule from "../infra/heartbeat-visibility.js";
 import {
   createAgentEventHandler,
   createChatRunState,
@@ -204,6 +207,118 @@ describe("agent event handler", () => {
     expect(broadcastToConnIds).toHaveBeenCalledTimes(1);
     const payload = broadcastToConnIds.mock.calls[0]?.[1] as { data?: Record<string, unknown> };
     expect(payload.data?.result).toEqual(result);
+    resetAgentRunContextForTest();
+  });
+
+  it("suppresses heartbeat ok chat broadcasts when showOk is disabled", () => {
+    const loadCfgSpy = vi.spyOn(configModule, "loadConfig").mockReturnValue({} as never);
+    const visibilitySpy = vi
+      .spyOn(heartbeatVisibilityModule, "resolveHeartbeatVisibility")
+      .mockReturnValue({ showOk: false } as never);
+
+    const broadcast = vi.fn();
+    const broadcastToConnIds = vi.fn();
+    const nodeSendToSession = vi.fn();
+    const agentRunSeq = new Map<string, number>();
+    const chatRunState = createChatRunState();
+    const toolEventRecipients = createToolEventRecipientRegistry();
+
+    registerAgentRunContext("run-heartbeat-ok", {
+      sessionKey: "session-1",
+      isHeartbeat: true,
+    });
+    chatRunState.registry.add("run-heartbeat-ok", {
+      sessionKey: "session-1",
+      clientRunId: "run-heartbeat-ok",
+    });
+
+    const handler = createAgentEventHandler({
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      agentRunSeq,
+      chatRunState,
+      resolveSessionKeyForRun: () => "session-1",
+      clearAgentRunContext: vi.fn(),
+      toolEventRecipients,
+    });
+
+    handler({
+      runId: "run-heartbeat-ok",
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: HEARTBEAT_TOKEN },
+    });
+    handler({
+      runId: "run-heartbeat-ok",
+      seq: 2,
+      stream: "lifecycle",
+      ts: Date.now(),
+      data: { phase: "end" },
+    });
+
+    const chatCalls = broadcast.mock.calls.filter(([event]) => event === "chat");
+    expect(chatCalls).toHaveLength(0);
+
+    loadCfgSpy.mockRestore();
+    visibilitySpy.mockRestore();
+    resetAgentRunContextForTest();
+  });
+
+  it("does not suppress meaningful heartbeat chat broadcasts when showOk is disabled", () => {
+    const loadCfgSpy = vi.spyOn(configModule, "loadConfig").mockReturnValue({} as never);
+    const visibilitySpy = vi
+      .spyOn(heartbeatVisibilityModule, "resolveHeartbeatVisibility")
+      .mockReturnValue({ showOk: false } as never);
+
+    const broadcast = vi.fn();
+    const broadcastToConnIds = vi.fn();
+    const nodeSendToSession = vi.fn();
+    const agentRunSeq = new Map<string, number>();
+    const chatRunState = createChatRunState();
+    const toolEventRecipients = createToolEventRecipientRegistry();
+
+    registerAgentRunContext("run-heartbeat-alert", {
+      sessionKey: "session-1",
+      isHeartbeat: true,
+    });
+    chatRunState.registry.add("run-heartbeat-alert", {
+      sessionKey: "session-1",
+      clientRunId: "run-heartbeat-alert",
+    });
+
+    const handler = createAgentEventHandler({
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      agentRunSeq,
+      chatRunState,
+      resolveSessionKeyForRun: () => "session-1",
+      clearAgentRunContext: vi.fn(),
+      toolEventRecipients,
+    });
+
+    handler({
+      runId: "run-heartbeat-alert",
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "Real heartbeat content" },
+    });
+    handler({
+      runId: "run-heartbeat-alert",
+      seq: 2,
+      stream: "lifecycle",
+      ts: Date.now(),
+      data: { phase: "end" },
+    });
+
+    const chatCalls = broadcast.mock.calls.filter(([event]) => event === "chat");
+    expect(chatCalls.length).toBeGreaterThan(0);
+
+    loadCfgSpy.mockRestore();
+    visibilitySpy.mockRestore();
     resetAgentRunContextForTest();
   });
 });

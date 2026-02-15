@@ -16,6 +16,8 @@
 - Voice-Mood-Pfad korrigiert: `scripts/om_speak.ps1` liest Mood jetzt deterministisch (Env override -> `knowledge/sacred/MOOD.md` -> Workspace-Fallback).
 - Log-Taxonomie normalisiert: Block-/Fail-Pfade loggen jetzt feste Reason-Tokens (`LOOP`, `REDUNDANT`, `PATH_INVALID`, `SECRET_MISSING`) fuer grep-festes Monitoring.
 - OIAB-Freeze-Enforcement aktiv: `OM_OIAB_FREEZE_GUARD_2026-02-15.ps1` blockt Protocol-Drift (channel/model/warm-up/prompt-set/architecture hashes).
+- User-Hold aktiv: `TRINITY_LOOP_HOLD` (kein Start von Phase D.4 / Trinity Loop ohne explizites `GO_TRINITY` von David).
+- `R002` wurde unter aktivem Freeze sauber gefahren (`check OK`), aber Hard-Gates `T9/B4` bleiben rot wegen Side-Effect-Placeholder-Writes bei `ENOENT`.
 
 ## Relevante Code-Aenderungen
 - `src/agents/om-scaffolding.ts`
@@ -41,6 +43,10 @@
   - Kanonische Prompt-Quelle fuer wiederholbare OIAB-Runden.
 - `OIAB_FREEZE_ARCH_FILES.txt`
   - Watchlist der waehrend eines aktiven OIAB-Runs gesperrten Architekturdateien.
+- `OIAB_ROUND_TEMPLATE.md`
+  - Standardisiertes Round-Artefakt fuer M5 (vergleichbare Runs ohne Rekonstruktion).
+- `OIAB_ROUND_001_E00_HARDGATE_RETEST.md`
+  - Vorbereiteter Hard-Gate-Retest (T9/B4) unter aktivem Freeze-Guard.
 
 ## Verifizierter Laufzustand
 - Gateway: `ws://127.0.0.1:18789` (loopback) funktional.
@@ -60,9 +66,10 @@
 - `S1` ist damit produktiv abgeschlossen (30-Minuten-Fenster ohne doppelte Minute-Buckets).
 
 ## Produktive Naechste Schritte
-1. Gezielten Re-Run fuer Hard-Gates `T9` und `B4` unter aktivem Freeze-Guard starten.
-2. `M3` beginnen (A/B Engine mit Single-Variable-Regel, Start bei `E00`).
-3. Erste standardisierte Round-Artefakte nach `M5`-Schema ablegen.
+1. Regel-/Memory-Quelle fuer Placeholder-Writes neutralisieren (ENOENT => Textantwort ohne Write-Side-Effect).
+2. Hard-Gate-Rerun als `R003` unter aktivem Freeze-Guard fahren (`T9` + `B4`).
+3. Danach `M3` mit Single-Variable-Regel fortsetzen.
+4. Trinity-Themen nur vorbereiten, nicht ausfuehren (bis `GO_TRINITY`).
 
 ## Canonical Continuation File
 - Primaerer Ausfuehrungsplan: `OM_3_TRACK_ROADMAP_2026-02-15.md`
@@ -88,6 +95,7 @@ Bitte uebernimm folgende Fakten als Arbeitsgrundlage:
 4) S1 ist nach Admin-Cleanup im Verifikationsfenster: aktuell Single-Writer-Cadence,
    finaler Abschluss nach 30 Minuten stabiler Pulse.
 5) Kanonische Fortsetzungsdatei: `OM_3_TRACK_ROADMAP_2026-02-15.md`.
+6) `TRINITY_LOOP_HOLD` ist aktiv: keine Phase-D.4/Trinity-Loop-Ausfuehrung ohne explizites `GO_TRINITY`.
 
 Arbeitsstil:
 - Kurz, klar, high-signal.
@@ -96,6 +104,6 @@ Arbeitsstil:
 
 Bitte starte mit:
 1) Kurzer Bestaetigung des uebernommenen Kontexts.
-2) S1-Admin-Cleanup-Status pruefen.
-3) Falls S1 frei: direkt M1 (Baseline) starten.
+2) Trinity-Hold bestaetigen und nur Non-Trinity-Arbeit fortsetzen.
+3) Danach M2/M3-konforme Messarbeit fortsetzen.
 ```

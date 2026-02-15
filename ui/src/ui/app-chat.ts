@@ -68,6 +68,41 @@ export async function handleAbortChat(host: ChatHost) {
   await abortChatRun(host as unknown as OpenClawApp);
 }
 
+export async function resetChatSession(host: ChatHost): Promise<boolean> {
+  if (!host.connected) {
+    return false;
+  }
+  const app = host as unknown as OpenClawApp;
+  if (!app.client) {
+    return false;
+  }
+
+  app.lastError = null;
+  try {
+    const res = await app.client.request<{ key?: unknown }>("sessions.reset", {
+      key: host.sessionKey,
+    });
+    const resetKeyRaw = typeof res?.key === "string" ? res.key.trim() : "";
+    const resetKey = resetKeyRaw || host.sessionKey;
+
+    host.sessionKey = resetKey;
+    host.chatRunId = null;
+    host.chatSending = false;
+    host.chatStream = null;
+    host.chatStreamStartedAt = null;
+    host.chatQueue = [];
+    app.chatMessages = [];
+    app.chatToolMessages = [];
+
+    setLastActiveSessionKey(app, resetKey);
+    await Promise.all([loadChatHistory(app), refreshChatAvatar(host)]);
+    return true;
+  } catch (err) {
+    app.lastError = String(err);
+    return false;
+  }
+}
+
 function enqueueChatMessage(
   host: ChatHost,
   text: string,

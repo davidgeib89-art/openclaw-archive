@@ -185,6 +185,12 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     return null;
   }
 
+  // Ignore unsolicited deltas when this tab has no active local run.
+  // This prevents phantom "typing dots" after session reset or tab reconnect.
+  if (payload.state === "delta" && payload.runId && !state.chatRunId) {
+    return null;
+  }
+
   if (payload.state === "delta") {
     const next = extractText(payload.message);
     if (typeof next === "string") {

@@ -2,6 +2,9 @@
 
 Purpose: enforce repeatable OIAB rounds and fail fast on protocol drift.
 
+Scope note: this runbook is for OIAB measurement work only.
+`TRINITY_LOOP_HOLD` remains active until explicit `GO_TRINITY`.
+
 Guard script: `OM_OIAB_FREEZE_GUARD_2026-02-15.ps1`  
 Prompt source: `OIAB_PROMPT_SET_V1.md`  
 Architecture watch list: `OIAB_FREEZE_ARCH_FILES.txt`
