@@ -80,6 +80,7 @@ import { resolveInjectedAssistantIdentity } from "./assistant-identity.ts";
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
 import { loadSettings, type UiSettings } from "./storage.ts";
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
+import { onTtsStateChange, onSttStateChange, stopTtsPlayback, stopStt } from "./chat/voice-ui.ts";
 
 declare global {
   interface Window {
@@ -142,6 +143,10 @@ export class OpenClawApp extends LitElement {
   @state() sidebarContent: string | null = null;
   @state() sidebarError: string | null = null;
   @state() splitRatio = this.settings.splitRatio;
+
+  // Voice state trigger — incremented by TTS/STT state listeners to trigger re-render
+  @state() voiceTick = 0;
+  private voiceCleanup: (() => void)[] = [];
 
   @state() nodesLoading = false;
   @state() nodes: Array<Record<string, unknown>> = [];
@@ -351,6 +356,10 @@ export class OpenClawApp extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     handleConnected(this as unknown as Parameters<typeof handleConnected>[0]);
+    // Register voice state listeners for re-rendering
+    const tick = () => { this.voiceTick++; };
+    this.voiceCleanup.push(onTtsStateChange(tick));
+    this.voiceCleanup.push(onSttStateChange(tick));
   }
 
   protected firstUpdated() {
@@ -359,6 +368,11 @@ export class OpenClawApp extends LitElement {
 
   disconnectedCallback() {
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);
+    // Cleanup voice state listeners + stop any active playback/recording
+    for (const cleanup of this.voiceCleanup) { cleanup(); }
+    this.voiceCleanup = [];
+    stopTtsPlayback();
+    stopStt();
     super.disconnectedCallback();
   }
 

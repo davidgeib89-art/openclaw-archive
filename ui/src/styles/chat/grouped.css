@@ -162,6 +162,13 @@ img.chat-avatar {
     background 120ms ease-out;
 }
 
+/* When inside the actions container, use flow positioning */
+.chat-bubble-actions .chat-copy-btn {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .chat-copy-btn__icon {
   display: inline-flex;
   width: 14px;

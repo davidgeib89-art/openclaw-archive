@@ -14,6 +14,7 @@ import { icons } from "../icons.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
+import { renderMicButton } from "../chat/voice-ui.ts";
 
 export type CompactionIndicatorStatus = {
   active: boolean;
@@ -406,6 +407,19 @@ export function renderChat(props: ChatProps) {
             ></textarea>
           </label>
           <div class="chat-compose__actions">
+            ${renderMicButton({
+              connected: props.connected,
+              lang: "de-DE",
+              onResult: (text) => {
+                const current = props.draft.trim();
+                const next = current ? `${current} ${text}` : text;
+                props.onDraftChange(next);
+              },
+              onInterim: (text) => {
+                // Show interim results in the draft as preview
+                props.onDraftChange(text);
+              },
+            })}
             <button
               class="btn"
               ?disabled=${!props.connected || (!canAbort && props.sending)}

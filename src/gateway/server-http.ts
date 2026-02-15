@@ -55,6 +55,7 @@ import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
+import { handleTtsHttpRequest } from "./tts-http.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 type HookAuthFailure = { count: number; windowStartedAtMs: number };
@@ -493,6 +494,10 @@ export function createGatewayHttpServer(opts: {
           rateLimiter,
         })
       ) {
+        return;
+      }
+      // TTS endpoint for WebGUI voice playback (local requests only)
+      if (isLocalDirectRequest(req, trustedProxies) && await handleTtsHttpRequest(req, res)) {
         return;
       }
       if (await handleSlackHttpRequest(req, res)) {

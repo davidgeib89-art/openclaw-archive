@@ -1,0 +1,164 @@
+/* =============================================
+   VOICE UI — TTS Playback & STT Recording
+   ============================================= */
+
+/* ─── Bubble actions container ────────────────── */
+.chat-bubble-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+  z-index: 2;
+}
+
+.chat-bubble:hover .chat-bubble-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .chat-bubble-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ─── TTS Play Button ──────────────────────────── */
+.voice-tts-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: var(--radius-md);
+  padding: 4px 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition:
+    opacity 120ms ease-out,
+    background 120ms ease-out,
+    color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.voice-tts-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.voice-tts-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.voice-tts-btn--loading {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.voice-tts-btn--loading svg {
+  animation: spin 800ms linear infinite;
+}
+
+.voice-tts-btn--playing {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.voice-tts-btn--playing:hover {
+  background: var(--danger-subtle);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ─── Microphone Button ────────────────────────── */
+.voice-mic-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition:
+    background 150ms ease-out,
+    color 150ms ease-out,
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+.voice-mic-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.voice-mic-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.voice-mic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Recording state — pulsing red */
+.voice-mic-btn--recording {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ef4444;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+.voice-mic-btn--recording:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.voice-mic-btn--recording svg {
+  /* Show stop icon when recording */
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+@keyframes mic-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

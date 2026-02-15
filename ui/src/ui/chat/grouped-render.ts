@@ -12,6 +12,7 @@ import {
 } from "./message-extract.ts";
 import { isToolResultMessage, normalizeRoleForGrouping } from "./message-normalizer.ts";
 import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
+import { renderTtsButton } from "./voice-ui.ts";
 
 type ImageBlock = {
   url: string;
@@ -242,6 +243,9 @@ function renderGroupedMessage(
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
   const markdown = markdownBase;
   const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
+  const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
+  // Build a stable key for TTS state tracking
+  const ttsKey = `tts:${typeof m.timestamp === "number" ? m.timestamp : "no-ts"}:${(markdown ?? "").length}`;
 
   const bubbleClasses = [
     "chat-bubble",
@@ -262,7 +266,10 @@ function renderGroupedMessage(
 
   return html`
     <div class="${bubbleClasses}">
-      ${canCopyMarkdown ? renderCopyAsMarkdownButton(markdown!) : nothing}
+      <div class="chat-bubble-actions">
+        ${canPlayTts ? renderTtsButton(markdown!, ttsKey) : nothing}
+        ${canCopyMarkdown ? renderCopyAsMarkdownButton(markdown!) : nothing}
+      </div>
       ${renderMessageImages(images)}
       ${
         reasoningMarkdown

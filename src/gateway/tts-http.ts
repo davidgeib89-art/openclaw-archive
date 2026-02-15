@@ -1,0 +1,122 @@
+/**
+ * TTS HTTP endpoint for the WebGUI.
+ *
+ * POST /api/tts
+ *   Body: { text: string, voice?: string, rate?: string, pitch?: string, volume?: string }
+ *   Response: audio/mpeg binary
+ *
+ * This allows the Control UI (webchat) to request TTS audio for assistant
+ * messages, enabling voice playback in the browser.
+ */
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFileSync, unlinkSync, existsSync } from "node:fs";
+import { loadConfig } from "../config/config.js";
+import { textToSpeech } from "../tts/tts.js";
+
+const TTS_PATH = "/api/tts";
+const MAX_TEXT_LENGTH = 5000;
+
+function readJsonBodySimple(
+  req: IncomingMessage,
+  maxBytes: number,
+): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        resolve(null);
+        req.destroy();
+      } else {
+        chunks.push(chunk);
+      }
+    });
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        resolve(typeof body === "object" && body !== null ? body : null);
+      } catch {
+        resolve(null);
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+export async function handleTtsHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.pathname !== TTS_PATH) {
+    return false;
+  }
+
+  if (req.method !== "POST") {
+    res.statusCode = 405;
+    res.setHeader("Allow", "POST");
+    res.setHeader("Content-Type", "text/plain");
+    res.end("Method Not Allowed");
+    return true;
+  }
+
+  const body = await readJsonBodySimple(req, 64 * 1024);
+  if (!body) {
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Invalid JSON body" }));
+    return true;
+  }
+
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) {
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Missing or empty 'text' field" }));
+    return true;
+  }
+
+  if (text.length > MAX_TEXT_LENGTH) {
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        error: `Text too long (${text.length} > ${MAX_TEXT_LENGTH})`,
+      }),
+    );
+    return true;
+  }
+
+  try {
+    const cfg = loadConfig();
+    const result = await textToSpeech({ text, cfg, channel: "webchat" });
+
+    if (!result.success || !result.audioPath) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: result.error ?? "TTS generation failed" }));
+      return true;
+    }
+
+    const audioData = readFileSync(result.audioPath);
+    const contentType =
+      result.outputFormat?.includes("opus") ? "audio/ogg" : "audio/mpeg";
+
+    res.statusCode = 200;
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", String(audioData.length));
+    res.setHeader("Cache-Control", "no-store");
+    res.end(audioData);
+  } catch (err) {
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        error: `TTS generation failed: ${err instanceof Error ? err.message : String(err)}`,
+      }),
+    );
+  }
+
+  return true;
+}
