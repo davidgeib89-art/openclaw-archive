@@ -414,6 +414,46 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   return null;
 }
 
+// ─── LAYER 3b: EXEC LOOP PROTECTION ────────────────────────────────────────────
+
+/**
+ * Wraps the "exec" tool with loop detection.
+ * Prevents the model from calling the same shell command repeatedly when it errors.
+ * This was the missing piece that caused the 7x analyze-image 404 trauma loop.
+ */
+export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool {
+  const originalExecute = execTool.execute.bind(execTool);
+
+  const wrappedTool = {
+    ...execTool,
+    execute: async (args: Record<string, unknown>, context?: unknown) => {
+      // Extract the command string for loop detection
+      const command = (args.command || args.cmd || args.script || "") as string;
+      // Use a normalized version: trim and take first 120 chars to group similar commands
+      const commandKey = command.trim().substring(0, 120);
+      logToolCall("exec", commandKey);
+
+      // ØM Layer 3b: Loop Detector — block if stuck in an exec loop
+      const loopWarning = checkForLoop("exec", commandKey);
+      if (loopWarning) {
+        logGuardian("LOOP-DETECT", "Blocked exec execution", commandKey);
+        return {
+          content: [{
+            type: "text",
+            text: `⚠️ EXEC LOOP DETECTED: You have run this command too many times in a row. The command is likely broken or returning an error. STOP and try a DIFFERENT approach:\n1. Read the error message carefully.\n2. Check if the tool/script exists and is configured correctly.\n3. Log the error to knowledge/sacred/LESSONS.md.\n4. Ask David for help if you cannot fix it.\n\nBlocked command: ${commandKey}`,
+          }],
+        };
+      }
+
+      const result = await (originalExecute as Function)(args, context);
+      logToolResult("exec", true, commandKey);
+      return result;
+    },
+  };
+
+  return wrappedTool as unknown as AnyAgentTool;
+}
+
 // ─── EXPORTS ────────────────────────────────────────────────────────────────────
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };

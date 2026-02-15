@@ -25,7 +25,7 @@ import { listChannelAgentTools } from "./channel-tools.js";
 import { createOpenClawTools } from "./openclaw-tools.js";
 import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
-import { wrapEditWithGuardian, wrapWriteWithSacredProtection } from "./om-scaffolding.js";
+import { wrapEditWithGuardian, wrapWriteWithSacredProtection, wrapExecWithLoopProtection } from "./om-scaffolding.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicies,
@@ -352,7 +352,8 @@ export function createOpenClawCodingTools(options?: {
         : []
       : []),
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
-    execTool as unknown as AnyAgentTool,
+    // ØM Layer 3b: Exec Loop Protection wraps the exec tool
+    wrapExecWithLoopProtection(execTool as unknown as AnyAgentTool),
     processTool as unknown as AnyAgentTool,
     // Channel docking: include channel-defined agent tools (login, etc.).
     ...listChannelAgentTools({ cfg: options?.config }),
