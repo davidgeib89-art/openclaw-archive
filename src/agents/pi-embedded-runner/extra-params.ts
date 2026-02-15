@@ -249,7 +249,7 @@ function createStreamFnWithExtraParams(
                     }
                 }
               } catch (err) {
-                log.error(`[DEBUG-STREAM] Stream error:`, err);
+                log.error(`[DEBUG-STREAM] Stream error: ${String(err)}`);
                 throw err;
               }
             };

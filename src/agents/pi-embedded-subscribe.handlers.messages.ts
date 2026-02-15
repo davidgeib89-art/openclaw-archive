@@ -7,6 +7,7 @@ import {
   isMessagingToolDuplicateNormalized,
   normalizeTextForComparison,
 } from "./pi-embedded-helpers.js";
+import { omLog } from "./om-scaffolding.js";
 import { appendRawStream } from "./pi-embedded-subscribe.raw-stream.js";
 import {
   extractAssistantText,
@@ -202,6 +203,13 @@ export function handleMessageEnd(
   promoteThinkingTagsToBlocks(assistantMessage);
 
   const rawText = extractAssistantText(assistantMessage);
+
+  // Øm Scaffolding: Log assistant reply to OM_ACTIVITY.log
+  if (rawText.trim()) {
+    const preview = rawText.trim().slice(0, 500).replace(/\n/g, " ");
+    omLog("ØM-REPLY", preview);
+  }
+
   appendRawStream({
     ts: Date.now(),
     event: "assistant_message_end",

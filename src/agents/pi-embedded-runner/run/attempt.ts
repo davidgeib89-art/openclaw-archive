@@ -843,6 +843,14 @@ export async function runEmbeddedAttempt(
         }
 
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);
+
+        // Øm Scaffolding: Log incoming user message to OM_ACTIVITY.log
+        {
+          const { omLog } = await import("../../om-scaffolding.js");
+          const preview = effectivePrompt.trim().slice(0, 500).replace(/\n/g, " ");
+          omLog("USER-MSG", preview);
+        }
+
         cacheTrace?.recordStage("prompt:before", {
           prompt: effectivePrompt,
           messages: activeSession.messages,
