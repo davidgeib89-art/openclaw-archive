@@ -53,9 +53,20 @@ export async function handleTtsHttpRequest(
     return false;
   }
 
+  // Handle CORS preflight (browser sends OPTIONS before POST with application/json)
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Max-Age", "3600");
+    res.end();
+    return true;
+  }
+
   if (req.method !== "POST") {
     res.statusCode = 405;
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow", "POST, OPTIONS");
     res.setHeader("Content-Type", "text/plain");
     res.end("Method Not Allowed");
     return true;

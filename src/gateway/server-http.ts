@@ -496,8 +496,8 @@ export function createGatewayHttpServer(opts: {
       ) {
         return;
       }
-      // TTS endpoint for WebGUI voice playback (local requests only)
-      if (isLocalDirectRequest(req, trustedProxies) && await handleTtsHttpRequest(req, res)) {
+      // TTS endpoint for WebGUI voice playback
+      if (await handleTtsHttpRequest(req, res)) {
         return;
       }
       if (await handleSlackHttpRequest(req, res)) {

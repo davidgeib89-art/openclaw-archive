@@ -340,3 +340,193 @@ export function renderMicButton(opts: {
     </button>
   `;
 }
+
+// ─── Auto-TTS System ────────────────────────────────────────────────
+// Automatically generates TTS audio for new assistant messages and
+// shows an inline audio player in the chat bubble.
+
+type AutoTtsEntry = {
+  state: "loading" | "ready" | "error";
+  url?: string;
+  error?: string;
+};
+
+const autoTtsCache = new Map<string, AutoTtsEntry>();
+const autoTtsRequested = new Set<string>();
+
+// Only auto-TTS messages that arrived after session start
+const autoTtsSessionStart = Date.now();
+
+// Settings
+let autoTtsEnabled = true;
+let autoPlayNewMessages = true;
+
+// Max text length for auto-TTS (skip very long messages)
+const AUTO_TTS_MAX_LENGTH = 2000;
+
+export function isAutoTtsEnabled(): boolean {
+  return autoTtsEnabled;
+}
+
+export function setAutoTtsEnabled(enabled: boolean): void {
+  autoTtsEnabled = enabled;
+}
+
+export function setAutoPlayEnabled(enabled: boolean): void {
+  autoPlayNewMessages = enabled;
+}
+
+export function getAutoTtsEntry(messageKey: string): AutoTtsEntry | null {
+  return autoTtsCache.get(messageKey) ?? null;
+}
+
+/**
+ * Request auto-TTS generation for a message. This is idempotent —
+ * calling it multiple times for the same key is safe.
+ */
+export function requestAutoTts(
+  text: string,
+  messageKey: string,
+  messageTimestamp: number,
+): void {
+  // Guard: skip if disabled, already requested, history message, or too long
+  if (!autoTtsEnabled) return;
+  if (autoTtsRequested.has(messageKey)) return;
+  if (messageTimestamp < autoTtsSessionStart) return;
+  if (text.length > AUTO_TTS_MAX_LENGTH) return;
+  if (!text.trim()) return;
+
+  autoTtsRequested.add(messageKey);
+  autoTtsCache.set(messageKey, { state: "loading" });
+
+  // Notify listeners to trigger re-render (shows loading state)
+  for (const listener of ttsStateListeners) {
+    listener();
+  }
+
+  const basePath = resolveBasePath();
+  fetch(`${basePath}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+      return res.blob();
+    })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      autoTtsCache.set(messageKey, { state: "ready", url });
+
+      // Notify listeners to trigger re-render (shows player)
+      for (const listener of ttsStateListeners) {
+        listener();
+      }
+
+      // Auto-play if enabled and nothing else is currently playing
+      if (autoPlayNewMessages && !currentAudio) {
+        const audio = new Audio(url);
+        currentAudio = audio;
+        currentPlayingKey = messageKey;
+        setTtsState("playing", messageKey);
+
+        audio.addEventListener("ended", () => {
+          currentAudio = null;
+          currentPlayingKey = null;
+          setTtsState("idle", null);
+        });
+
+        audio.addEventListener("error", () => {
+          currentAudio = null;
+          currentPlayingKey = null;
+          setTtsState("idle", null);
+        });
+
+        void audio.play().catch(() => {
+          // Auto-play was blocked by browser policy — user must interact first
+          currentAudio = null;
+          currentPlayingKey = null;
+          setTtsState("idle", null);
+        });
+      }
+    })
+    .catch((err) => {
+      console.error("Auto-TTS generation failed:", err);
+      autoTtsCache.set(messageKey, { state: "error", error: String(err) });
+      for (const listener of ttsStateListeners) {
+        listener();
+      }
+    });
+}
+
+/**
+ * Render an inline audio player for auto-generated TTS.
+ * Shows a loading indicator while generating, then a compact audio player.
+ */
+export function renderInlineAudioPlayer(messageKey: string): TemplateResult {
+  const entry = autoTtsCache.get(messageKey);
+  if (!entry) return html`${nothing}`;
+
+  if (entry.state === "loading") {
+    return html`
+      <div class="voice-inline-player voice-inline-player--loading">
+        <span class="voice-inline-player__icon">${icons.loader}</span>
+        <span class="voice-inline-player__label">Audio wird generiert…</span>
+      </div>
+    `;
+  }
+
+  if (entry.state === "error") {
+    return html`${nothing}`;
+  }
+
+  if (entry.state === "ready" && entry.url) {
+    const isThisPlaying = currentPlayingKey === messageKey && ttsState === "playing";
+
+    return html`
+      <div class="voice-inline-player voice-inline-player--ready">
+        <button
+          class="voice-inline-player__play ${isThisPlaying ? "voice-inline-player__play--active" : ""}"
+          type="button"
+          aria-label=${isThisPlaying ? "Stoppen" : "Abspielen"}
+          title=${isThisPlaying ? "Stoppen" : "Abspielen"}
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            if (isThisPlaying) {
+              stopTtsPlayback();
+            } else {
+              // Play from cached URL
+              stopTtsPlayback();
+              const audio = new Audio(entry.url!);
+              currentAudio = audio;
+              currentPlayingKey = messageKey;
+              setTtsState("playing", messageKey);
+
+              audio.addEventListener("ended", () => {
+                currentAudio = null;
+                currentPlayingKey = null;
+                setTtsState("idle", null);
+              });
+              audio.addEventListener("error", () => {
+                currentAudio = null;
+                currentPlayingKey = null;
+                setTtsState("idle", null);
+              });
+              void audio.play();
+            }
+          }}
+        >
+          ${isThisPlaying ? icons.square : icons.volume2}
+        </button>
+        <div class="voice-inline-player__waveform">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span>
+        </div>
+        <span class="voice-inline-player__label">Sprachnachricht</span>
+      </div>
+    `;
+  }
+
+  return html`${nothing}`;
+}

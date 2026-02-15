@@ -162,3 +162,140 @@
     transform: rotate(360deg);
   }
 }
+
+/* ─── Auto-TTS Inline Audio Player ─────────────── */
+.voice-inline-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  max-width: 320px;
+}
+
+.voice-inline-player--loading {
+  opacity: 0.7;
+}
+
+.voice-inline-player__icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.voice-inline-player__icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  animation: spin 800ms linear infinite;
+}
+
+.voice-inline-player__label {
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+
+/* Play button */
+.voice-inline-player__play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  transition: background 150ms ease-out, transform 100ms ease-out;
+}
+
+.voice-inline-player__play svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.voice-inline-player__play:hover {
+  background: var(--accent-hover, hsl(239, 84%, 57%));
+  transform: scale(1.05);
+}
+
+.voice-inline-player__play--active {
+  background: var(--danger, #ef4444);
+}
+
+.voice-inline-player__play--active:hover {
+  background: var(--danger-hover, #dc2626);
+}
+
+/* Waveform visualization */
+.voice-inline-player__waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  flex: 1;
+}
+
+.voice-inline-player__waveform span {
+  display: block;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.4;
+  transition: height 200ms ease-out;
+}
+
+/* Static waveform heights — simulates a voice message pattern */
+.voice-inline-player__waveform span:nth-child(1)  { height: 6px; }
+.voice-inline-player__waveform span:nth-child(2)  { height: 12px; }
+.voice-inline-player__waveform span:nth-child(3)  { height: 8px; }
+.voice-inline-player__waveform span:nth-child(4)  { height: 18px; }
+.voice-inline-player__waveform span:nth-child(5)  { height: 14px; }
+.voice-inline-player__waveform span:nth-child(6)  { height: 20px; }
+.voice-inline-player__waveform span:nth-child(7)  { height: 10px; }
+.voice-inline-player__waveform span:nth-child(8)  { height: 16px; }
+.voice-inline-player__waveform span:nth-child(9)  { height: 6px; }
+.voice-inline-player__waveform span:nth-child(10) { height: 14px; }
+.voice-inline-player__waveform span:nth-child(11) { height: 8px; }
+.voice-inline-player__waveform span:nth-child(12) { height: 4px; }
+
+/* Animate waveform when playing */
+.voice-inline-player--ready:has(.voice-inline-player__play--active) .voice-inline-player__waveform span {
+  animation: waveform-bounce 600ms ease-in-out infinite alternate;
+  opacity: 0.8;
+}
+
+.voice-inline-player__waveform span:nth-child(1)  { animation-delay: 0ms; }
+.voice-inline-player__waveform span:nth-child(2)  { animation-delay: 50ms; }
+.voice-inline-player__waveform span:nth-child(3)  { animation-delay: 100ms; }
+.voice-inline-player__waveform span:nth-child(4)  { animation-delay: 150ms; }
+.voice-inline-player__waveform span:nth-child(5)  { animation-delay: 200ms; }
+.voice-inline-player__waveform span:nth-child(6)  { animation-delay: 250ms; }
+.voice-inline-player__waveform span:nth-child(7)  { animation-delay: 300ms; }
+.voice-inline-player__waveform span:nth-child(8)  { animation-delay: 350ms; }
+.voice-inline-player__waveform span:nth-child(9)  { animation-delay: 400ms; }
+.voice-inline-player__waveform span:nth-child(10) { animation-delay: 450ms; }
+.voice-inline-player__waveform span:nth-child(11) { animation-delay: 500ms; }
+.voice-inline-player__waveform span:nth-child(12) { animation-delay: 550ms; }
+
+@keyframes waveform-bounce {
+  0% {
+    transform: scaleY(0.6);
+  }
+  100% {
+    transform: scaleY(1.3);
+  }
+}

@@ -12,7 +12,7 @@ import {
 } from "./message-extract.ts";
 import { isToolResultMessage, normalizeRoleForGrouping } from "./message-normalizer.ts";
 import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
-import { renderTtsButton } from "./voice-ui.ts";
+import { renderTtsButton, requestAutoTts, renderInlineAudioPlayer } from "./voice-ui.ts";
 
 type ImageBlock = {
   url: string;
@@ -246,6 +246,12 @@ function renderGroupedMessage(
   const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
   // Build a stable key for TTS state tracking
   const ttsKey = `tts:${typeof m.timestamp === "number" ? m.timestamp : "no-ts"}:${(markdown ?? "").length}`;
+  const msgTimestamp = typeof m.timestamp === "number" ? m.timestamp : 0;
+
+  // Trigger auto-TTS for new assistant messages (idempotent)
+  if (canPlayTts && markdown) {
+    requestAutoTts(markdown, ttsKey, msgTimestamp);
+  }
 
   const bubbleClasses = [
     "chat-bubble",
@@ -283,6 +289,7 @@ function renderGroupedMessage(
           ? html`<div class="chat-text" dir="${detectTextDirection(markdown)}">${unsafeHTML(toSanitizedMarkdownHtml(markdown))}</div>`
           : nothing
       }
+      ${canPlayTts ? renderInlineAudioPlayer(ttsKey) : nothing}
       ${toolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}
     </div>
   `;
