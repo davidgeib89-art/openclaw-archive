@@ -101,6 +101,11 @@ function createStreamFnWithExtraParams(
         const anyStream = stream as any;
         const modelIdLower = model.id.toLowerCase();
         const isMiniMax = modelIdLower.includes("minimax") || modelIdLower.includes("deepseek") || modelIdLower.includes("trinity") || modelIdLower.includes("arcee");
+        const streamDebugEnabled = process.env.OPENCLAW_STREAM_DEBUG === "1";
+        const debugLog = (...args: unknown[]) => {
+          if (!streamDebugEnabled) return;
+          console.error(...args);
+        };
         
         if (anyStream[Symbol.asyncIterator]) {
             const originalIterator = anyStream[Symbol.asyncIterator].bind(anyStream);
@@ -108,7 +113,7 @@ function createStreamFnWithExtraParams(
               let buffer = "";
               let inToolBlock = false;
               
-              console.error(`[Stream-Debug] Interception monitor active for ${model.id} (isMiniMax=${isMiniMax})`);
+              debugLog(`[Stream-Debug] Interception monitor active for ${model.id} (isMiniMax=${isMiniMax})`);
 
               // Extremely permissive regex to catch any variation of tool tags
               const START_REGEX = /<[｜|│┃\s]*?tool[^>]*?calls?[^>]*?begin[^>]*?>/i;
@@ -118,8 +123,8 @@ function createStreamFnWithExtraParams(
                 for await (const chunk of originalIterator()) {
                   // Log every chunk for debugging when it looks like it might contain markers
                   const chunkStr = JSON.stringify(chunk);
-                  if (chunkStr.includes("<") || chunkStr.includes("tool") || isMiniMax) {
-                      console.error(`[Stream-Debug] Chunk: ${chunk.type} data=${chunkStr.slice(0, 500)}`);
+                  if (streamDebugEnabled && (chunkStr.includes("<") || chunkStr.includes("tool"))) {
+                      debugLog(`[Stream-Debug] Chunk: ${chunk.type} data=${chunkStr.slice(0, 500)}`);
                   }
 
                   if (chunk.message && chunk.message.content) {
@@ -152,7 +157,7 @@ function createStreamFnWithExtraParams(
                         .replace(/[｜|│┃▁▅▆▇▧▨]+tool[｜|│┃▁▅▆▇▧▨]+/gi, "");
 
                       if (cleanedDelta !== currentText) {
-                          console.error(`[Stream-Debug] Emergency stripped marker from delta: ${currentText}`);
+                          debugLog(`[Stream-Debug] Emergency stripped marker from delta: ${currentText}`);
                           currentText = cleanedDelta;
                       }
 
@@ -160,7 +165,7 @@ function createStreamFnWithExtraParams(
                       else buffer += currentText;
 
                       // Alive-Check: Log every ~500 chars to show activity without flooding
-                      if (buffer.length % 500 < 20) {
+                      if (streamDebugEnabled && buffer.length % 500 < 20) {
                           process.stdout.write("."); // Minimal alive tick
                       }
 
@@ -171,7 +176,7 @@ function createStreamFnWithExtraParams(
                               const match = buffer.match(START_REGEX);
                               if (match && match.index !== undefined) {
                                   const sIdx = match.index;
-                                  console.error(`\n[Stream-Debug] FOUND START MARKER at ${sIdx}: ${match[0]}`);
+                                  debugLog(`\n[Stream-Debug] FOUND START MARKER at ${sIdx}: ${match[0]}`);
                                   if (sIdx > 0) yield { type: "text_delta", delta: buffer.substring(0, sIdx) } as any;
                                   buffer = buffer.substring(sIdx + match[0].length);
                                   inToolBlock = true;
@@ -190,7 +195,7 @@ function createStreamFnWithExtraParams(
                                   const eIdx = match.index;
                                   const toolContent = buffer.substring(0, eIdx);
                                   buffer = buffer.substring(eIdx + match[0].length);
-                                  console.error(`[Stream-Debug] FOUND END MARKER. Content length: ${toolContent.length}`);
+                                  debugLog(`[Stream-Debug] FOUND END MARKER. Content length: ${toolContent.length}`);
                                   
                                   try {
                                       const cleanContent = toolContent.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -224,7 +229,7 @@ function createStreamFnWithExtraParams(
                                           }
                                           if (name === "read") name = "view_file";
                                           if (name) {
-                                              console.error(`[Stream-Debug] INTERCEPTED TOOL: ${name}`);
+                                              debugLog(`[Stream-Debug] INTERCEPTED TOOL: ${name}`);
                                               yield {
                                                   type: "tool_use",
                                                   id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -233,7 +238,7 @@ function createStreamFnWithExtraParams(
                                               } as any;
                                           }
                                       }
-                                  } catch (e) { console.error("[Stream-Debug] Parser Error", e); }
+                                  } catch (e) { debugLog("[Stream-Debug] Parser Error", e); }
                                   inToolBlock = false;
                                   changed = true;
                               } else { changed = false; }

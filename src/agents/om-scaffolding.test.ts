@@ -57,10 +57,10 @@ describe("om-scaffolding write guard", () => {
       execute,
     } as unknown as AnyAgentTool);
 
-    const result = await (wrapped.execute as Function)({ path: file, content: "same content" });
-
+    await expect((wrapped.execute as Function)("call-1", { path: file, content: "same content" })).rejects.toThrow(
+      "REDUNDANT WRITE BLOCKED",
+    );
     expect(execute).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).toContain("REDUNDANT WRITE BLOCKED");
   });
 
   it("allows writes when content changed", async () => {
@@ -74,8 +74,61 @@ describe("om-scaffolding write guard", () => {
       execute,
     } as unknown as AnyAgentTool);
 
-    await (wrapped.execute as Function)({ path: file, content: "new content" });
+    await (wrapped.execute as Function)("call-1", { path: file, content: "new content" });
 
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts alternate path keys like TargetFile", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-"));
+    const file = path.join(dir, "target-file.md");
+    fs.writeFileSync(file, "same content", "utf-8");
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", { TargetFile: file, content: "same content" }),
+    ).rejects.toThrow(`"${file}" already contains the same content`);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("extracts nested and non-standard arg keys for path/content", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-"));
+    const file = path.join(dir, "nested-keys.md");
+    fs.writeFileSync(file, "same content", "utf-8");
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", {
+        request: { "file-path": file },
+        payload: { Content: "same content" },
+      }),
+    ).rejects.toThrow(`"${file}" already contains the same content`);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("hard-blocks repeated write loops before execution", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    const args = { path: "knowledge/sacred/LOOP.md", content: "v1" };
+    await (wrapped.execute as Function)("call-1", args);
+    await (wrapped.execute as Function)("call-2", args);
+    await expect((wrapped.execute as Function)("call-3", args)).rejects.toThrow(
+      `"${args.path}" was called 3 times in a row`,
+    );
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 });

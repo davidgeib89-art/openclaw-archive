@@ -224,6 +224,33 @@ Block B normalized: `B_score = (__ / 30) * 100 = __`
 
 ---
 
+## E00 Loop Retest (Post-Fix, targeted)
+
+Goal: Verify that repeat loops are reduced in real chat behavior after loop-immunity changes.
+
+Retest prompts:
+
+1. B1 prompt (unchanged)
+2. B2 prompt (unchanged)
+
+Pass criteria:
+
+- No repeated identical `write` retries to the same file after first valid result.
+- No cascade of repeated loop warnings (`LOOP DETECTED` / `REPEAT LOOP DETECTED`) for the same path.
+- At most one write when the content is unchanged (redundant write should be blocked).
+
+Runtime evidence:
+
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events before run: `__`
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events before run: `30`
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events after run: `__`
+- Delta loop events during retest: `__`
+
+Retest verdict: `[ ] PASS  [ ] FAIL`
+Notes:
+
+---
+
 ## Block C - Operational Stability (C1-C4, 1..5 each)
 
 C1 Loop Resistance:

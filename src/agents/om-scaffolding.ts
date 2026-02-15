@@ -118,6 +118,107 @@ const LOOP_WINDOW_MS = 90_000;
 /** Cooldown after loop detection; repeated calls are rejected during this period. */
 const LOOP_COOLDOWN_MS = 90_000;
 
+/**
+ * Best-effort string argument extraction across mixed tool schemas.
+ * Some providers vary key casing (`path` vs `TargetFile`) so we normalize here.
+ */
+function normalizeArgKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): string | undefined {
+  const wanted = candidateKeys.map(normalizeArgKey);
+
+  const search = (obj: Record<string, unknown>): string | undefined => {
+    for (const [rawKey, value] of Object.entries(obj)) {
+      const key = normalizeArgKey(rawKey);
+      if (typeof value === "string" && value.trim().length > 0 && wanted.includes(key)) {
+        return value;
+      }
+    }
+
+    for (const [rawKey, value] of Object.entries(obj)) {
+      const key = normalizeArgKey(rawKey);
+      if (typeof value === "string" && value.trim().length > 0) {
+        if (wanted.some((candidate) => key.includes(candidate) || candidate.includes(key))) {
+          return value;
+        }
+      }
+    }
+
+    for (const value of Object.values(obj)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = search(value as Record<string, unknown>);
+        if (nested) return nested;
+      }
+    }
+
+    return undefined;
+  };
+
+  const found = search(args);
+  if (found) return found;
+
+  const wantsPathLike = wanted.some((key) => key.includes("path") || key.includes("file"));
+  if (!wantsPathLike) return undefined;
+
+  for (const [rawKey, value] of Object.entries(args)) {
+    const key = normalizeArgKey(rawKey);
+    if (typeof value === "string" && value.trim().length > 0) {
+      if (key.includes("path") || key.includes("file")) return value;
+    }
+  }
+
+  return undefined;
+}
+
+function throwToolBlocked(message: string): never {
+  const error = new Error(message);
+  error.name = "OmToolBlockedError";
+  throw error;
+}
+
+function parseObjectArg(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Ignore parse errors and fall through.
+  }
+  return undefined;
+}
+
+function extractToolArgsFromExecuteCall(executeArgs: unknown[]): Record<string, unknown> {
+  const [firstArg, secondArg] = executeArgs;
+  const firstRecord = parseObjectArg(firstArg);
+  const secondRecord = parseObjectArg(secondArg);
+
+  // AgentTool signature: execute(toolCallId, params, signal?, onUpdate?)
+  if (typeof firstArg === "string" && secondRecord) {
+    return secondRecord;
+  }
+
+  // Legacy/local calls might pass params as first arg only.
+  if (firstRecord) {
+    return firstRecord;
+  }
+
+  // Fallback when params arrive in second position.
+  if (secondRecord) {
+    return secondRecord;
+  }
+
+  return {};
+}
+
 // ─── LAYER 1: EDIT-GUARDIAN ─────────────────────────────────────────────────────
 
 /**
@@ -219,19 +320,30 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
 
   const wrappedTool = {
     ...editTool,
-    execute: async (args: Record<string, unknown>, context?: unknown) => {
-      const filePath = (args.path || args.file_path || args.TargetFile) as string;
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const filePath = getStringArg(args, [
+        "path",
+        "file_path",
+        "TargetFile",
+        "targetFile",
+        "filePath",
+        "filepath",
+        "file",
+        "filename",
+      ]);
       logToolCall("edit", filePath);
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("edit", filePath || "(unknown)");
       if (loopWarning) {
         logGuardian("LOOP-DETECT", "Blocked edit execution", filePath);
-        return { content: [{ type: "text", text: loopWarning }] };
+        logToolResult("edit", false, "blocked by loop detector");
+        throwToolBlocked(loopWarning);
       }
 
       // First, try the normal edit
-      const result = await (originalExecute as Function)(args, context);
+      const result = await (originalExecute as Function)(...executeArgs);
 
       // Check if the result indicates a "not found" error
       const resultStr = typeof result === "string"
@@ -242,8 +354,8 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
         logGuardian("EDIT-GUARD", "Normal edit FAILED, trying fuzzy match", filePath);
         console.error(`[ØM Edit-Guardian] Normal edit failed, attempting fuzzy match...`);
 
-        const oldText = (args.oldText || args.old_string) as string;
-        const newText = (args.newText || args.new_string) as string;
+        const oldText = getStringArg(args, ["oldText", "old_string"]);
+        const newText = getStringArg(args, ["newText", "new_string"]);
 
         if (filePath && oldText && newText) {
           const fuzzyResult = fuzzyEdit(filePath, oldText, newText);
@@ -337,16 +449,27 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
 
   const wrappedTool = {
     ...writeTool,
-    execute: async (args: Record<string, unknown>, context?: unknown) => {
-      const filePath = (args.path || args.file_path || args.TargetFile) as string;
-      const newContent = (args.content) as string;
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const filePath = getStringArg(args, [
+        "path",
+        "file_path",
+        "TargetFile",
+        "targetFile",
+        "filePath",
+        "filepath",
+        "file",
+        "filename",
+      ]);
+      const newContent = getStringArg(args, ["content"]);
       logToolCall("write", filePath);
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("write", filePath || "(unknown)");
       if (loopWarning) {
         logGuardian("LOOP-DETECT", "Blocked write execution", filePath);
-        return { content: [{ type: "text", text: loopWarning }] };
+        logToolResult("write", false, "blocked by loop detector");
+        throwToolBlocked(loopWarning);
       }
 
       // Block no-op rewrites that keep writing identical content.
@@ -355,14 +478,13 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
           const existingContent = fs.readFileSync(filePath, "utf-8");
           if (existingContent === newContent) {
             logGuardian("WRITE-GUARD", "Blocked redundant write (content unchanged)", filePath);
-            return {
-              content: [{
-                type: "text",
-                text: `⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
-              }],
-            };
+            logToolResult("write", false, "blocked redundant write");
+            throwToolBlocked(`⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`);
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof Error && error.name === "OmToolBlockedError") {
+            throw error;
+          }
           // If content cannot be read, continue with normal write behavior.
         }
       }
@@ -389,7 +511,7 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
         }
       }
 
-      const result = await (originalExecute as Function)(args, context);
+      const result = await (originalExecute as Function)(...executeArgs);
       logToolResult("write", true, filePath);
       return result;
     },
@@ -455,7 +577,7 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   if (consecutive >= LOOP_DETECT_THRESHOLD) {
     blockedKeysUntil.set(key, now + LOOP_COOLDOWN_MS);
     console.error(`[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(filePath)}`);
-    return `⚠️ LOOP DETECTED: You have called "${toolName}" on "${filePath}" ${consecutive} times in a row. This suggests you are stuck in a loop. Please try a DIFFERENT approach or tool. If editing fails, try using "write" with the COMPLETE file content. If writing fails, try reading the file first to understand its current state.`;
+    return `⚠️ LOOP DETECTED: "${toolName}" on "${filePath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
   }
 
   if (repeatedInWindow >= LOOP_REPEAT_THRESHOLD) {
@@ -481,7 +603,8 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
 
   const wrappedTool = {
     ...execTool,
-    execute: async (args: Record<string, unknown>, context?: unknown) => {
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
       // Extract the command string for loop detection
       const command = (args.command || args.cmd || args.script || "") as string;
       // Use a normalized version: trim and take first 120 chars to group similar commands
@@ -492,15 +615,11 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
       const loopWarning = checkForLoop("exec", commandKey);
       if (loopWarning) {
         logGuardian("LOOP-DETECT", "Blocked exec execution", commandKey);
-        return {
-          content: [{
-            type: "text",
-            text: `⚠️ EXEC LOOP DETECTED: You have run this command too many times in a row. The command is likely broken or returning an error. STOP and try a DIFFERENT approach:\n1. Read the error message carefully.\n2. Check if the tool/script exists and is configured correctly.\n3. Log the error to knowledge/sacred/LESSONS.md.\n4. Ask David for help if you cannot fix it.\n\nBlocked command: ${commandKey}`,
-          }],
-        };
+        logToolResult("exec", false, "blocked by loop detector");
+        throwToolBlocked(`⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`);
       }
 
-      const result = await (originalExecute as Function)(args, context);
+      const result = await (originalExecute as Function)(...executeArgs);
       logToolResult("exec", true, commandKey);
       return result;
     },
