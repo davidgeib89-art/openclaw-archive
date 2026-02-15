@@ -172,6 +172,48 @@ function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): s
   return undefined;
 }
 
+function isRootPathCandidate(filePath: string): boolean {
+  const normalized = path.normalize(filePath);
+  const root = path.parse(normalized).root;
+  if (!root) return false;
+  return normalized === root || normalized === root.replace(/[\\/]+$/, "");
+}
+
+function looksLikeDirectoryPath(filePath: string): boolean {
+  return filePath.endsWith("/") || filePath.endsWith("\\");
+}
+
+function validateToolFilePath(toolName: "write" | "edit", candidatePath: string | undefined): string {
+  const filePath = candidatePath?.trim() ?? "";
+
+  if (!filePath) {
+    throwToolBlocked(
+      `PATH_INVALID: "${toolName}" requires a target file path. Provide a concrete file path.`,
+    );
+  }
+
+  if (looksLikeDirectoryPath(filePath) || isRootPathCandidate(filePath)) {
+    throwToolBlocked(
+      `PATH_INVALID: "${toolName}" received a directory path "${filePath}". Provide a file path, not a directory.`,
+    );
+  }
+
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+      throwToolBlocked(
+        `PATH_INVALID: "${toolName}" target "${filePath}" is a directory. Provide a file path, not a directory.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "OmToolBlockedError") {
+      throw error;
+    }
+    // Ignore filesystem probe failures; tool execution can surface actionable errors.
+  }
+
+  return filePath;
+}
+
 function throwToolBlocked(message: string): never {
   const error = new Error(message);
   error.name = "OmToolBlockedError";
@@ -322,7 +364,7 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
     ...editTool,
     execute: async (...executeArgs: unknown[]) => {
       const args = extractToolArgsFromExecuteCall(executeArgs);
-      const filePath = getStringArg(args, [
+      const rawPath = getStringArg(args, [
         "path",
         "file_path",
         "TargetFile",
@@ -332,10 +374,21 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
         "file",
         "filename",
       ]);
+      let filePath: string;
+      try {
+        filePath = validateToolFilePath("edit", rawPath);
+      } catch (error) {
+        logToolCall("edit", rawPath);
+        if (error instanceof Error && error.name === "OmToolBlockedError") {
+          logGuardian("PATH-GUARD", "Blocked edit execution", rawPath);
+          logToolResult("edit", false, "blocked invalid path");
+        }
+        throw error;
+      }
       logToolCall("edit", filePath);
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
-      const loopWarning = checkForLoop("edit", filePath || "(unknown)");
+      const loopWarning = checkForLoop("edit", filePath);
       if (loopWarning) {
         logGuardian("LOOP-DETECT", "Blocked edit execution", filePath);
         logToolResult("edit", false, "blocked by loop detector");
@@ -451,7 +504,7 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
     ...writeTool,
     execute: async (...executeArgs: unknown[]) => {
       const args = extractToolArgsFromExecuteCall(executeArgs);
-      const filePath = getStringArg(args, [
+      const rawPath = getStringArg(args, [
         "path",
         "file_path",
         "TargetFile",
@@ -461,11 +514,22 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
         "file",
         "filename",
       ]);
+      let filePath: string;
+      try {
+        filePath = validateToolFilePath("write", rawPath);
+      } catch (error) {
+        logToolCall("write", rawPath);
+        if (error instanceof Error && error.name === "OmToolBlockedError") {
+          logGuardian("PATH-GUARD", "Blocked write execution", rawPath);
+          logToolResult("write", false, "blocked invalid path");
+        }
+        throw error;
+      }
       const newContent = getStringArg(args, ["content"]);
       logToolCall("write", filePath);
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
-      const loopWarning = checkForLoop("write", filePath || "(unknown)");
+      const loopWarning = checkForLoop("write", filePath);
       if (loopWarning) {
         logGuardian("LOOP-DETECT", "Blocked write execution", filePath);
         logToolResult("write", false, "blocked by loop detector");

@@ -3,6 +3,7 @@
 Last updated: 2026-02-15  
 Owner: David + Om + AI copilots  
 Status: Active planning document
+Canonical execution order and handoff protocol: `OM_3_TRACK_ROADMAP_2026-02-15.md`
 
 ## 1. Mission
 

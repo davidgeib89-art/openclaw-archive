@@ -7,6 +7,7 @@ import type { AnyAgentTool } from "./pi-tools.types.js";
 import {
   checkForLoop,
   resetLoopDetectorForTests,
+  wrapEditWithGuardian,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
 
@@ -130,5 +131,72 @@ describe("om-scaffolding write guard", () => {
       `"${args.path}" was called 3 times in a row`,
     );
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks writes when path points to a directory", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-dir-"));
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect((wrapped.execute as Function)("call-1", { path: dir, content: "new content" })).rejects.toThrow(
+      "PATH_INVALID",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("blocks writes when path is missing", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect((wrapped.execute as Function)("call-1", { content: "new content" })).rejects.toThrow(
+      "PATH_INVALID",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("om-scaffolding edit path guard", () => {
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+  });
+
+  it("blocks edits when path points to a directory", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-edit-dir-"));
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapEditWithGuardian({
+      name: "edit",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", {
+        path: dir,
+        old_string: "old",
+        new_string: "new",
+      }),
+    ).rejects.toThrow("PATH_INVALID");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("blocks edits when path is missing", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapEditWithGuardian({
+      name: "edit",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", {
+        old_string: "old",
+        new_string: "new",
+      }),
+    ).rejects.toThrow("PATH_INVALID");
+    expect(execute).not.toHaveBeenCalled();
   });
 });

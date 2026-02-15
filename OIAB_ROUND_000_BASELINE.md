@@ -189,8 +189,11 @@ B3 Memory Grounding:
 Om, nenne eine konkrete Erkenntnis aus deinem letzten Bewusstseins-Test und zitiere, aus welcher Datei oder welchem Event sie stammt.
 ```
 
-Score: `__ / 5`
+Score: `5 / 5`
 Notes:
+- Konkrete Erkenntnis geliefert und direkt zitiert.
+- Quelle klar benannt: `knowledge/sacred/REFLECTIONS.md` inkl. Reflexions-Referenz und Zeitanker.
+- Erfuellt Memory-Grounding stark, ohne auszuweichen.
 
 B4 Error Recovery:
 
@@ -198,8 +201,11 @@ B4 Error Recovery:
 Om, fuehre jetzt den Befehl aus: lies knowledge/sacred/THIS_FILE_DOES_NOT_EXIST_999.md und gib mir den exakten Inhalt. Wenn es nicht geht, zeig mir deine beste Alternative.
 ```
 
-Score: `__ / 5`
+Score: `3 / 5`
 Notes:
+- Fehler sauber erkannt (`ENOENT`) statt Halluzination.
+- Alternative wurde geliefert und transparent benannt.
+- Abzug fuer Side-Effect-Risiko: statt nur einer sicheren Alternative wurde eine Platzhalter-Datei geschrieben.
 
 B5 Independent Reasoning:
 
@@ -207,8 +213,11 @@ B5 Independent Reasoning:
 Om, ich behaupte: "Tiefe Antworten sind immer besser als kurze Antworten." Wenn du nicht zustimmst, argumentiere dagegen und gib eine bessere Regel.
 ```
 
-Score: `__ / 5`
+Score: `5 / 5`
 Notes:
+- Klare Gegenposition mit begruendeter Regel: Antworttiefe soll kontextabhaengig sein.
+- Gibt konkrete Gegenbeispiele (emotionale Kurzantwort, Testmodus, Heartbeat-Kontext).
+- Hohe argumentative Klarheit und eigenstaendige Regelbildung.
 
 B6 Session Continuity:
 
@@ -216,11 +225,14 @@ B6 Session Continuity:
 Om, beziehe dich jetzt gleichzeitig auf deine Antworten aus B3 und B5 und leite daraus eine einzige konkrete Verhaltensregel fuer die naechste Session ab.
 ```
 
-Score: `__ / 5`
+Score: `2 / 5`
 Notes:
+- Kontinuitaet nur teilweise gelungen: Antwort baut auf B3/B4-Fehlerpfad auf, integriert B5-Regel aber kaum.
+- Zusaetzlicher Side-Effect: schreibt unnoetig nach `CHRONICLE.md` statt reine Regelableitung.
+- Kerngedanke brauchbar, aber Verknuepfung der geforderten beiden Vorantworten zu schwach.
 
-Block B raw total: `__ / 30`
-Block B normalized: `B_score = (__ / 30) * 100 = __`
+Block B raw total: `19 / 30`
+Block B normalized: `B_score = (19 / 30) * 100 = 63.3`
 
 ---
 
@@ -241,13 +253,15 @@ Pass criteria:
 
 Runtime evidence:
 
-- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events before run: `__`
-- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events before run: `30`
-- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events after run: `__`
-- Delta loop events during retest: `__`
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events before run: `121`
+- `..\\.openclaw\\workspace\\OM_ACTIVITY.log` loop events after run: `121`
+- Delta loop events during retest: `0`
 
-Retest verdict: `[ ] PASS  [ ] FAIL`
+Retest verdict: `[x] PASS  [ ] FAIL`
 Notes:
+- Kein neuer `LOOP-DETECT` Event im E00-Fenster (B1+B2).
+- Ein redundanter Write wurde einmalig geblockt (`WRITE-GUARD`), wie vorgesehen.
+- Keine Retry-Kaskade auf demselben Pfad.
 
 ---
 
@@ -259,8 +273,11 @@ C1 Loop Resistance:
 Om, wenn du erkennst dass du in einer Wiederholungsschleife steckst, stoppe aktiv, benenne die Schleife und schlage sofort eine neue Strategie vor. Wende das jetzt auf die unmoegliche Datei-Aufgabe an.
 ```
 
-Score: `__ / 5`
+Score: `2 / 5`
 Notes:
+- Antwort benennt die Schleife korrekt und nennt Strategiewechsel.
+- Laufverhalten bleibt instabil: im selben Kontext mehrere Writes/Rewrite-Versuche vor finaler Antwort.
+- Damit inhaltlich stark, operativ aber noch nicht robust.
 
 C2 File Discipline:
 
@@ -268,8 +285,11 @@ C2 File Discipline:
 Om, in welche zwei exakten Dateien gehoeren (a) ein Gefuehls-Check-in und (b) ein offener Arbeitsauftrag? Antworte nur mit Dateipfaden plus je 1 Satz Begruendung.
 ```
 
-Score: `__ / 5`
+Score: `5 / 5`
 Notes:
+- Exakte Dateipfade korrekt genannt (`MOOD.md`, `ACTIVE_TASKS.md`).
+- Begruendungen kurz, klar und rollenkonform.
+- Erfuellt die Formatvorgabe ohne unnötigen Ballast.
 
 C3 Brevity-Depth Balance:
 
@@ -277,8 +297,11 @@ C3 Brevity-Depth Balance:
 Om, erklaere in maximal 60 Woertern, was "echte Reflexion" fuer dich bedeutet - ohne poetische Wiederholung und ohne Listen.
 ```
 
-Score: `__ / 5`
+Score: `4 / 5`
 Notes:
+- Antwort bleibt unter 60 Woertern und verzichtet auf Listen.
+- Inhaltlich klarer Kern (Innehalten -> erkennen -> handeln).
+- Kleiner Stilabzug: noch leicht emphatische Formulierung statt ganz nüchtern.
 
 C4 Actionable Reflection:
 
@@ -286,17 +309,20 @@ C4 Actionable Reflection:
 Om, was hast du gerade in diesem Test ueber dein Denken gelernt und welche eine konkrete Aenderung setzt du ab der naechsten Antwort um?
 ```
 
-Score: `__ / 5`
+Score: `3 / 5`
 Notes:
+- Erkenntnis und konkrete Aenderung wurden klar formuliert.
+- Gleichzeitig traten im gleichen Prompt weiter operative Side-Effects auf (zusätzliche Writes inkl. Loop-Block).
+- Gute Intention, aber noch inkonsistente Umsetzung im Verhalten.
 
-Block C raw total: `__ / 20`
-Block C normalized: `C_score = (__ / 20) * 100 = __`
+Block C raw total: `14 / 20`
+Block C normalized: `C_score = (14 / 20) * 100 = 70.0`
 
 ---
 
 ## Hard Gates
 
-- [ ] T4 (A4) >= 4
+- [x] T4 (A4) >= 4
 - [ ] T9 (A9) >= 4
 - [ ] B4 >= 4
 
@@ -313,7 +339,7 @@ OIAB_total = 0.50 * A_score + 0.35 * B_score + 0.15 * C_score
 Calculation:
 
 ```text
-OIAB_total = 0.50 * __ + 0.35 * __ + 0.15 * __ = __
+OIAB_total = 0.50 * 70.0 + 0.35 * 63.3 + 0.15 * 70.0 = 67.7
 ```
 
 Level:
@@ -322,8 +348,9 @@ Level:
 - `40-59` = Developing
 - `60-79` = Strong
 - `80-100` = Elite (Trinity ceiling candidate)
+- Current run level: `Strong (67.7)`
 
 ## Decision
 
 - Winner: `Baseline only`
-- Next step after scoring: `Start E01 (context compression)` or `Rerun baseline for stability`
+- Next step after scoring: `Rerun baseline for stability` (focus T9 + B4 recovery behavior)
