@@ -25,6 +25,7 @@ import { listChannelAgentTools } from "./channel-tools.js";
 import { createOpenClawTools } from "./openclaw-tools.js";
 import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
+import { wrapEditWithGuardian, wrapWriteWithSacredProtection } from "./om-scaffolding.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicies,
@@ -276,8 +277,11 @@ export function createOpenClawCodingTools(options?: {
         return [];
       }
       // Wrap with param normalization for Claude Code compatibility
+      // ØM Layer 2: Sacred File Protection wraps the write tool
       return [
-        wrapToolParamNormalization(createWriteTool(workspaceRoot), CLAUDE_PARAM_GROUPS.write),
+        wrapWriteWithSacredProtection(
+          wrapToolParamNormalization(createWriteTool(workspaceRoot), CLAUDE_PARAM_GROUPS.write),
+        ),
       ];
     }
     if (tool.name === "edit") {
@@ -285,7 +289,12 @@ export function createOpenClawCodingTools(options?: {
         return [];
       }
       // Wrap with param normalization for Claude Code compatibility
-      return [wrapToolParamNormalization(createEditTool(workspaceRoot), CLAUDE_PARAM_GROUPS.edit)];
+      // ØM Layer 1: Edit-Guardian wraps the edit tool with fuzzy matching
+      return [
+        wrapEditWithGuardian(
+          wrapToolParamNormalization(createEditTool(workspaceRoot), CLAUDE_PARAM_GROUPS.edit),
+        ),
+      ];
     }
     return [tool];
   });
