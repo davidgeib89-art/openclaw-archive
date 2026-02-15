@@ -12,6 +12,7 @@
 - Harte Pfadvalidierung fuer `write`/`edit` implementiert (`PATH_INVALID` als Hard-Block).
 - Gateway-Smokegates frisch live bestaetigt: `GATEWAY_OK`, `GATEWAY_STABLE_OK`, `FINAL_OK`.
 - `OIAB_ROUND_000_BASELINE.md` wurde vollstaendig ausgefuellt (`OIAB_total=67.7`, Level `Strong`).
+- Secret-Hygiene umgesetzt: `tools/analyze-image.ps1` nutzt jetzt Env-Var (`OPENROUTER_API_KEY` oder `OM_OPENROUTER_API_KEY`) statt hardcoded Key.
 
 ## Relevante Code-Aenderungen
 - `src/agents/om-scaffolding.ts`
@@ -40,13 +41,13 @@
 - `S1` Admin-Cleanup wurde am `2026-02-15 20:01` (Europe/Berlin) ausgefuehrt.
 - Aktueller Stand nach Restart:
   - `DAEMON AWAKENED (PID=13488)` bei `2026-02-15T20:01:36`.
-  - Danach bisher sauber: `20:02:36`, `20:03:36`, `20:04:36` (je 1 Pulse/min).
-- Fuer finalen `S1`-Abschluss fehlt nur noch die volle 30-Minuten-Cadence-Bestaetigung bis ca. `2026-02-15 20:31` (Europe/Berlin).
+  - Danach stabil: `1 pulse/min` bis nach `20:31` bestaetigt.
+- `S1` ist damit produktiv abgeschlossen (30-Minuten-Fenster ohne doppelte Minute-Buckets).
 
 ## Produktive Naechste Schritte
-1. Heartbeat bis ca. `2026-02-15 20:31` verifizieren (`1 pulse/min` als Done-Kriterium fuer `S1`).
-2. Danach `M2` starten (Freeze-Protocol enforcement / Drift-Schutz im Run-Prozess).
-3. Parallel: gezielter Re-Run fuer die Hard-Gates `T9` und `B4` vorbereiten.
+1. `M2` starten (Freeze-Protocol enforcement / Drift-Schutz im Run-Prozess).
+2. Gezielten Re-Run fuer Hard-Gates `T9` und `B4` vorbereiten.
+3. Danach A/B-Zyklus mit Single-Variable-Regel fortsetzen.
 
 ## Canonical Continuation File
 - Primaerer Ausfuehrungsplan: `OM_3_TRACK_ROADMAP_2026-02-15.md`

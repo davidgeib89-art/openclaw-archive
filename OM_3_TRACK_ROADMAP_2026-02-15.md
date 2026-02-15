@@ -9,8 +9,9 @@ Primary model lock: `openrouter/arcee-ai/trinity-large-preview:free`
 
 Started: 2026-02-15
 
-- `S1 Heartbeat Singleton`: admin cleanup executed at `2026-02-15 20:01` (Europe/Berlin), single daemon active, early cadence now `1 pulse/min`; 30-minute production verification window pending until about `2026-02-15 20:31` (Europe/Berlin)
+- `S1 Heartbeat Singleton`: completed and production-verified (`1 pulse/min` stable from `20:01` through `20:31+`, no duplicate minute buckets)
 - `S2 Path Guardrails (write/edit)`: implemented + unit tests passed
+- `S3 Secret Hygiene`: completed (`tools/analyze-image.ps1` now reads env vars and fails clearly when missing key; no hardcoded API key)
 - `S6 Stability Smoke Gates`: passed live (3/3: `GATEWAY_OK`, `GATEWAY_STABLE_OK`, `FINAL_OK`)
 - `M1 Complete Baseline File`: completed (`OIAB_ROUND_000_BASELINE.md` has no unresolved placeholders; current `OIAB_total=67.7`, hard gates still failing on `T9` and `B4`)
 
@@ -18,7 +19,7 @@ Started: 2026-02-15
 
 - `S2` verification: `pnpm -C C:\Users\holyd\openclaw test -- src/agents/om-scaffolding.test.ts` -> `11/11` tests passed.
 - `S6` verification: `node dist/entry.js agent --to +15555550123 --message "<token prompt>" --json` returned exact tokens for all three smoke checks.
-- `S1` live update (after admin cleanup): old privileged writers were terminated, daemon restarted (`DAEMON AWAKENED (PID=13488)` at `2026-02-15T20:01:36`), and current pulses are `20:02:36`, `20:03:36`, `20:04:36` (single-writer pattern).
+- `S1` final verification: window `2026-02-15T20:01:36` to `2026-02-15T20:31:36` produced `30` pulse entries, `30` minute buckets, `0` duplicate buckets.
 
 ### S1 Unblock Runbook (Requires Elevated Admin Shell)
 

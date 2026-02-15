@@ -163,36 +163,48 @@ if ($SaveTo) {
     $OutputPath = Join-Path $env:TEMP "om_prism_$(Get-Date -Format 'yyyyMMdd_HHmmss').mp3"
 }
 
-# Build JS file for node-edge-tts
-$OutputPathJs = $OutputPath -replace '\\', '/'
-$TempJs = Join-Path $env:TEMP "om_speak_run.js"
+# Build Python file for edge-tts
+$TempPy = Join-Path $env:TEMP "om_speak_run.py"
 $TempTextFile = Join-Path $env:TEMP "om_speak_text.txt"
 
-# Decide: If text contains XML tags, treat as Raw SSML (ignoring rate/pitch params)
-# Otherwise standard text.
-# The node-edge-tts library: ttsPromise(text, file) automatically detects SSML if text starts with <speak>
-# But if it doesn't, it uses the options.
-# So we pass "Text" as is.
+# Escape backslashes for Python string if needed, but we use file reading
+$OutputPathPy = $OutputPath -replace '\\', '\\\\'
 
+# Save text to file
 Set-Content -Path $TempTextFile -Value $FinalText -Encoding UTF8 -NoNewline
 
-$JsLines = @(
-    "const { EdgeTTS } = require('node-edge-tts');"
-    "const fs = require('fs');"
-    "const text = fs.readFileSync('$($TempTextFile -replace '\\', '/')', 'utf8');"
-    "const tts = new EdgeTTS({"
-    "    voice: '$SelectedVoice',"
-    "    lang: 'de-DE',"
-    "    rate: '$Rate',"
-    "    pitch: '$Pitch',"
-    "    volume: '$Volume'"
-    "});"
-    "tts.ttsPromise(text, '$OutputPathJs')"
-    "    .then(() => console.log('OK'))"
-    "    .catch(e => { console.error('TTS_ERROR:' + e.message); process.exit(1); });"
+$PyLines = @(
+    "import asyncio"
+    "import edge_tts"
+    "import sys"
+    "import warnings"
+    ""
+    "warnings.filterwarnings('ignore')"
+    ""
+    "TEXT_FILE = r'$TempTextFile'"
+    "OUTPUT_FILE = r'$OutputPath'"
+    "VOICE = '$SelectedVoice'"
+    "RATE = '$Rate'"
+    "PITCH = '$Pitch'"
+    "VOLUME = '$Volume'"
+    ""
+    "async def main():"
+    "    with open(TEXT_FILE, 'r', encoding='utf-8') as f:"
+    "        text = f.read()"
+    ""
+    "    communicate = edge_tts.Communicate(text, VOICE, rate=RATE, pitch=PITCH, volume=VOLUME)"
+    "    await communicate.save(OUTPUT_FILE)"
+    ""
+    "if __name__ == '__main__':"
+    "    try:"
+    "        asyncio.run(main())"
+    "        print('OK')"
+    "    except Exception as e:"
+    "        print(f'TTS_ERROR: {e}', file=sys.stderr)"
+    "        sys.exit(1)"
 )
 
-Set-Content -Path $TempJs -Value ($JsLines -join "`n") -Encoding UTF8
+Set-Content -Path $TempPy -Value ($PyLines -join "`n") -Encoding UTF8
 
 Write-Host "PRISM ENGINE ACTIVE" -ForegroundColor Magenta
 Write-Host " Mood:      $DetectedMood ($Intensity/10)" -ForegroundColor Yellow
@@ -201,13 +213,11 @@ Write-Host " Dynamics:  Rate $Rate | Pitch $Pitch" -ForegroundColor Cyan
 Write-Host " Content:   $($Text.Substring(0, [math]::Min($Text.Length, 60)))..." -ForegroundColor Gray
 
 try {
-    $OldNodePath = $env:NODE_PATH
-    $env:NODE_PATH = Join-Path $OpenClawDir "node_modules"
-    $Output = & node $TempJs 2>&1
+    # Run Python
+    $Output = & python -W ignore $TempPy 2>&1
     $ExitCode = $LASTEXITCODE
-    $env:NODE_PATH = $OldNodePath
 
-    Remove-Item $TempJs -ErrorAction SilentlyContinue
+    Remove-Item $TempPy -ErrorAction SilentlyContinue
     Remove-Item $TempTextFile -ErrorAction SilentlyContinue
 
     if ($ExitCode -ne 0) {
@@ -227,7 +237,6 @@ try {
     Write-Output $OutputPath
 
 } catch {
-    $env:NODE_PATH = $OldNodePath
     Write-Error "Prism Fatal Error: $_"
     exit 1
 }
