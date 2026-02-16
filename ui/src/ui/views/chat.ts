@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
+import type { ThoughtStreamEntry } from "../app-tool-stream.ts";
 import type { SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
@@ -10,11 +11,11 @@ import {
   renderStreamingGroup,
 } from "../chat/grouped-render.ts";
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
+import { renderMicButton } from "../chat/voice-ui.ts";
 import { icons } from "../icons.ts";
 import { detectTextDirection } from "../text-direction.ts";
-import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
-import { renderMicButton } from "../chat/voice-ui.ts";
+import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 
 export type CompactionIndicatorStatus = {
   active: boolean;
@@ -33,6 +34,7 @@ export type ChatProps = {
   compactionStatus?: CompactionIndicatorStatus | null;
   messages: unknown[];
   toolMessages: unknown[];
+  thoughtEvents?: ThoughtStreamEntry[];
   stream: string | null;
   streamStartedAt: number | null;
   assistantAvatarUrl?: string | null;
@@ -73,6 +75,7 @@ export type ChatProps = {
 };
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
+const THOUGHT_STREAM_RENDER_LIMIT = 18;
 
 function adjustTextareaHeight(el: HTMLTextAreaElement) {
   el.style.height = "auto";
@@ -106,6 +109,37 @@ function renderCompactionIndicator(status: CompactionIndicatorStatus | null | un
   }
 
   return nothing;
+}
+
+function renderThoughtMonitor(events: readonly ThoughtStreamEntry[] | undefined) {
+  if (!events || events.length === 0) {
+    return nothing;
+  }
+  const recent = events.slice(Math.max(0, events.length - THOUGHT_STREAM_RENDER_LIMIT));
+  return html`
+    <section class="chat-thought-monitor" aria-live="polite" aria-label="Thought stream summary">
+      <div class="chat-thought-monitor__header">
+        <span class="chat-thought-monitor__title">Thought Stream</span>
+        <span class="chat-thought-monitor__mode">Summary</span>
+      </div>
+      <div class="chat-thought-monitor__list">
+        ${recent.map((entry) => {
+          const risk = (entry.risk ?? "").toLowerCase();
+          return html`
+            <div class="chat-thought-monitor__item">
+              <span class="chat-thought-monitor__label">[${entry.label}]</span>
+              <span class="chat-thought-monitor__summary">${entry.summary}</span>
+              ${
+                risk
+                  ? html`<span class="chat-thought-monitor__risk chat-thought-monitor__risk--${risk}">${risk}</span>`
+                  : nothing
+              }
+            </div>
+          `;
+        })}
+      </div>
+    </section>
+  `;
 }
 
 function generateAttachmentId(): string {
@@ -354,6 +388,7 @@ export function renderChat(props: ChatProps) {
       }
 
       ${renderCompactionIndicator(props.compactionStatus)}
+      ${renderThoughtMonitor(props.thoughtEvents)}
 
       ${
         props.showNewMessages

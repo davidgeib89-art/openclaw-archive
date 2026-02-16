@@ -75,12 +75,13 @@ import {
   resetToolStream as resetToolStreamInternal,
   type ToolStreamEntry,
   type CompactionStatus,
+  type ThoughtStreamEntry,
 } from "./app-tool-stream.ts";
 import { resolveInjectedAssistantIdentity } from "./assistant-identity.ts";
+import { onTtsStateChange, onSttStateChange, stopTtsPlayback, stopStt } from "./chat/voice-ui.ts";
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
 import { loadSettings, type UiSettings } from "./storage.ts";
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
-import { onTtsStateChange, onSttStateChange, stopTtsPlayback, stopStt } from "./chat/voice-ui.ts";
 
 declare global {
   interface Window {
@@ -129,6 +130,7 @@ export class OpenClawApp extends LitElement {
   @state() chatMessage = "";
   @state() chatMessages: unknown[] = [];
   @state() chatToolMessages: unknown[] = [];
+  @state() chatThoughtEvents: ThoughtStreamEntry[] = [];
   @state() chatStream: string | null = null;
   @state() chatStreamStartedAt: number | null = null;
   @state() chatRunId: string | null = null;
@@ -357,7 +359,9 @@ export class OpenClawApp extends LitElement {
     super.connectedCallback();
     handleConnected(this as unknown as Parameters<typeof handleConnected>[0]);
     // Register voice state listeners for re-rendering
-    const tick = () => { this.voiceTick++; };
+    const tick = () => {
+      this.voiceTick++;
+    };
     this.voiceCleanup.push(onTtsStateChange(tick));
     this.voiceCleanup.push(onSttStateChange(tick));
   }
@@ -369,7 +373,9 @@ export class OpenClawApp extends LitElement {
   disconnectedCallback() {
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);
     // Cleanup voice state listeners + stop any active playback/recording
-    for (const cleanup of this.voiceCleanup) { cleanup(); }
+    for (const cleanup of this.voiceCleanup) {
+      cleanup();
+    }
     this.voiceCleanup = [];
     stopTtsPlayback();
     stopStt();

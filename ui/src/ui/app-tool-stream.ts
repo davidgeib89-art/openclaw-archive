@@ -3,6 +3,8 @@ import { truncateText } from "./format.ts";
 const TOOL_STREAM_LIMIT = 50;
 const TOOL_STREAM_THROTTLE_MS = 80;
 const TOOL_OUTPUT_CHAR_LIMIT = 120_000;
+const THOUGHT_STREAM_LIMIT = 120;
+const THOUGHT_SUMMARY_LIMIT = 260;
 
 export type AgentEventPayload = {
   runId: string;
@@ -25,14 +27,84 @@ export type ToolStreamEntry = {
   message: Record<string, unknown>;
 };
 
+export type ThoughtStreamEntry = {
+  id: string;
+  runId: string;
+  seq: number;
+  ts: number;
+  sessionKey?: string;
+  label: string;
+  summary: string;
+  risk?: string;
+  phase?: string;
+  stream: "reasoning" | "reply";
+};
+
 type ToolStreamHost = {
   sessionKey: string;
   chatRunId: string | null;
   toolStreamById: Map<string, ToolStreamEntry>;
   toolStreamOrder: string[];
   chatToolMessages: Record<string, unknown>[];
+  chatThoughtEvents: ThoughtStreamEntry[];
   toolStreamSyncTimer: number | null;
 };
+
+function normalizeThoughtSummary(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length <= THOUGHT_SUMMARY_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, THOUGHT_SUMMARY_LIMIT - 3)}...`;
+}
+
+function trimThoughtStream(host: ToolStreamHost) {
+  if (host.chatThoughtEvents.length <= THOUGHT_STREAM_LIMIT) {
+    return;
+  }
+  host.chatThoughtEvents = host.chatThoughtEvents.slice(
+    host.chatThoughtEvents.length - THOUGHT_STREAM_LIMIT,
+  );
+}
+
+function isThoughtEventInActiveRun(host: ToolStreamHost, payload: AgentEventPayload): boolean {
+  const sessionKey = typeof payload.sessionKey === "string" ? payload.sessionKey : undefined;
+  if (sessionKey && sessionKey !== host.sessionKey) {
+    return false;
+  }
+  if (!sessionKey && host.chatRunId && payload.runId !== host.chatRunId) {
+    return false;
+  }
+  if (host.chatRunId && payload.runId !== host.chatRunId) {
+    return false;
+  }
+  if (!host.chatRunId) {
+    return false;
+  }
+  return true;
+}
+
+function pushThoughtEvent(host: ToolStreamHost, entry: ThoughtStreamEntry) {
+  host.chatThoughtEvents = [...host.chatThoughtEvents, entry];
+  trimThoughtStream(host);
+}
+
+function upsertThoughtEvent(host: ToolStreamHost, entry: ThoughtStreamEntry) {
+  const idx = host.chatThoughtEvents.findIndex((event) => event.id === entry.id);
+  if (idx < 0) {
+    pushThoughtEvent(host, entry);
+    return;
+  }
+  const next = [...host.chatThoughtEvents];
+  next[idx] = entry;
+  host.chatThoughtEvents = next;
+}
 
 function extractToolOutputText(value: unknown): string | null {
   if (!value || typeof value !== "object") {
@@ -158,6 +230,7 @@ export function resetToolStream(host: ToolStreamHost) {
   host.toolStreamById.clear();
   host.toolStreamOrder = [];
   host.chatToolMessages = [];
+  host.chatThoughtEvents = [];
   flushToolStreamSync(host);
 }
 
@@ -207,6 +280,64 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
 export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPayload) {
   if (!payload) {
     return;
+  }
+
+  if (payload.stream === "reasoning" || payload.stream === "thinking") {
+    if (!isThoughtEventInActiveRun(host, payload)) {
+      return;
+    }
+    const data = payload.data ?? {};
+    const summary =
+      normalizeThoughtSummary(data.summary) ??
+      normalizeThoughtSummary(data.text) ??
+      normalizeThoughtSummary(JSON.stringify(data));
+    if (!summary) {
+      return;
+    }
+    const phase = typeof data.phase === "string" ? data.phase : undefined;
+    const risk = typeof data.risk === "string" ? data.risk : undefined;
+    const labelRaw =
+      typeof data.label === "string" && data.label.trim().length > 0
+        ? data.label.trim()
+        : payload.stream === "thinking"
+          ? "THINKING"
+          : phase
+            ? phase.toUpperCase()
+            : "THOUGHT";
+    pushThoughtEvent(host, {
+      id: `reasoning:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      ts: typeof payload.ts === "number" ? payload.ts : Date.now(),
+      sessionKey: typeof payload.sessionKey === "string" ? payload.sessionKey : undefined,
+      label: labelRaw,
+      summary,
+      risk,
+      phase,
+      stream: "reasoning",
+    });
+    return;
+  }
+
+  if (payload.stream === "assistant") {
+    if (!isThoughtEventInActiveRun(host, payload)) {
+      return;
+    }
+    const data = payload.data ?? {};
+    const summary = normalizeThoughtSummary(data.delta) ?? normalizeThoughtSummary(data.text);
+    if (!summary) {
+      return;
+    }
+    upsertThoughtEvent(host, {
+      id: `reply:${payload.runId}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      ts: typeof payload.ts === "number" ? payload.ts : Date.now(),
+      sessionKey: typeof payload.sessionKey === "string" ? payload.sessionKey : undefined,
+      label: "REPLY",
+      summary,
+      stream: "reply",
+    });
   }
 
   // Handle compaction events

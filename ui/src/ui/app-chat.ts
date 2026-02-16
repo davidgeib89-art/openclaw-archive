@@ -16,6 +16,8 @@ export type ChatHost = {
   chatAttachments: ChatAttachment[];
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
+  chatStream: string | null;
+  chatStreamStartedAt: number | null;
   chatSending: boolean;
   sessionKey: string;
   basePath: string;
@@ -94,7 +96,10 @@ export async function resetChatSession(host: ChatHost): Promise<boolean> {
     app.chatMessages = [];
     app.chatToolMessages = [];
 
-    setLastActiveSessionKey(app, resetKey);
+    setLastActiveSessionKey(
+      app as unknown as Parameters<typeof setLastActiveSessionKey>[0],
+      resetKey,
+    );
     await Promise.all([loadChatHistory(app), refreshChatAvatar(host)]);
     return true;
   } catch (err) {

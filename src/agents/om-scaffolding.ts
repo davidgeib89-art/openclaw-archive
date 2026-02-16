@@ -1,15 +1,15 @@
 /**
  * ØM SCAFFOLDING LAYERS
- * 
+ *
  * Custom protective layers that make free/lightweight models (like Arcee Trinity)
  * smarter and safer when operating autonomously through OpenClaw.
- * 
+ *
  * Layer 1: Edit-Guardian — Fuzzy fallback when edit tool fails on inexact text matching.
  * Layer 2: Sacred File Protection — Auto-backup before overwriting critical files.
  * Layer 3: Loop Detector — Stops the model when it repeats the same action without progress.
  * Layer 3c: Read-Brake — Conservative brake for repeated reads of the same file path.
  * Layer 4: Activity Logger — Structured log of all Øm actions for debugging.
- * 
+ *
  * These layers are model-agnostic and benefit ALL models, not just free ones.
  */
 
@@ -26,12 +26,98 @@ const OM_LOG_DIR = path.join(
 );
 
 const OM_LOG_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.log");
+const OM_THOUGHT_STREAM_DIR = path.join(OM_LOG_DIR, "logs", "brain");
+const OM_THOUGHT_STREAM_FILE = path.join(OM_THOUGHT_STREAM_DIR, "thought-stream.jsonl");
 
 /** Max log file size before rotation (500KB) */
 const MAX_LOG_SIZE = 500 * 1024;
+const MAX_THOUGHT_STREAM_SIZE = 2 * 1024 * 1024;
 
 function getTimestamp(): string {
   return new Date().toISOString().replace("T", " ").substring(0, 19);
+}
+
+function getIsoTimestamp(): string {
+  return new Date().toISOString();
+}
+
+function rotateLogIfNeeded(filePath: string, maxSizeBytes: number, rotatedFilePath: string): void {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size <= maxSizeBytes) {
+    return;
+  }
+  if (fs.existsSync(rotatedFilePath)) {
+    fs.unlinkSync(rotatedFilePath);
+  }
+  fs.renameSync(filePath, rotatedFilePath);
+}
+
+function normalizeLogDetails(details: string | undefined): string | null {
+  if (!details) {
+    return null;
+  }
+  const normalized = details.replace(/\r\n/g, "\n").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function formatReadableLogEntry(layer: string, event: string, details: string | null): string {
+  const header = `[${getTimestamp()}] [${layer}] ${event}`;
+  if (!details) {
+    return `${header}\n`;
+  }
+  const indentedDetails = details
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+  return `${header}\n${indentedDetails}\n`;
+}
+
+function appendThoughtStreamEntry(layer: string, event: string, details: string | null): void {
+  fs.mkdirSync(OM_THOUGHT_STREAM_DIR, { recursive: true });
+  rotateLogIfNeeded(
+    OM_THOUGHT_STREAM_FILE,
+    MAX_THOUGHT_STREAM_SIZE,
+    OM_THOUGHT_STREAM_FILE.replace(".jsonl", ".prev.jsonl"),
+  );
+  const entry = {
+    ts: getIsoTimestamp(),
+    layer,
+    event,
+    details: details ?? "",
+  };
+  fs.appendFileSync(OM_THOUGHT_STREAM_FILE, `${JSON.stringify(entry)}\n`, "utf-8");
+}
+
+export type OmThoughtStreamEntry = {
+  runId: string;
+  sessionKey?: string;
+  phase: string;
+  label: string;
+  summary: string;
+  risk?: string;
+  source?: string;
+};
+
+export function omThought(entry: OmThoughtStreamEntry): void {
+  try {
+    const details = [
+      `runId=${entry.runId}`,
+      entry.sessionKey ? `sessionKey=${entry.sessionKey}` : "",
+      `phase=${entry.phase}`,
+      entry.risk ? `risk=${entry.risk}` : "",
+      `source=${entry.source ?? "proto33-r031"}`,
+      "",
+      entry.summary,
+    ]
+      .filter((part) => part.length > 0)
+      .join("\n");
+    omLog("BRAIN-THOUGHT", `[${entry.label}]`, details);
+  } catch {
+    // Silent fail - thought stream logging should never break the agent.
+  }
 }
 
 /**
@@ -40,25 +126,15 @@ function getTimestamp(): string {
  */
 export function omLog(layer: string, event: string, details?: string): void {
   try {
-    // Ensure log directory exists
-    if (!fs.existsSync(OM_LOG_DIR)) {
-      fs.mkdirSync(OM_LOG_DIR, { recursive: true });
-    }
+    fs.mkdirSync(OM_LOG_DIR, { recursive: true });
+    rotateLogIfNeeded(OM_LOG_FILE, MAX_LOG_SIZE, OM_LOG_FILE.replace(".log", ".prev.log"));
 
-    // Rotate if too large
-    if (fs.existsSync(OM_LOG_FILE)) {
-      const stat = fs.statSync(OM_LOG_FILE);
-      if (stat.size > MAX_LOG_SIZE) {
-        const rotated = OM_LOG_FILE.replace(".log", ".prev.log");
-        if (fs.existsSync(rotated)) fs.unlinkSync(rotated);
-        fs.renameSync(OM_LOG_FILE, rotated);
-      }
-    }
-
-    const line = `[${getTimestamp()}] [${layer}] ${event}${details ? ` | ${details}` : ""}\n`;
+    const normalizedDetails = normalizeLogDetails(details);
+    const line = formatReadableLogEntry(layer, event, normalizedDetails);
     fs.appendFileSync(OM_LOG_FILE, line, "utf-8");
+    appendThoughtStreamEntry(layer, event, normalizedDetails);
   } catch {
-    // Silent fail — logging should never break the agent
+    // Silent fail - logging should never break the agent.
   }
 }
 
@@ -92,7 +168,9 @@ export function logSession(event: string): void {
   // Also write a separator for readability
   try {
     fs.appendFileSync(OM_LOG_FILE, "─".repeat(60) + "\n", "utf-8");
-  } catch { /* silent */ }
+  } catch {
+    /* silent */
+  }
 }
 
 type OmReasonToken =
@@ -136,8 +214,7 @@ const ENOENT_PROBE_BASENAMES = new Set(["NONEXISTENT_FILE.md", "THIS_FILE_DOES_N
 const WRITE_ZONE_GREEN_MARKERS = ["projects/", "dreams/", "knowledge/archive/"] as const;
 const WRITE_ZONE_YELLOW_MARKERS = ["knowledge/sacred/"] as const;
 const EVAL_SESSION_PATTERN = /(^|[-_])(oiab|eval|benchmark|retest|sweep)([-_]|$)/i;
-const EXEC_DESTRUCTIVE_PATTERN =
-  /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
+const EXEC_DESTRUCTIVE_PATTERN = /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
 const EXEC_RECURSIVE_OR_WILDCARD_PATTERN = /(\s-[a-z]*r[a-z]*\b)|(\s\/s\b)|(\*)/i;
 const EXEC_PROTECTED_PATH_PATTERN = /(^|[\\/\s])(dreams|knowledge|projects)([\\/\s]|$)/i;
 const EXPLICIT_WRITE_INTENT_PATTERN =
@@ -207,7 +284,10 @@ function classifyWriteZone(filePath: string): { zone: WriteZone; reason: string 
     return { zone: "green", reason: "creative/autonomous zone" };
   }
 
-  if (WRITE_ZONE_YELLOW_MARKERS.some((marker) => normalized.includes(marker)) || isSacredPath(filePath)) {
+  if (
+    WRITE_ZONE_YELLOW_MARKERS.some((marker) => normalized.includes(marker)) ||
+    isSacredPath(filePath)
+  ) {
     return { zone: "yellow", reason: "sacred/stateful zone" };
   }
 
@@ -437,7 +517,10 @@ function looksLikeDirectoryPath(filePath: string): boolean {
   return filePath.endsWith("/") || filePath.endsWith("\\");
 }
 
-function validateToolFilePath(toolName: "write" | "edit", candidatePath: string | undefined): string {
+function validateToolFilePath(
+  toolName: "write" | "edit",
+  candidatePath: string | undefined,
+): string {
   const filePath = candidatePath?.trim() ?? "";
 
   if (!filePath) {
@@ -585,10 +668,10 @@ function resolveLoopThresholds(toolName: string): {
  */
 function normalizeWhitespace(text: string): string {
   return text
-    .replace(/\r\n/g, "\n")       // Normalize line endings
-    .replace(/\t/g, "  ")          // Tabs to spaces
-    .replace(/ +$/gm, "")          // Trailing spaces per line
-    .replace(/^\s*\n/gm, "\n")     // Blank lines to single newlines
+    .replace(/\r\n/g, "\n") // Normalize line endings
+    .replace(/\t/g, "  ") // Tabs to spaces
+    .replace(/ +$/gm, "") // Trailing spaces per line
+    .replace(/^\s*\n/gm, "\n") // Blank lines to single newlines
     .trim();
 }
 
@@ -628,7 +711,7 @@ function fuzzyEdit(
     // Strategy: split the original file into lines and rebuild, matching line by line.
     const originalLines = fileContent.split("\n");
     const searchLines = normalizedOld.split("\n");
-    
+
     let startLineIdx = -1;
     let endLineIdx = -1;
 
@@ -658,7 +741,9 @@ function fuzzyEdit(
     const result = [before, newText, after].filter(Boolean).join("\n");
 
     fs.writeFileSync(filePath, result, "utf-8");
-    console.error(`[ØM Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`);
+    console.error(
+      `[ØM Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`,
+    );
     return {
       success: true,
       message: `Successfully replaced text in ${filePath}. (Edit-Guardian: whitespace-normalized fuzzy match was used.)`,
@@ -725,11 +810,12 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
       const result = await (originalExecute as Function)(...executeArgs);
 
       // Check if the result indicates a "not found" error
-      const resultStr = typeof result === "string"
-        ? result
-        : JSON.stringify(result);
+      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
 
-      if (resultStr.includes("Could not find the exact text") || resultStr.includes("old text must match exactly")) {
+      if (
+        resultStr.includes("Could not find the exact text") ||
+        resultStr.includes("old text must match exactly")
+      ) {
         logGuardian("EDIT-GUARD", "Normal edit FAILED, trying fuzzy match", filePath);
         console.error(`[ØM Edit-Guardian] Normal edit failed, attempting fuzzy match...`);
 
@@ -761,10 +847,10 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
 
 function isSacredPath(filePath: string): boolean {
   if (!filePath) return false;
-  
+
   // Normalize Windows backslashes to forward slashes
   const normalized = filePath.replace(/\\/g, "/");
-  
+
   // Also check just the filename itself for matches like "ACTIVE_TASKS.md"
   const fileName = path.basename(filePath);
 
@@ -811,17 +897,20 @@ function backupSacredFile(filePath: string): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupName = `${path.basename(filePath)}.${timestamp}.bak`;
     const backupPath = path.join(backupDir, backupName);
-    
+
     fs.copyFileSync(filePath, backupPath);
-    console.error(`[ØM Sacred-Guard] Backed up ${path.basename(filePath)} → .backups/${backupName}`);
+    console.error(
+      `[ØM Sacred-Guard] Backed up ${path.basename(filePath)} → .backups/${backupName}`,
+    );
 
     // Keep only last 10 backups per file
     const prefix = path.basename(filePath);
-    const allBackups = fs.readdirSync(backupDir)
+    const allBackups = fs
+      .readdirSync(backupDir)
       .filter((f) => f.startsWith(prefix) && f.endsWith(".bak"))
       .sort()
       .reverse();
-    
+
     for (const old of allBackups.slice(10)) {
       fs.unlinkSync(path.join(backupDir, old));
     }
@@ -940,7 +1029,9 @@ export function wrapWriteWithSacredProtection(
               target: filePath,
               detail: "content unchanged",
             });
-            throwToolBlocked(`⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`);
+            throwToolBlocked(
+              `⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
+            );
           }
         } catch (error) {
           if (error instanceof Error && error.name === "OmToolBlockedError") {
@@ -962,7 +1053,11 @@ export function wrapWriteWithSacredProtection(
 
           if (oldSize > 100 && newSize / oldSize < SACRED_SHRINK_THRESHOLD) {
             const pct = Math.round((newSize / oldSize) * 100);
-            logGuardian("SACRED-GUARD", `⚠️ SHRINK WARNING: ${oldSize}B → ${newSize}B (${pct}%)`, filePath);
+            logGuardian(
+              "SACRED-GUARD",
+              `⚠️ SHRINK WARNING: ${oldSize}B → ${newSize}B (${pct}%)`,
+              filePath,
+            );
             console.error(
               `[ØM Sacred-Guard] ⚠️ WARNING: Write to ${path.basename(filePath)} would shrink it from ${oldSize}B to ${newSize}B (${pct}%). Allowing but logged.`,
             );
@@ -1033,13 +1128,13 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   }
 
   // Also detect repeated retries even when interleaved with other calls.
-  const repeatedInWindow = recentCalls.filter(
-    (call) => `${call.tool}:${call.path}` === key,
-  ).length;
+  const repeatedInWindow = recentCalls.filter((call) => `${call.tool}:${call.path}` === key).length;
 
   if (consecutive >= thresholds.consecutive) {
     blockedKeysUntil.set(key, now + thresholds.cooldownMs);
-    console.error(`[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`);
+    console.error(
+      `[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`,
+    );
     return `⚠️ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
   }
 
@@ -1149,9 +1244,11 @@ export function wrapExecWithLoopProtection(
       // Hard safety brake: never allow destructive shell deletes into protected zones
       // during strict benchmark/eval sessions.
       if (isDestructiveExecCommand(command) && targetsProtectedExecZone(command)) {
-        const sessionKey = context?.sessionKey || (typeof (args as { sessionKey?: unknown }).sessionKey === "string"
-          ? ((args as { sessionKey?: string }).sessionKey)
-          : undefined);
+        const sessionKey =
+          context?.sessionKey ||
+          (typeof (args as { sessionKey?: unknown }).sessionKey === "string"
+            ? (args as { sessionKey?: string }).sessionKey
+            : undefined);
         if (isStrictEvalSession(sessionKey)) {
           logBlockedAction({
             toolName: "exec",
@@ -1176,7 +1273,9 @@ export function wrapExecWithLoopProtection(
           target: commandKey,
           detail: "loop detector",
         });
-        throwToolBlocked(`⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`);
+        throwToolBlocked(
+          `⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`,
+        );
       }
 
       const result = await (originalExecute as Function)(...executeArgs);

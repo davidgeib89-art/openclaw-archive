@@ -17,6 +17,7 @@ import {
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import { emitAgentEvent } from "../../../infra/agent-events.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -42,6 +43,7 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { omLog, omThought } from "../../om-scaffolding.js";
 import {
   isCloudCodeAssistFormatError,
   resolveBootstrapMaxChars,
@@ -212,6 +214,61 @@ function summarizeSessionContext(messages: AgentMessage[]): {
     totalImageBlocks,
     maxMessageTextChars,
   };
+}
+
+const REASONING_SUMMARY_LIMIT = 420;
+
+type BrainReasoningEvent = {
+  phase: string;
+  label: string;
+  summary: string;
+  risk?: string;
+  source?: string;
+};
+
+function sanitizeReasoningSummary(raw: string): string {
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (normalized.length <= REASONING_SUMMARY_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, REASONING_SUMMARY_LIMIT - 3)}...`;
+}
+
+function emitBrainReasoningEvent(
+  params: Pick<EmbeddedRunAttemptParams, "runId" | "sessionKey" | "sessionId" | "onAgentEvent">,
+  event: BrainReasoningEvent,
+): void {
+  const summary = sanitizeReasoningSummary(event.summary);
+  const payloadData: Record<string, unknown> = {
+    phase: event.phase,
+    label: event.label,
+    summary,
+    source: event.source ?? "proto33-r031",
+  };
+  if (typeof event.risk === "string" && event.risk.trim().length > 0) {
+    payloadData.risk = event.risk;
+  }
+
+  const sessionKey = params.sessionKey ?? params.sessionId;
+  emitAgentEvent({
+    runId: params.runId,
+    sessionKey,
+    stream: "reasoning",
+    data: payloadData,
+  });
+  void params.onAgentEvent?.({
+    stream: "reasoning",
+    data: payloadData,
+  });
+  omThought({
+    runId: params.runId,
+    sessionKey,
+    phase: event.phase,
+    label: event.label,
+    summary,
+    risk: event.risk,
+    source: event.source ?? "proto33-r031",
+  });
 }
 
 export async function runEmbeddedAttempt(
@@ -868,6 +925,20 @@ export async function runEmbeddedAttempt(
             sessionKey: params.sessionKey ?? params.sessionId,
           };
           const brainDecision = createBrainDecision(brainInput);
+          emitBrainReasoningEvent(params, {
+            phase: "intent",
+            label: "INTENT",
+            summary: `intent=${brainDecision.intent}; mustAskUser=${brainDecision.mustAskUser ? "yes" : "no"}; allowedTools=${brainDecision.allowedTools.length}`,
+            risk: brainDecision.riskLevel,
+            source: "proto33-r031.decision",
+          });
+          emitBrainReasoningEvent(params, {
+            phase: "risk",
+            label: "RISK",
+            summary: brainDecision.explanation,
+            risk: brainDecision.riskLevel,
+            source: "proto33-r031.decision",
+          });
           const sacredRecall = await buildBrainSacredRecallContext({
             cfg: params.config,
             userMessage: params.prompt,
@@ -877,11 +948,33 @@ export async function runEmbeddedAttempt(
           });
           if (sacredRecall.contextText) {
             effectivePrompt = `${sacredRecall.contextText}\n\n${effectivePrompt}`;
+            const recallSummary = sacredRecall.items
+              .map((item) => `${item.tag}:${item.title}`)
+              .join(" | ");
+            emitBrainReasoningEvent(params, {
+              phase: "recall",
+              label: "RECALL",
+              summary: `hits=${sacredRecall.items.length}; ${recallSummary}`,
+              source: "proto33-r031.recall",
+            });
             log.debug(
               `brain sacred recall injected: hits=${sacredRecall.items.length} decisionId=${brainDecision.decisionId}`,
             );
           } else if (sacredRecall.error) {
+            emitBrainReasoningEvent(params, {
+              phase: "recall",
+              label: "RECALL",
+              summary: `fail-open: ${sacredRecall.error}`,
+              source: "proto33-r031.recall",
+            });
             log.debug(`brain sacred recall fail-open: ${sacredRecall.error}`);
+          } else {
+            emitBrainReasoningEvent(params, {
+              phase: "recall",
+              label: "RECALL",
+              summary: "no relevant sacred memory found",
+              source: "proto33-r031.recall",
+            });
           }
           const brainLogPath = logBrainDecisionObserver(brainInput, brainDecision, {
             source: "proto33-p1.before_agent_start",
@@ -902,9 +995,22 @@ export async function runEmbeddedAttempt(
             agentId: sessionAgentId,
             agentDir,
           });
+          emitBrainReasoningEvent(params, {
+            phase: "subconscious",
+            label: "SUBCONSCIOUS",
+            summary: `status=${subconsciousResult.status}; parseOk=${subconsciousResult.parseOk ? "yes" : "no"}; mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}; note=${subconsciousResult.brief?.goal ?? subconsciousResult.error ?? "none"}`,
+            risk: subconsciousResult.brief?.risk,
+            source: "proto33-r031.subconscious",
+          });
           const subconsciousContextBlock = buildSubconsciousContextBlock(subconsciousResult, 500);
           if (subconsciousContextBlock) {
             effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
+            emitBrainReasoningEvent(params, {
+              phase: "inject",
+              label: "INJECT",
+              summary: `subconscious_context injected (${subconsciousContextBlock.length} chars)`,
+              source: "proto33-r031.inject",
+            });
             log.debug(
               `brain subconscious context injected: chars=${subconsciousContextBlock.length} mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}`,
             );
@@ -930,6 +1036,12 @@ export async function runEmbeddedAttempt(
             }
           }
         } catch (brainErr) {
+          emitBrainReasoningEvent(params, {
+            phase: "brain_error",
+            label: "BRAIN",
+            summary: `observer fail-open: ${String(brainErr)}`,
+            source: "proto33-r031.fail-open",
+          });
           log.warn(`brain observer setup failed: ${String(brainErr)}`);
         }
 
@@ -937,9 +1049,8 @@ export async function runEmbeddedAttempt(
 
         // Øm Scaffolding: Log incoming user message to OM_ACTIVITY.log
         {
-          const { omLog } = await import("../../om-scaffolding.js");
-          const preview = effectivePrompt.trim().slice(0, 500).replace(/\n/g, " ");
-          omLog("USER-MSG", preview);
+          const preview = effectivePrompt.trim().slice(0, 2500);
+          omLog("USER-MSG", "PROMPT_PREVIEW", preview);
         }
 
         cacheTrace?.recordStage("prompt:before", {

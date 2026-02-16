@@ -175,7 +175,14 @@ function sanitizeLogDetail(value: string): string {
 function appendOmActivityLine(layer: string, event: string, details: string): void {
   try {
     fs.mkdirSync(OM_ACTIVITY_LOG_DIR, { recursive: true });
-    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event} | ${details}\n`;
+    const normalizedDetails = details.replace(/\r\n/g, "\n").trim();
+    const detailBlock = normalizedDetails
+      ? `\n${normalizedDetails
+          .split("\n")
+          .map((line) => `  ${line}`)
+          .join("\n")}`
+      : "";
+    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event}${detailBlock}\n`;
     fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
   } catch {
     // Fail-open: observer logging must never break the runtime.

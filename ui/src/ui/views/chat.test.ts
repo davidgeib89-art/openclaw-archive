@@ -154,4 +154,41 @@ describe("chat view", () => {
     expect(onNewSession).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain("Stop");
   });
+
+  it("renders thought stream summary entries", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          thoughtEvents: [
+            {
+              id: "thought-1",
+              runId: "run-1",
+              seq: 1,
+              ts: Date.now(),
+              label: "INTENT",
+              summary: "intent=research; mustAskUser=no",
+              stream: "reasoning",
+            },
+            {
+              id: "thought-2",
+              runId: "run-1",
+              seq: 2,
+              ts: Date.now(),
+              label: "RISK",
+              summary: "risk=medium because command touches workspace",
+              risk: "medium",
+              stream: "reasoning",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(".chat-thought-monitor")).not.toBeNull();
+    expect(container.textContent).toContain("[INTENT]");
+    expect(container.textContent).toContain("[RISK]");
+    expect(container.querySelector(".chat-thought-monitor__risk--medium")).not.toBeNull();
+  });
 });

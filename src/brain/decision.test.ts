@@ -154,6 +154,39 @@ describe("brain observer logging", () => {
 });
 
 describe("brain sacred recall hook", () => {
+  it("skips sacred recall completely when disabled via env", async () => {
+    const activity: Array<{ event: string; details: string }> = [];
+    const previous = process.env.OM_SACRED_RECALL_ENABLED;
+    process.env.OM_SACRED_RECALL_ENABLED = "false";
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        userMessage: "Was war unsere 3-Breath Rule?",
+        managerResolver: async () => {
+          throw new Error("manager should not be called when recall is disabled");
+        },
+        activityLogger: (event, details) => {
+          activity.push({ event, details });
+        },
+      });
+
+      expect(result.contextText).toBeNull();
+      expect(result.items).toHaveLength(0);
+      expect(result.error).toBeUndefined();
+      expect(activity).toHaveLength(1);
+      expect(activity[0]?.event).toBe("SACRED_RECALL_SKIP");
+      expect(activity[0]?.details).toContain("disabled-by-env");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_SACRED_RECALL_ENABLED;
+      } else {
+        process.env.OM_SACRED_RECALL_ENABLED = previous;
+      }
+    }
+  });
+
   it("builds top-3 sacred context and logs tag/title summary", async () => {
     const activity: Array<{ event: string; details: string }> = [];
     const result = await buildBrainSacredRecallContext({

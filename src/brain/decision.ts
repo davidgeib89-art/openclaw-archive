@@ -470,9 +470,7 @@ function rankSacredRecallItems(
       };
     });
 
-  scored.sort(
-    (a, b) => b.score - a.score || b.baseScore - a.baseScore || a.index - b.index,
-  );
+  scored.sort((a, b) => b.score - a.score || b.baseScore - a.baseScore || a.index - b.index);
   return scored.slice(0, maxResults).map((entry) => entry.item);
 }
 
@@ -550,7 +548,14 @@ function formatOmTimestamp(now: Date): string {
 function appendOmActivityLine(layer: string, event: string, details: string): void {
   try {
     fs.mkdirSync(OM_ACTIVITY_LOG_DIR, { recursive: true });
-    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event} | ${details}\n`;
+    const normalizedDetails = details.replace(/\r\n/g, "\n").trim();
+    const detailBlock = normalizedDetails
+      ? `\n${normalizedDetails
+          .split("\n")
+          .map((line) => `  ${line}`)
+          .join("\n")}`
+      : "";
+    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event}${detailBlock}\n`;
     fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
   } catch {
     // Fail-open: observer logs must not break runtime behavior.
@@ -561,12 +566,24 @@ function defaultActivityLogger(event: string, details: string): void {
   appendOmActivityLine("BRAIN-RECALL", event, details);
 }
 
+function isSacredRecallEnabled(): boolean {
+  const raw = process.env.OM_SACRED_RECALL_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
 export async function buildBrainSacredRecallContext(
   input: BrainSacredRecallInput,
 ): Promise<BrainSacredRecallContext> {
   const logger = input.activityLogger ?? defaultActivityLogger;
   const query = input.userMessage.trim();
   if (!query) {
+    return { contextText: null, items: [] };
+  }
+  if (!isSacredRecallEnabled()) {
+    logger("SACRED_RECALL_SKIP", "disabled-by-env");
     return { contextText: null, items: [] };
   }
   if (!input.cfg) {

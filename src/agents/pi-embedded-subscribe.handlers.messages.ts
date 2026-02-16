@@ -3,11 +3,11 @@ import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handler
 import { parseReplyDirectives } from "../auto-reply/reply/reply-directives.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { createInlineCodeState } from "../markdown/code-spans.js";
+import { omLog } from "./om-scaffolding.js";
 import {
   isMessagingToolDuplicateNormalized,
   normalizeTextForComparison,
 } from "./pi-embedded-helpers.js";
-import { omLog } from "./om-scaffolding.js";
 import { appendRawStream } from "./pi-embedded-subscribe.raw-stream.js";
 import {
   extractAssistantText,
@@ -206,8 +206,8 @@ export function handleMessageEnd(
 
   // Øm Scaffolding: Log assistant reply to OM_ACTIVITY.log
   if (rawText.trim()) {
-    const preview = rawText.trim().slice(0, 5000).replace(/\n/g, " ");
-    omLog("ØM-REPLY", preview);
+    const preview = rawText.trim().slice(0, 8000);
+    omLog("OM-REPLY", "ASSISTANT_MESSAGE", preview);
   }
 
   appendRawStream({
