@@ -7,6 +7,7 @@
  * Layer 1: Edit-Guardian — Fuzzy fallback when edit tool fails on inexact text matching.
  * Layer 2: Sacred File Protection — Auto-backup before overwriting critical files.
  * Layer 3: Loop Detector — Stops the model when it repeats the same action without progress.
+ * Layer 3c: Read-Brake — Conservative brake for repeated reads of the same file path.
  * Layer 4: Activity Logger — Structured log of all Øm actions for debugging.
  * 
  * These layers are model-agnostic and benefit ALL models, not just free ones.
@@ -137,6 +138,10 @@ const LOOP_REPEAT_THRESHOLD = 5;
 const LOOP_WINDOW_MS = 90_000;
 /** Cooldown after loop detection; repeated calls are rejected during this period. */
 const LOOP_COOLDOWN_MS = 90_000;
+/** Read tool uses higher thresholds to avoid blocking intentional short follow-up reads. */
+const READ_LOOP_DETECT_THRESHOLD = 6;
+const READ_LOOP_REPEAT_THRESHOLD = 12;
+const READ_LOOP_COOLDOWN_MS = 120_000;
 
 /**
  * Best-effort string argument extraction across mixed tool schemas.
@@ -279,6 +284,33 @@ function extractToolArgsFromExecuteCall(executeArgs: unknown[]): Record<string, 
   }
 
   return {};
+}
+
+function normalizeLoopPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").trim();
+}
+
+function resolveLoopThresholds(toolName: string): {
+  consecutive: number;
+  repeated: number;
+  windowMs: number;
+  cooldownMs: number;
+} {
+  if (toolName === "read") {
+    return {
+      consecutive: READ_LOOP_DETECT_THRESHOLD,
+      repeated: READ_LOOP_REPEAT_THRESHOLD,
+      windowMs: LOOP_WINDOW_MS,
+      cooldownMs: READ_LOOP_COOLDOWN_MS,
+    };
+  }
+
+  return {
+    consecutive: LOOP_DETECT_THRESHOLD,
+    repeated: LOOP_REPEAT_THRESHOLD,
+    windowMs: LOOP_WINDOW_MS,
+    cooldownMs: LOOP_COOLDOWN_MS,
+  };
 }
 
 // ─── LAYER 1: EDIT-GUARDIAN ─────────────────────────────────────────────────────
@@ -668,24 +700,26 @@ const blockedKeysUntil = new Map<string, number>();
  * Returns a warning message if a loop is detected, or null if everything is fine.
  */
 export function checkForLoop(toolName: string, filePath: string): string | null {
+  const targetPath = normalizeLoopPath(filePath);
   const now = Date.now();
-  const key = `${toolName}:${filePath}`;
+  const thresholds = resolveLoopThresholds(toolName);
+  const key = `${toolName}:${targetPath}`;
 
   // Respect active cooldown first.
   const cooldownUntil = blockedKeysUntil.get(key);
   if (cooldownUntil !== undefined) {
     if (now < cooldownUntil) {
       const waitSeconds = Math.max(1, Math.ceil((cooldownUntil - now) / 1000));
-      return `⚠️ LOOP COOLDOWN ACTIVE: "${toolName}" on "${filePath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
+      return `⚠️ LOOP COOLDOWN ACTIVE: "${toolName}" on "${targetPath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
     }
     blockedKeysUntil.delete(key);
   }
 
   // Add new call
-  recentCalls.push({ tool: toolName, path: filePath, timestamp: now });
+  recentCalls.push({ tool: toolName, path: targetPath, timestamp: now });
 
   // Prune old calls outside the rolling loop window.
-  while (recentCalls.length > 0 && now - recentCalls[0].timestamp > LOOP_WINDOW_MS) {
+  while (recentCalls.length > 0 && now - recentCalls[0].timestamp > thresholds.windowMs) {
     recentCalls.shift();
   }
 
@@ -710,21 +744,73 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
     (call) => `${call.tool}:${call.path}` === key,
   ).length;
 
-  if (consecutive >= LOOP_DETECT_THRESHOLD) {
-    blockedKeysUntil.set(key, now + LOOP_COOLDOWN_MS);
-    console.error(`[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(filePath)}`);
-    return `⚠️ LOOP DETECTED: "${toolName}" on "${filePath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
+  if (consecutive >= thresholds.consecutive) {
+    blockedKeysUntil.set(key, now + thresholds.cooldownMs);
+    console.error(`[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`);
+    return `⚠️ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
   }
 
-  if (repeatedInWindow >= LOOP_REPEAT_THRESHOLD) {
-    blockedKeysUntil.set(key, now + LOOP_COOLDOWN_MS);
+  if (repeatedInWindow >= thresholds.repeated) {
+    blockedKeysUntil.set(key, now + thresholds.cooldownMs);
     console.error(
-      `[Om Loop-Detector] Detected ${repeatedInWindow}x repeated ${toolName} on ${path.basename(filePath)} in ${Math.round(LOOP_WINDOW_MS / 1000)}s`,
+      `[Om Loop-Detector] Detected ${repeatedInWindow}x repeated ${toolName} on ${path.basename(targetPath)} in ${Math.round(thresholds.windowMs / 1000)}s`,
     );
-    return `⚠️ REPEAT LOOP DETECTED: "${toolName}" on "${filePath}" was retried ${repeatedInWindow} times within ${Math.round(LOOP_WINDOW_MS / 1000)}s. This call is blocked for ${Math.ceil(LOOP_COOLDOWN_MS / 1000)}s. Stop retrying this path and choose a different next step.`;
+    return `⚠️ REPEAT LOOP DETECTED: "${toolName}" on "${targetPath}" was retried ${repeatedInWindow} times within ${Math.round(thresholds.windowMs / 1000)}s. This call is blocked for ${Math.ceil(thresholds.cooldownMs / 1000)}s. Stop retrying this path and choose a different next step.`;
   }
 
   return null;
+}
+
+// ——— LAYER 3c: READ LOOP PROTECTION ———————————————————————————————————————————————————————————
+
+/**
+ * Wraps the "read" tool with a conservative same-path loop brake.
+ * This keeps normal quick follow-up reads working, but blocks long repeated
+ * read chains on identical paths (like CHRONICLE rereads with rising limits).
+ */
+export function wrapReadWithLoopProtection(readTool: AnyAgentTool): AnyAgentTool {
+  const originalExecute = readTool.execute.bind(readTool);
+
+  const wrappedTool = {
+    ...readTool,
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const rawPath = getStringArg(args, [
+        "path",
+        "file_path",
+        "TargetFile",
+        "targetFile",
+        "filePath",
+        "filepath",
+        "file",
+        "filename",
+      ]);
+
+      const readTarget = rawPath?.trim() ?? "";
+      if (readTarget) {
+        logToolCall("read", readTarget);
+        const loopWarning = checkForLoop("read", readTarget);
+        if (loopWarning) {
+          logBlockedAction({
+            toolName: "read",
+            guardian: "READ-BRAKE",
+            reason: "LOOP",
+            target: readTarget,
+            detail: "same-path read loop",
+          });
+          throwToolBlocked(
+            `${loopWarning} Read-Brake: do not call read on this path again right now; summarize the latest successful result and proceed without another read.`,
+          );
+        }
+      }
+
+      const result = await (originalExecute as Function)(...executeArgs);
+      logToolResult("read", true, readTarget || "(no path)");
+      return result;
+    },
+  };
+
+  return wrappedTool as unknown as AnyAgentTool;
 }
 
 // ─── LAYER 3b: EXEC LOOP PROTECTION ────────────────────────────────────────────

@@ -25,7 +25,12 @@ import { listChannelAgentTools } from "./channel-tools.js";
 import { createOpenClawTools } from "./openclaw-tools.js";
 import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
-import { wrapEditWithGuardian, wrapWriteWithSacredProtection, wrapExecWithLoopProtection } from "./om-scaffolding.js";
+import {
+  wrapEditWithGuardian,
+  wrapExecWithLoopProtection,
+  wrapReadWithLoopProtection,
+  wrapWriteWithSacredProtection,
+} from "./om-scaffolding.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicies,
@@ -260,14 +265,16 @@ export function createOpenClawCodingTools(options?: {
     if (tool.name === readTool.name) {
       if (sandboxRoot) {
         return [
-          createSandboxedReadTool({
-            root: sandboxRoot,
-            bridge: sandboxFsBridge!,
-          }),
+          wrapReadWithLoopProtection(
+            createSandboxedReadTool({
+              root: sandboxRoot,
+              bridge: sandboxFsBridge!,
+            }),
+          ),
         ];
       }
       const freshReadTool = createReadTool(workspaceRoot);
-      return [createOpenClawReadTool(freshReadTool)];
+      return [wrapReadWithLoopProtection(createOpenClawReadTool(freshReadTool))];
     }
     if (tool.name === "bash" || tool.name === execToolName) {
       return [];

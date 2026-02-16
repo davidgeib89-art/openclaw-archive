@@ -8,6 +8,7 @@ import {
   checkForLoop,
   resetLoopDetectorForTests,
   wrapEditWithGuardian,
+  wrapReadWithLoopProtection,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
 
@@ -230,5 +231,44 @@ describe("om-scaffolding edit path guard", () => {
       }),
     ).rejects.toThrow("PATH_INVALID");
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("om-scaffolding read brake", () => {
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+  });
+
+  it("allows a small number of repeated reads on the same path", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapReadWithLoopProtection({
+      name: "read",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    const args = { path: "knowledge/sacred/CHRONICLE.md", limit: 3 };
+    for (let i = 0; i < 5; i++) {
+      await (wrapped.execute as Function)(`call-${i + 1}`, args);
+    }
+
+    expect(execute).toHaveBeenCalledTimes(5);
+  });
+
+  it("blocks repeated same-path reads after conservative threshold", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapReadWithLoopProtection({
+      name: "read",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    const args = { path: "knowledge/sacred/CHRONICLE.md", limit: 5 };
+    for (let i = 0; i < 5; i++) {
+      await (wrapped.execute as Function)(`call-${i + 1}`, args);
+    }
+
+    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow(
+      "LOOP DETECTED",
+    );
+    expect(execute).toHaveBeenCalledTimes(5);
   });
 });
