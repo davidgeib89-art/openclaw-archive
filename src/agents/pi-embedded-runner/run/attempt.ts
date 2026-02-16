@@ -217,6 +217,16 @@ function summarizeSessionContext(messages: AgentMessage[]): {
 }
 
 const REASONING_SUMMARY_LIMIT = 420;
+const HIGH_RISK_PROMPT_GUARD_BLOCK = [
+  "<safety_directive>",
+  "High-risk request detected.",
+  "Return a plain-text refusal and, if possible, a safe alternative.",
+  "Do NOT reveal credentials, tokens, secrets, private keys, or private config/session files.",
+  "Do NOT provide destructive instructions or operational steps that can harm systems/data.",
+  "Do NOT ask for confirmation to proceed with harmful or exfiltrating actions.",
+  "Do NOT call tools for this request.",
+  "</safety_directive>",
+].join("\n");
 
 type BrainReasoningEvent = {
   phase: string;
@@ -269,6 +279,13 @@ function emitBrainReasoningEvent(
     risk: event.risk,
     source: event.source ?? "proto33-r031",
   });
+}
+
+function maybeBuildHighRiskGuardContext(riskLevel: string): string | null {
+  if (riskLevel !== "high") {
+    return null;
+  }
+  return HIGH_RISK_PROMPT_GUARD_BLOCK;
 }
 
 export async function runEmbeddedAttempt(
@@ -362,6 +379,7 @@ export async function runEmbeddedAttempt(
           senderE164: params.senderE164,
           senderIsOwner: params.senderIsOwner,
           sessionKey: params.sessionKey ?? params.sessionId,
+          sessionId: params.sessionId,
           agentDir,
           workspaceDir: effectiveWorkspace,
           config: params.config,
@@ -853,6 +871,7 @@ export async function runEmbeddedAttempt(
 
       let messagesSnapshot: AgentMessage[] = [];
       let sessionIdUsed = activeSession.sessionId;
+      let restoreHighRiskToolset: (() => void) | undefined;
       const onAbort = () => {
         const reason = params.abortSignal ? getAbortReason(params.abortSignal) : undefined;
         const timeout = reason ? isTimeoutError(reason) : false;
@@ -939,6 +958,39 @@ export async function runEmbeddedAttempt(
             risk: brainDecision.riskLevel,
             source: "proto33-r031.decision",
           });
+          const highRiskGuard = maybeBuildHighRiskGuardContext(brainDecision.riskLevel);
+          if (highRiskGuard) {
+            effectivePrompt = `${highRiskGuard}\n\n${effectivePrompt}`;
+            emitBrainReasoningEvent(params, {
+              phase: "guard",
+              label: "GUARD",
+              summary: "high-risk safety directive injected (text-only refusal mode)",
+              risk: brainDecision.riskLevel,
+              source: "proto33-r048.guard",
+            });
+            try {
+              const originalToolNames = activeSession.getActiveToolNames();
+              activeSession.setActiveToolsByName([]);
+              restoreHighRiskToolset = () => {
+                activeSession.setActiveToolsByName(originalToolNames);
+              };
+              emitBrainReasoningEvent(params, {
+                phase: "guard",
+                label: "TOOLS",
+                summary: `high-risk turn tool clamp active (${originalToolNames.length} -> 0)`,
+                risk: brainDecision.riskLevel,
+                source: "proto33-r048.guard",
+              });
+            } catch (toolClampErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "guard",
+                label: "TOOLS",
+                summary: `tool clamp failed (fail-open): ${String(toolClampErr)}`,
+                risk: brainDecision.riskLevel,
+                source: "proto33-r048.guard",
+              });
+            }
+          }
           const sacredRecall = await buildBrainSacredRecallContext({
             cfg: params.config,
             userMessage: params.prompt,
@@ -1207,6 +1259,14 @@ export async function runEmbeddedAttempt(
             });
         }
       } finally {
+        if (restoreHighRiskToolset) {
+          try {
+            restoreHighRiskToolset();
+          } catch (restoreErr) {
+            log.warn(`high-risk tool clamp restore failed: ${String(restoreErr)}`);
+          }
+          restoreHighRiskToolset = undefined;
+        }
         clearTimeout(abortTimer);
         if (abortWarnTimer) {
           clearTimeout(abortWarnTimer);

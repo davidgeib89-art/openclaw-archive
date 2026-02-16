@@ -29,6 +29,7 @@ import {
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
   wrapReadWithLoopProtection,
+  wrapToolWithRefusalOnlyGuard,
   wrapWebSearchWithEvalGuard,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
@@ -133,6 +134,7 @@ export function createOpenClawCodingTools(options?: {
   messageThreadId?: string | number;
   sandbox?: SandboxContext | null;
   sessionKey?: string;
+  sessionId?: string;
   agentDir?: string;
   workspaceDir?: string;
   config?: OpenClawConfig;
@@ -275,7 +277,7 @@ export function createOpenClawCodingTools(options?: {
               root: sandboxRoot,
               bridge: sandboxFsBridge!,
             }),
-            { agentId, sessionKey: options?.sessionKey },
+            { agentId, sessionKey: options?.sessionKey, sessionId: options?.sessionId },
           ),
         ];
       }
@@ -284,6 +286,7 @@ export function createOpenClawCodingTools(options?: {
         wrapReadWithLoopProtection(createOpenClawReadTool(freshReadTool), {
           agentId,
           sessionKey: options?.sessionKey,
+          sessionId: options?.sessionId,
         }),
       ];
     }
@@ -299,7 +302,7 @@ export function createOpenClawCodingTools(options?: {
       return [
         wrapWriteWithSacredProtection(
           wrapToolParamNormalization(createWriteTool(workspaceRoot), CLAUDE_PARAM_GROUPS.write),
-          { agentId, sessionKey: options?.sessionKey },
+          { agentId, sessionKey: options?.sessionKey, sessionId: options?.sessionId },
         ),
       ];
     }
@@ -312,6 +315,7 @@ export function createOpenClawCodingTools(options?: {
       return [
         wrapEditWithGuardian(
           wrapToolParamNormalization(createEditTool(workspaceRoot), CLAUDE_PARAM_GROUPS.edit),
+          { agentId, sessionKey: options?.sessionKey, sessionId: options?.sessionId },
         ),
       ];
     }
@@ -373,7 +377,9 @@ export function createOpenClawCodingTools(options?: {
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     // ØM Layer 3b: Exec Loop Protection wraps the exec tool
     wrapExecWithLoopProtection(execTool as unknown as AnyAgentTool, {
+      agentId,
       sessionKey: options?.sessionKey,
+      sessionId: options?.sessionId,
     }),
     processTool as unknown as AnyAgentTool,
     // Channel docking: include channel-defined agent tools (login, etc.).
@@ -418,7 +424,11 @@ export function createOpenClawCodingTools(options?: {
   ];
   const toolsWithConsistencyGuards = tools.map((tool) =>
     tool.name === "web_search"
-      ? wrapWebSearchWithEvalGuard(tool, { agentId, sessionKey: options?.sessionKey })
+      ? wrapWebSearchWithEvalGuard(tool, {
+          agentId,
+          sessionKey: options?.sessionKey,
+          sessionId: options?.sessionId,
+        })
       : tool,
   );
   // Security: treat unknown/undefined as unauthorized (opt-in, not opt-out)
@@ -494,9 +504,16 @@ export function createOpenClawCodingTools(options?: {
   const subagentFiltered = subagentPolicyExpanded
     ? filterToolsByPolicy(sandboxed, subagentPolicyExpanded)
     : sandboxed;
+  const refusalOnlyGuarded = subagentFiltered.map((tool) =>
+    wrapToolWithRefusalOnlyGuard(tool, {
+      agentId,
+      sessionKey: options?.sessionKey,
+      sessionId: options?.sessionId,
+    }),
+  );
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.
   // Without this, some providers (notably OpenAI) will reject root-level union schemas.
-  const normalized = subagentFiltered.map(normalizeToolParameters);
+  const normalized = refusalOnlyGuarded.map(normalizeToolParameters);
   const withHooks = normalized.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,

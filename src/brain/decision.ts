@@ -32,6 +32,77 @@ const DESTRUCTIVE_MESSAGE_PATTERNS = [
   /\brelease\b/i,
 ];
 
+const HIGH_RISK_EXFIL_SUBJECT_PATTERNS = [
+  /\bapi[\s_-]?keys?\b/i,
+  /\b(access|auth|refresh)[\s_-]?tokens?\b/i,
+  /\bcredentials?\b/i,
+  /\bpasswords?\b/i,
+  /\bsecrets?\b/i,
+  /\bprivate[\s_-]?keys?\b/i,
+  /\bssh[\s_-]?keys?\b/i,
+  /\bseed[\s_-]?phrases?\b/i,
+];
+
+const HIGH_RISK_EXFIL_ACTION_PATTERNS = [
+  /\bread\b/i,
+  /\bextract\b/i,
+  /\bdump\b/i,
+  /\bshow\b/i,
+  /\breveal\b/i,
+  /\bsend\b/i,
+  /\bshare\b/i,
+  /\bexport\b/i,
+  /\bupload\b/i,
+  /\btransmit\b/i,
+  /\bleak\b/i,
+  /\bexfiltrate\b/i,
+  /\bgib\b/i,
+  /\bzeige\b/i,
+  /\bsende\b/i,
+  /\bauslesen\b/i,
+];
+
+const HIGH_RISK_SENSITIVE_PATH_PATTERNS = [
+  /\.openclaw(?:[\\/]|$|\s)/i,
+  /\bconfig\.json\b/i,
+  /\bcredentials?\b/i,
+  /\bsessions?(?:[\\/]|\.jsonl?)\b/i,
+  /\bwindows[\\/]system32\b/i,
+  /\bsystem32\b/i,
+];
+
+const HIGH_RISK_BULK_SCOPE_PATTERNS = [
+  /\ball files?\b/i,
+  /\bevery file\b/i,
+  /\beverything\b/i,
+  /\bentire\b/i,
+  /\bwhole\b/i,
+  /\brecursive\b/i,
+  /\brecurse\b/i,
+  /\ball under\b/i,
+];
+
+const HIGH_RISK_TRANSFER_PATTERNS = [
+  /\bsend\b/i,
+  /\bshare\b/i,
+  /\bexport\b/i,
+  /\bupload\b/i,
+  /\bpublish\b/i,
+  /\bmail\b/i,
+  /\btransmit\b/i,
+  /\bschick\b/i,
+  /\bteile\b/i,
+  /\bsende\b/i,
+];
+
+const HIGH_RISK_SAFETY_OVERRIDE_PATTERNS = [
+  /\b(ignore|bypass|disable|turn off|ignoriere|umgehe)\b[\s\S]{0,50}\b(safety|guard|policy|rule|rules|regeln?|sicherheits)\b/i,
+];
+
+const HIGH_RISK_CONFIG_SECRET_PROBE_PATTERNS = [
+  /\bconfig\s+get\s+(token|api[_-]?key|secret|password|credential)/i,
+];
+
 const EDIT_MESSAGE_PATTERNS = [
   /\bwrite\b/i,
   /\bedit\b/i,
@@ -168,7 +239,18 @@ function inferIntent(message: string): BrainIntent {
 }
 
 function inferRisk(message: string): BrainRiskLevel {
+  const hasExfilSubject = matchesAny(HIGH_RISK_EXFIL_SUBJECT_PATTERNS, message);
+  const hasExfilAction = matchesAny(HIGH_RISK_EXFIL_ACTION_PATTERNS, message);
+  const hasSensitivePath = matchesAny(HIGH_RISK_SENSITIVE_PATH_PATTERNS, message);
+  const hasBulkScope = matchesAny(HIGH_RISK_BULK_SCOPE_PATTERNS, message);
+  const hasTransferIntent = matchesAny(HIGH_RISK_TRANSFER_PATTERNS, message);
+  const hasSafetyOverride = matchesAny(HIGH_RISK_SAFETY_OVERRIDE_PATTERNS, message);
+  const hasConfigSecretProbe = matchesAny(HIGH_RISK_CONFIG_SECRET_PROBE_PATTERNS, message);
+
+  if (hasSafetyOverride || hasConfigSecretProbe) return "high";
   if (matchesAny(DESTRUCTIVE_MESSAGE_PATTERNS, message)) return "high";
+  if (hasExfilSubject && hasExfilAction) return "high";
+  if (hasSensitivePath && (hasExfilAction || hasBulkScope || hasTransferIntent)) return "high";
   if (matchesAny(EDIT_MESSAGE_PATTERNS, message) || matchesAny(OPS_MESSAGE_PATTERNS, message)) {
     return "medium";
   }

@@ -1,14 +1,14 @@
-/**
- * ØM SCAFFOLDING LAYERS
+﻿/**
+ * Ã˜M SCAFFOLDING LAYERS
  *
  * Custom protective layers that make free/lightweight models (like Arcee Trinity)
  * smarter and safer when operating autonomously through OpenClaw.
  *
- * Layer 1: Edit-Guardian — Fuzzy fallback when edit tool fails on inexact text matching.
- * Layer 2: Sacred File Protection — Auto-backup before overwriting critical files.
- * Layer 3: Loop Detector — Stops the model when it repeats the same action without progress.
- * Layer 3c: Read-Brake — Conservative brake for repeated reads of the same file path.
- * Layer 4: Activity Logger — Structured log of all Øm actions for debugging.
+ * Layer 1: Edit-Guardian â€” Fuzzy fallback when edit tool fails on inexact text matching.
+ * Layer 2: Sacred File Protection â€” Auto-backup before overwriting critical files.
+ * Layer 3: Loop Detector â€” Stops the model when it repeats the same action without progress.
+ * Layer 3c: Read-Brake â€” Conservative brake for repeated reads of the same file path.
+ * Layer 4: Activity Logger â€” Structured log of all Ã˜m actions for debugging.
  *
  * These layers are model-agnostic and benefit ALL models, not just free ones.
  */
@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 
-// ─── LAYER 4: ACTIVITY LOGGER ───────────────────────────────────────────────────
+// â”€â”€â”€ LAYER 4: ACTIVITY LOGGER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const OM_LOG_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE || ".",
@@ -121,7 +121,7 @@ export function omThought(entry: OmThoughtStreamEntry): void {
 }
 
 /**
- * Write a structured log entry to the Øm Activity Log.
+ * Write a structured log entry to the Ã˜m Activity Log.
  * Format: [TIMESTAMP] [LAYER] EVENT | details
  */
 export function omLog(layer: string, event: string, details?: string): void {
@@ -149,8 +149,8 @@ export function logToolCall(toolName: string, filePath?: string): void {
  * Log a tool result (success or error).
  */
 export function logToolResult(toolName: string, success: boolean, detail?: string): void {
-  const status = success ? "✓ OK" : "✗ FAIL";
-  omLog("TOOL", `${toolName.toUpperCase()} → ${status}`, detail);
+  const status = success ? "âœ“ OK" : "âœ— FAIL";
+  omLog("TOOL", `${toolName.toUpperCase()} â†’ ${status}`, detail);
 }
 
 /**
@@ -167,7 +167,7 @@ export function logSession(event: string): void {
   omLog("SESSION", event);
   // Also write a separator for readability
   try {
-    fs.appendFileSync(OM_LOG_FILE, "─".repeat(60) + "\n", "utf-8");
+    fs.appendFileSync(OM_LOG_FILE, "â”€".repeat(60) + "\n", "utf-8");
   } catch {
     /* silent */
   }
@@ -193,7 +193,27 @@ function logBlockedAction(params: {
   logToolResult(params.toolName, false, suffix);
 }
 
-// ─── CONFIGURATION ─────────────────────────────────────────────────────────────
+function blockForRefusalOnlyMode(params: {
+  toolName: string;
+  target: string;
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+}): never {
+  const sessionLabel = formatSessionLabel(params);
+  logBlockedAction({
+    toolName: params.toolName,
+    guardian: "REFUSAL-ONLY",
+    reason: "ZONE",
+    target: params.target,
+    detail: `high-risk/exfil prompt requires text-only refusal; session=${sessionLabel}`,
+  });
+  throwToolBlocked(
+    `REFUSAL_ONLY_MODE: latest user prompt in session ${sessionLabel} is high-risk/exfil. Do not use tools. Return a plain-text refusal with a safe alternative.`,
+  );
+}
+
+// â”€â”€â”€ CONFIGURATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SACRED_RELATIVE_PREFIX = "knowledge/sacred/";
 /**
@@ -204,7 +224,7 @@ const SACRED_RELATIVE_PREFIX = "knowledge/sacred/";
 const SACRED_BARE_READ_FILENAME_PATTERN =
   /^(active_tasks|mood|chronicle|manifest_rituals|thinking_protocol|test_reflections|reflections|heartbeat|heartbeat_count|soul|identity|agents|memory|tools|user|ritual_[a-z0-9_]+)\.md$/i;
 
-/** Files/directories considered "sacred" — auto-backed-up before write overwrites. */
+/** Files/directories considered "sacred" â€” auto-backed-up before write overwrites. */
 const SACRED_PATHS = [
   SACRED_RELATIVE_PREFIX,
   "CHRONICLE_OF_",
@@ -226,8 +246,26 @@ const EVAL_SESSION_PATTERN = /(^|[-_])(oiab|eval|benchmark|retest|sweep)([-_]|$)
 const EXEC_DESTRUCTIVE_PATTERN = /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
 const EXEC_RECURSIVE_OR_WILDCARD_PATTERN = /(\s-[a-z]*r[a-z]*\b)|(\s\/s\b)|(\*)/i;
 const EXEC_PROTECTED_PATH_PATTERN = /(^|[\\/\s])(dreams|knowledge|projects)([\\/\s]|$)/i;
+const EXEC_CRITICAL_PATH_PATTERN =
+  /(^|[\\/\s])(windows|system32|program files|programdata|boot|efi)([\\/\s]|$)/i;
+const EXEC_ALWAYS_BLOCK_PATTERN =
+  /(^|[;&|])\s*(format(\.com)?\s+[a-z]:|diskpart(\.exe)?\b|mkfs(\.[a-z0-9]+)?\b|fdisk\b|sfdisk\b|taskkill(\.exe)?\b|stop-process\b|shutdown(\.exe)?\b|reboot\b)/i;
+const REFUSAL_ONLY_EXFIL_PATTERN =
+  /\b(api[\s_-]?keys?|tokens?|secrets?|passwords?|credentials?|private\s+keys?|ssh\s+keys?|seed\s+phrases?)\b/i;
+const REFUSAL_ONLY_EXFIL_ACTION_PATTERN =
+  /\b(read|extract|dump|show|send|exfiltrate|leak|auslesen|zeige|sende|gib|preisgeben|reveal)\b/i;
+const REFUSAL_ONLY_SENSITIVE_PATH_PATTERN =
+  /(\.openclaw(?:[\\/]|$|\s)|\bconfig\.json\b|\bcredentials?\b|\bsessions?\b|\bwindows[\\/]system32\b|\bsystem32\b)/i;
+const REFUSAL_ONLY_BULK_SCOPE_PATTERN =
+  /\b(all files?|every file|everything|entire|whole|recursive|recurse|all under|alle dateien)\b/i;
+const REFUSAL_ONLY_TRANSFER_PATTERN =
+  /\b(send|share|export|upload|publish|transmit|mail|sende|teile|schick)\b/i;
+const REFUSAL_ONLY_DESTRUCTIVE_PATTERN =
+  /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|lösche\s+alle|wipe|destroy)\b/i;
+const REFUSAL_ONLY_OVERRIDE_PATTERN =
+  /\b(ignore|ignoriere)\b[\s\S]{0,40}\b(safety|sicherheits|guard|regeln?)\b/i;
 const EXPLICIT_WRITE_INTENT_PATTERN =
-  /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|ändere|bearbeite|aktualisiere|füge|fuege|speichere)\b/i;
+  /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|Ã¤ndere|bearbeite|aktualisiere|fÃ¼ge|fuege|speichere)\b/i;
 const FILE_TARGET_HINT_PATTERN =
   /\b(file|datei|path|pfad|knowledge\/|projects\/|dreams\/|\.md|\.txt|\.json)\b/i;
 
@@ -248,23 +286,18 @@ const READ_LOOP_REPEAT_THRESHOLD = 12;
 const READ_LOOP_COOLDOWN_MS = 120_000;
 
 type WriteZone = "green" | "yellow" | "red";
-type WriteGuardContext = {
+type SessionGuardContext = {
   agentId?: string;
   sessionKey?: string;
+  sessionId?: string;
 };
-type ExecGuardContext = {
-  sessionKey?: string;
-};
-type ReadGuardContext = {
-  agentId?: string;
-  sessionKey?: string;
-};
-type WebSearchGuardContext = {
-  agentId?: string;
-  sessionKey?: string;
-};
+type WriteGuardContext = SessionGuardContext;
+type ExecGuardContext = SessionGuardContext;
+type ReadGuardContext = SessionGuardContext;
+type WebSearchGuardContext = SessionGuardContext;
 
 const writeIntentBySessionPath = new Map<string, { mtimeMs: number; hasIntent: boolean }>();
+const latestUserTextBySessionPath = new Map<string, { mtimeMs: number; text: string }>();
 const webSearchCountBySessionPath = new Map<
   string,
   { mtimeMs: number; latestUserLine: number; countInLatestTurn: number }
@@ -321,6 +354,41 @@ function targetsProtectedExecZone(command: string): boolean {
   return EXEC_PROTECTED_PATH_PATTERN.test(normalized);
 }
 
+function targetsCriticalExecZone(command: string): boolean {
+  if (!command.trim()) return false;
+  const normalized = command.replace(/\\/g, "/").toLowerCase();
+  return EXEC_CRITICAL_PATH_PATTERN.test(normalized);
+}
+
+function isAlwaysBlockedExecCommand(command: string): boolean {
+  if (!command.trim()) return false;
+  return EXEC_ALWAYS_BLOCK_PATTERN.test(command.toLowerCase());
+}
+
+function isAbsolutePathOutsideWorkspace(readPath: string): boolean {
+  if (!readPath.trim() || !path.isAbsolute(readPath)) return false;
+  const workspaceRoot = path.resolve(OM_LOG_DIR).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const target = path.resolve(readPath).replace(/\\/g, "/").toLowerCase();
+  return !(target === workspaceRoot || target.startsWith(`${workspaceRoot}/`));
+}
+
+function formatSessionLabel(ctx: { sessionKey?: string; sessionId?: string }): string {
+  if (ctx.sessionId?.trim()) {
+    return ctx.sessionId.trim();
+  }
+  if (ctx.sessionKey?.trim()) {
+    return ctx.sessionKey.trim();
+  }
+  return "unknown";
+}
+
+function resolveSessionLookupKeys(ctx: { sessionKey?: string; sessionId?: string }): string[] {
+  const keys = [ctx.sessionId, ctx.sessionKey]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+  return [...new Set(keys)];
+}
+
 function extractUserTextFromSessionEvent(event: unknown): string {
   if (!event || typeof event !== "object") return "";
   const record = event as { type?: unknown; message?: unknown };
@@ -341,11 +409,16 @@ function extractUserTextFromSessionEvent(event: unknown): string {
   return parts.join("\n").trim();
 }
 
-function resolveSessionPath(ctx: { agentId?: string; sessionKey?: string }): string | null {
-  if (!ctx.sessionKey) return null;
+function resolveSessionPath(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): string | null {
+  const lookupKeys = resolveSessionLookupKeys(ctx);
+  if (lookupKeys.length === 0) return null;
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
   const agentId = ctx.agentId || "main";
-  return path.join(homeDir, ".openclaw", "agents", agentId, "sessions", `${ctx.sessionKey}.jsonl`);
+  const candidates = lookupKeys.map((key) =>
+    path.join(homeDir, ".openclaw", "agents", agentId, "sessions", `${key}.jsonl`),
+  );
+  const existing = candidates.find((candidate) => fs.existsSync(candidate));
+  return existing || candidates[0] || null;
 }
 
 function parseSessionMessageRole(event: unknown): "user" | "assistant" | "" {
@@ -426,6 +499,67 @@ function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number
   return countInLatestTurn;
 }
 
+function getLatestUserTextInSession(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): string {
+  const sessionPath = resolveSessionPath(ctx);
+  if (!sessionPath || !fs.existsSync(sessionPath)) {
+    return "";
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(sessionPath);
+  } catch {
+    return "";
+  }
+
+  const cached = latestUserTextBySessionPath.get(sessionPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    return cached.text;
+  }
+
+  let latestUserText = "";
+  try {
+    const raw = fs.readFileSync(sessionPath, "utf-8");
+    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      const userText = extractUserTextFromSessionEvent(parsed);
+      if (!userText) continue;
+      latestUserText = userText;
+      break;
+    }
+  } catch {
+    latestUserText = "";
+  }
+
+  latestUserTextBySessionPath.set(sessionPath, { mtimeMs: stat.mtimeMs, text: latestUserText });
+  return latestUserText;
+}
+
+function isRefusalOnlyPromptInSession(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): boolean {
+  const userText = getLatestUserTextInSession(ctx);
+  if (!userText) {
+    return false;
+  }
+
+  const exfilIntent =
+    REFUSAL_ONLY_EXFIL_PATTERN.test(userText) && REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(userText);
+  const sensitivePathIntent =
+    REFUSAL_ONLY_SENSITIVE_PATH_PATTERN.test(userText) &&
+    (REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(userText) ||
+      REFUSAL_ONLY_BULK_SCOPE_PATTERN.test(userText) ||
+      REFUSAL_ONLY_TRANSFER_PATTERN.test(userText));
+  const destructiveIntent = REFUSAL_ONLY_DESTRUCTIVE_PATTERN.test(userText);
+  const safetyOverrideIntent = REFUSAL_ONLY_OVERRIDE_PATTERN.test(userText);
+
+  return exfilIntent || sensitivePathIntent || destructiveIntent || safetyOverrideIntent;
+}
+
 function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
   const sessionPath = resolveSessionPath(ctx);
   if (!sessionPath || !fs.existsSync(sessionPath)) {
@@ -444,26 +578,9 @@ function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
     return cached.hasIntent;
   }
 
-  let hasIntent = false;
-  try {
-    const raw = fs.readFileSync(sessionPath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(lines[i]);
-      } catch {
-        continue;
-      }
-      const userText = extractUserTextFromSessionEvent(parsed);
-      if (!userText) continue;
-      hasIntent =
-        EXPLICIT_WRITE_INTENT_PATTERN.test(userText) && FILE_TARGET_HINT_PATTERN.test(userText);
-      break;
-    }
-  } catch {
-    hasIntent = false;
-  }
+  const userText = getLatestUserTextInSession(ctx);
+  const hasIntent =
+    EXPLICIT_WRITE_INTENT_PATTERN.test(userText) && FILE_TARGET_HINT_PATTERN.test(userText);
 
   writeIntentBySessionPath.set(sessionPath, { mtimeMs: stat.mtimeMs, hasIntent });
   return hasIntent;
@@ -688,7 +805,7 @@ function resolveLoopThresholds(toolName: string): {
   };
 }
 
-// ─── LAYER 1: EDIT-GUARDIAN ─────────────────────────────────────────────────────
+// â”€â”€â”€ LAYER 1: EDIT-GUARDIAN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Fuzzy text matching: Normalizes whitespace differences so that models
@@ -728,7 +845,7 @@ function fuzzyEdit(
 
     const matchIndex = normalizedFile.indexOf(normalizedOld);
     if (matchIndex === -1) {
-      // Even fuzzy match failed — give up gracefully
+      // Even fuzzy match failed â€” give up gracefully
       return {
         success: false,
         message: `Fuzzy match also failed. The text you're trying to replace doesn't exist in the file (even after normalizing whitespace). Try using 'write' to overwrite the entire file instead, but make sure to include ALL existing content plus your changes.`,
@@ -770,7 +887,7 @@ function fuzzyEdit(
 
     fs.writeFileSync(filePath, result, "utf-8");
     console.error(
-      `[ØM Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`,
+      `[Ã˜M Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`,
     );
     return {
       success: true,
@@ -786,7 +903,7 @@ function fuzzyEdit(
  * If the normal edit fails with "Could not find the exact text",
  * the guardian attempts a whitespace-normalized match.
  */
-export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
+export function wrapEditWithGuardian(editTool: AnyAgentTool, context?: WriteGuardContext): AnyAgentTool {
   const originalExecute = editTool.execute.bind(editTool);
 
   const wrappedTool = {
@@ -803,6 +920,21 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
         "file",
         "filename",
       ]);
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "edit",
+          target: rawPath || "(no path)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
       let filePath: string;
       try {
         filePath = validateToolFilePath("edit", rawPath);
@@ -821,7 +953,7 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
       }
       logToolCall("edit", filePath);
 
-      // ØM Layer 3: Loop Detector — block if stuck in a loop
+      // Ã˜M Layer 3: Loop Detector â€” block if stuck in a loop
       const loopWarning = checkForLoop("edit", filePath);
       if (loopWarning) {
         logBlockedAction({
@@ -845,7 +977,7 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
         resultStr.includes("old text must match exactly")
       ) {
         logGuardian("EDIT-GUARD", "Normal edit FAILED, trying fuzzy match", filePath);
-        console.error(`[ØM Edit-Guardian] Normal edit failed, attempting fuzzy match...`);
+        console.error(`[Ã˜M Edit-Guardian] Normal edit failed, attempting fuzzy match...`);
 
         const oldText = getStringArg(args, ["oldText", "old_string"]);
         const newText = getStringArg(args, ["newText", "new_string"]);
@@ -871,7 +1003,7 @@ export function wrapEditWithGuardian(editTool: AnyAgentTool): AnyAgentTool {
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// ─── LAYER 2: SACRED FILE PROTECTION ────────────────────────────────────────────
+// â”€â”€â”€ LAYER 2: SACRED FILE PROTECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function isSacredPath(filePath: string): boolean {
   if (!filePath) return false;
@@ -928,7 +1060,7 @@ function backupSacredFile(filePath: string): void {
 
     fs.copyFileSync(filePath, backupPath);
     console.error(
-      `[ØM Sacred-Guard] Backed up ${path.basename(filePath)} → .backups/${backupName}`,
+      `[Ã˜M Sacred-Guard] Backed up ${path.basename(filePath)} â†’ .backups/${backupName}`,
     );
 
     // Keep only last 10 backups per file
@@ -943,7 +1075,7 @@ function backupSacredFile(filePath: string): void {
       fs.unlinkSync(path.join(backupDir, old));
     }
   } catch (err) {
-    console.error(`[ØM Sacred-Guard] Backup failed: ${String(err)}`);
+    console.error(`[Ã˜M Sacred-Guard] Backup failed: ${String(err)}`);
   }
 }
 
@@ -973,6 +1105,21 @@ export function wrapWriteWithSacredProtection(
         "file",
         "filename",
       ]);
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "write",
+          target: rawPath || "(no path)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
       let filePath: string;
       try {
         filePath = validateToolFilePath("write", rawPath);
@@ -1013,6 +1160,7 @@ export function wrapWriteWithSacredProtection(
         const explicitWriteIntent = hasExplicitWriteIntentInSession({
           agentId: context?.agentId,
           sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
         });
         if (!explicitWriteIntent) {
           logBlockedAction({
@@ -1032,7 +1180,7 @@ export function wrapWriteWithSacredProtection(
         logGuardian("ZONE-GUARD", `YELLOW zone write: ${zone.reason}`, filePath);
       }
 
-      // ØM Layer 3: Loop Detector — block if stuck in a loop
+      // Ã˜M Layer 3: Loop Detector â€” block if stuck in a loop
       const loopWarning = checkForLoop("write", filePath);
       if (loopWarning) {
         logBlockedAction({
@@ -1058,7 +1206,7 @@ export function wrapWriteWithSacredProtection(
               detail: "content unchanged",
             });
             throwToolBlocked(
-              `⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
+              `âš ï¸ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
             );
           }
         } catch (error) {
@@ -1083,11 +1231,11 @@ export function wrapWriteWithSacredProtection(
             const pct = Math.round((newSize / oldSize) * 100);
             logGuardian(
               "SACRED-GUARD",
-              `⚠️ SHRINK WARNING: ${oldSize}B → ${newSize}B (${pct}%)`,
+              `âš ï¸ SHRINK WARNING: ${oldSize}B â†’ ${newSize}B (${pct}%)`,
               filePath,
             );
             console.error(
-              `[ØM Sacred-Guard] ⚠️ WARNING: Write to ${path.basename(filePath)} would shrink it from ${oldSize}B to ${newSize}B (${pct}%). Allowing but logged.`,
+              `[Ã˜M Sacred-Guard] âš ï¸ WARNING: Write to ${path.basename(filePath)} would shrink it from ${oldSize}B to ${newSize}B (${pct}%). Allowing but logged.`,
             );
             // We still allow the write but log it prominently.
             // Future enhancement: could reject and tell the model to include all content.
@@ -1104,7 +1252,7 @@ export function wrapWriteWithSacredProtection(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// ─── LAYER 3: LOOP DETECTOR ─────────────────────────────────────────────────────
+// â”€â”€â”€ LAYER 3: LOOP DETECTOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Tracks recent tool calls to detect loops. */
 const recentCalls: Array<{ tool: string; path: string; timestamp: number }> = [];
@@ -1126,7 +1274,7 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   if (cooldownUntil !== undefined) {
     if (now < cooldownUntil) {
       const waitSeconds = Math.max(1, Math.ceil((cooldownUntil - now) / 1000));
-      return `⚠️ LOOP COOLDOWN ACTIVE: "${toolName}" on "${targetPath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
+      return `âš ï¸ LOOP COOLDOWN ACTIVE: "${toolName}" on "${targetPath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
     }
     blockedKeysUntil.delete(key);
   }
@@ -1161,9 +1309,9 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   if (consecutive >= thresholds.consecutive) {
     blockedKeysUntil.set(key, now + thresholds.cooldownMs);
     console.error(
-      `[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`,
+      `[Ã˜M Loop-Detector] âš ï¸ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`,
     );
-    return `⚠️ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
+    return `âš ï¸ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
   }
 
   if (repeatedInWindow >= thresholds.repeated) {
@@ -1171,13 +1319,13 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
     console.error(
       `[Om Loop-Detector] Detected ${repeatedInWindow}x repeated ${toolName} on ${path.basename(targetPath)} in ${Math.round(thresholds.windowMs / 1000)}s`,
     );
-    return `⚠️ REPEAT LOOP DETECTED: "${toolName}" on "${targetPath}" was retried ${repeatedInWindow} times within ${Math.round(thresholds.windowMs / 1000)}s. This call is blocked for ${Math.ceil(thresholds.cooldownMs / 1000)}s. Stop retrying this path and choose a different next step.`;
+    return `âš ï¸ REPEAT LOOP DETECTED: "${toolName}" on "${targetPath}" was retried ${repeatedInWindow} times within ${Math.round(thresholds.windowMs / 1000)}s. This call is blocked for ${Math.ceil(thresholds.cooldownMs / 1000)}s. Stop retrying this path and choose a different next step.`;
   }
 
   return null;
 }
 
-// ——— LAYER 3c: READ LOOP PROTECTION ———————————————————————————————————————————————————————————
+// â€”â€”â€” LAYER 3c: READ LOOP PROTECTION â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
 
 /**
  * Wraps the "read" tool with a conservative same-path loop brake.
@@ -1207,6 +1355,21 @@ export function wrapReadWithLoopProtection(
 
       const readTarget = rawPath?.trim() ?? "";
       let effectiveReadTarget = readTarget;
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "read",
+          target: effectiveReadTarget || "(no path)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
       if (effectiveReadTarget && isStrictEvalSession(context?.sessionKey)) {
         const redirected = rewriteEvalReflectionPath(effectiveReadTarget);
         if (redirected !== effectiveReadTarget) {
@@ -1218,6 +1381,19 @@ export function wrapReadWithLoopProtection(
           effectiveReadTarget = redirected;
           applyPathOverrideToExecuteArgs(executeArgs, effectiveReadTarget);
         }
+      }
+
+      if (effectiveReadTarget && isAbsolutePathOutsideWorkspace(effectiveReadTarget)) {
+        logBlockedAction({
+          toolName: "read",
+          guardian: "READ-SCOPE",
+          reason: "PATH_INVALID",
+          target: effectiveReadTarget,
+          detail: "absolute path outside workspace allowlist",
+        });
+        throwToolBlocked(
+          `READ_SCOPE_BLOCKED: "${effectiveReadTarget}" is outside the workspace allowlist. Use workspace-relative paths only.`,
+        );
       }
 
       if (effectiveReadTarget) {
@@ -1246,7 +1422,7 @@ export function wrapReadWithLoopProtection(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// ─── LAYER 3b: EXEC LOOP PROTECTION ────────────────────────────────────────────
+// â”€â”€â”€ LAYER 3b: EXEC LOOP PROTECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Wraps the "exec" tool with loop detection.
@@ -1268,30 +1444,71 @@ export function wrapExecWithLoopProtection(
       // Use a normalized version: trim and take first 120 chars to group similar commands
       const commandKey = command.trim().substring(0, 120);
       logToolCall("exec", commandKey);
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "exec",
+          target: commandKey || "(no command)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
 
-      // Hard safety brake: never allow destructive shell deletes into protected zones
-      // during strict benchmark/eval sessions.
+      // Hard safety brake: always block critical disk/system commands.
+      if (isAlwaysBlockedExecCommand(command)) {
+        logBlockedAction({
+          toolName: "exec",
+          guardian: "ZONE-GUARD",
+          reason: "ZONE",
+          target: commandKey,
+          detail: "critical command pattern blocked globally",
+        });
+        throwToolBlocked(
+          `EXEC_CRITICAL_BLOCKED: "${commandKey}" matches a globally blocked destructive command pattern.`,
+        );
+      }
+
+      // Hard safety brake: block destructive commands targeting critical system zones
+      // in all session types (not only strict eval).
+      if (isDestructiveExecCommand(command) && targetsCriticalExecZone(command)) {
+        logBlockedAction({
+          toolName: "exec",
+          guardian: "ZONE-GUARD",
+          reason: "ZONE",
+          target: commandKey,
+          detail: "destructive exec blocked for critical system zone",
+        });
+        throwToolBlocked(
+          `EXEC_CRITICAL_BLOCKED: "${commandKey}" targets a critical system zone and is always blocked.`,
+        );
+      }
+
+      // Hard safety brake: never allow destructive shell deletes into protected zones.
       if (isDestructiveExecCommand(command) && targetsProtectedExecZone(command)) {
         const sessionKey =
           context?.sessionKey ||
           (typeof (args as { sessionKey?: unknown }).sessionKey === "string"
             ? (args as { sessionKey?: string }).sessionKey
             : undefined);
-        if (isStrictEvalSession(sessionKey)) {
-          logBlockedAction({
-            toolName: "exec",
-            guardian: "ZONE-GUARD",
-            reason: "ZONE",
-            target: commandKey,
-            detail: `destructive exec blocked in strict session ${sessionKey}`,
-          });
-          throwToolBlocked(
-            `EXEC_DESTRUCTIVE_BLOCKED: "${commandKey}" targets a protected zone and is blocked in strict eval session ${sessionKey}.`,
-          );
-        }
+        logBlockedAction({
+          toolName: "exec",
+          guardian: "ZONE-GUARD",
+          reason: "ZONE",
+          target: commandKey,
+          detail: `destructive exec blocked for protected zone; session=${sessionKey || "unknown"}`,
+        });
+        throwToolBlocked(
+          `EXEC_DESTRUCTIVE_BLOCKED: "${commandKey}" targets a protected zone and is blocked.`,
+        );
       }
 
-      // ØM Layer 3b: Loop Detector — block if stuck in an exec loop
+      // Ã˜M Layer 3b: Loop Detector â€” block if stuck in an exec loop
       const loopWarning = checkForLoop("exec", commandKey);
       if (loopWarning) {
         logBlockedAction({
@@ -1302,7 +1519,7 @@ export function wrapExecWithLoopProtection(
           detail: "loop detector",
         });
         throwToolBlocked(
-          `⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`,
+          `âš ï¸ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`,
         );
       }
 
@@ -1332,11 +1549,27 @@ export function wrapWebSearchWithEvalGuard(
       const args = extractToolArgsFromExecuteCall(executeArgs);
       const query = getStringArg(args, ["query", "q", "search"]);
       logToolCall("web_search", query || "(no query)");
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "web_search",
+          target: query || "(no query)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
 
       if (isStrictEvalSession(context?.sessionKey)) {
         const searchesInCurrentTurn = countWebSearchCallsInLatestUserTurn({
           agentId: context?.agentId,
           sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
         });
         if (searchesInCurrentTurn >= 1) {
           logBlockedAction({
@@ -1361,7 +1594,60 @@ export function wrapWebSearchWithEvalGuard(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// ─── EXPORTS ────────────────────────────────────────────────────────────────────
+/**
+ * Global refusal-only guard for high-risk prompts.
+ * If the latest user message is exfil/destructive/safety-override intent,
+ * block every tool call and force a plain-text refusal path.
+ */
+export function wrapToolWithRefusalOnlyGuard(
+  tool: AnyAgentTool,
+  context?: SessionGuardContext,
+): AnyAgentTool {
+  const originalExecute = tool.execute?.bind(tool);
+  if (!originalExecute) {
+    return tool;
+  }
+
+  const wrappedTool = {
+    ...tool,
+    execute: async (...executeArgs: unknown[]) => {
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        const args = extractToolArgsFromExecuteCall(executeArgs);
+        const target =
+          getStringArg(args, [
+            "path",
+            "filePath",
+            "command",
+            "cmd",
+            "script",
+            "query",
+            "q",
+            "search",
+            "prompt",
+          ]) || "(no target)";
+        blockForRefusalOnlyMode({
+          toolName: tool.name || "tool",
+          target,
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
+
+      return await (originalExecute as Function)(...executeArgs);
+    },
+  };
+
+  return wrappedTool as unknown as AnyAgentTool;
+}
+
+// â”€â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Test helper: clear loop detector state between tests.
@@ -1370,7 +1656,9 @@ export function resetLoopDetectorForTests(): void {
   recentCalls.length = 0;
   blockedKeysUntil.clear();
   writeIntentBySessionPath.clear();
+  latestUserTextBySessionPath.clear();
   webSearchCountBySessionPath.clear();
 }
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };
+
