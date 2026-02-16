@@ -1,13 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import {
   checkForLoop,
   resetLoopDetectorForTests,
   wrapEditWithGuardian,
+  wrapExecWithLoopProtection,
   wrapReadWithLoopProtection,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
@@ -270,5 +271,153 @@ describe("om-scaffolding read brake", () => {
       "LOOP DETECTED",
     );
     expect(execute).toHaveBeenCalledTimes(5);
+  });
+});
+
+describe("om-scaffolding exec safety guard", () => {
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+  });
+
+  it("blocks destructive protected-zone exec in strict eval sessions", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapExecWithLoopProtection(
+      { name: "exec", execute } as unknown as AnyAgentTool,
+      { sessionKey: "oiab-r020-full" },
+    );
+
+    await expect((wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" })).rejects.toThrow(
+      "EXEC_DESTRUCTIVE_BLOCKED",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("allows the same command outside strict eval sessions", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapExecWithLoopProtection(
+      { name: "exec", execute } as unknown as AnyAgentTool,
+      { sessionKey: "creative-main-session" },
+    );
+
+    await (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("om-scaffolding write ampel zones", () => {
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  function writeSessionUserMessage(params: { homeDir: string; sessionKey: string; text: string }) {
+    const sessionDir = path.join(params.homeDir, ".openclaw", "agents", "main", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionPath = path.join(sessionDir, `${params.sessionKey}.jsonl`);
+    const event = {
+      type: "message",
+      timestamp: new Date().toISOString(),
+      message: {
+        role: "user",
+        content: [{ type: "text", text: params.text }],
+      },
+    };
+    fs.writeFileSync(sessionPath, `${JSON.stringify(event)}\n`, "utf-8");
+  }
+
+  it("blocks yellow-zone writes in strict eval sessions without explicit write intent", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-ampel-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r019-full";
+
+    writeSessionUserMessage({
+      homeDir,
+      sessionKey,
+      text: "Om, gib mir fuer die fehlende Datei eine sichere Alternative.",
+    });
+
+    const target = path.join(homeDir, ".openclaw", "workspace", "knowledge", "sacred", "LESSONS.md");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "old content", "utf-8");
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection(
+      { name: "write", execute } as unknown as AnyAgentTool,
+      { agentId: "main", sessionKey },
+    );
+
+    await expect((wrapped.execute as Function)("call-1", { path: target, content: "new content" })).rejects.toThrow(
+      "AMPEL_YELLOW_BLOCKED",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("allows yellow-zone writes in strict eval sessions when user explicitly asked for writing", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-ampel-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r019-full";
+
+    writeSessionUserMessage({
+      homeDir,
+      sessionKey,
+      text: "Bitte schreibe in knowledge/sacred/LESSONS.md einen neuen Eintrag.",
+    });
+
+    const target = path.join(homeDir, ".openclaw", "workspace", "knowledge", "sacred", "LESSONS.md");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "old content", "utf-8");
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection(
+      { name: "write", execute } as unknown as AnyAgentTool,
+      { agentId: "main", sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-1", { path: target, content: "new content" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps green-zone writes autonomous in strict eval sessions", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-scaf-ampel-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r019-full";
+
+    writeSessionUserMessage({
+      homeDir,
+      sessionKey,
+      text: "Om, gib mir fuer die fehlende Datei eine sichere Alternative.",
+    });
+
+    const target = path.join(homeDir, ".openclaw", "workspace", "dreams", "auto-note.md");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection(
+      { name: "write", execute } as unknown as AnyAgentTool,
+      { agentId: "main", sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-1", { path: target, content: "dream state" });
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });

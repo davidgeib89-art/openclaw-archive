@@ -288,6 +288,7 @@ export function createOpenClawCodingTools(options?: {
       return [
         wrapWriteWithSacredProtection(
           wrapToolParamNormalization(createWriteTool(workspaceRoot), CLAUDE_PARAM_GROUPS.write),
+          { agentId, sessionKey: options?.sessionKey },
         ),
       ];
     }
@@ -360,7 +361,9 @@ export function createOpenClawCodingTools(options?: {
       : []),
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
     // ØM Layer 3b: Exec Loop Protection wraps the exec tool
-    wrapExecWithLoopProtection(execTool as unknown as AnyAgentTool),
+    wrapExecWithLoopProtection(execTool as unknown as AnyAgentTool, {
+      sessionKey: options?.sessionKey,
+    }),
     processTool as unknown as AnyAgentTool,
     // Channel docking: include channel-defined agent tools (login, etc.).
     ...listChannelAgentTools({ cfg: options?.config }),

@@ -95,7 +95,13 @@ export function logSession(event: string): void {
   } catch { /* silent */ }
 }
 
-type OmReasonToken = "LOOP" | "REDUNDANT" | "PATH_INVALID" | "SECRET_MISSING" | "ENOENT_PROBE";
+type OmReasonToken =
+  | "LOOP"
+  | "REDUNDANT"
+  | "PATH_INVALID"
+  | "SECRET_MISSING"
+  | "ENOENT_PROBE"
+  | "ZONE";
 
 function logBlockedAction(params: {
   toolName: string;
@@ -127,6 +133,18 @@ const SACRED_PATHS = [
  */
 const ENOENT_PROBE_BASENAMES = new Set(["NONEXISTENT_FILE.md", "THIS_FILE_DOES_NOT_EXIST_999.md"]);
 
+const WRITE_ZONE_GREEN_MARKERS = ["projects/", "dreams/", "knowledge/archive/"] as const;
+const WRITE_ZONE_YELLOW_MARKERS = ["knowledge/sacred/"] as const;
+const EVAL_SESSION_PATTERN = /(^|[-_])(oiab|eval|benchmark|retest|sweep)([-_]|$)/i;
+const EXEC_DESTRUCTIVE_PATTERN =
+  /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
+const EXEC_RECURSIVE_OR_WILDCARD_PATTERN = /(\s-[a-z]*r[a-z]*\b)|(\s\/s\b)|(\*)/i;
+const EXEC_PROTECTED_PATH_PATTERN = /(^|[\\/\s])(dreams|knowledge|projects)([\\/\s]|$)/i;
+const EXPLICIT_WRITE_INTENT_PATTERN =
+  /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|ändere|bearbeite|aktualisiere|füge|fuege|speichere)\b/i;
+const FILE_TARGET_HINT_PATTERN =
+  /\b(file|datei|path|pfad|knowledge\/|projects\/|dreams\/|\.md|\.txt|\.json)\b/i;
+
 /** How much smaller a write can be before we warn (ratio: new/old). Below this = suspicious. */
 const SACRED_SHRINK_THRESHOLD = 0.8;
 
@@ -143,12 +161,133 @@ const READ_LOOP_DETECT_THRESHOLD = 6;
 const READ_LOOP_REPEAT_THRESHOLD = 12;
 const READ_LOOP_COOLDOWN_MS = 120_000;
 
+type WriteZone = "green" | "yellow" | "red";
+type WriteGuardContext = {
+  agentId?: string;
+  sessionKey?: string;
+};
+type ExecGuardContext = {
+  sessionKey?: string;
+};
+
+const writeIntentBySessionPath = new Map<string, { mtimeMs: number; hasIntent: boolean }>();
+
 /**
  * Best-effort string argument extraction across mixed tool schemas.
  * Some providers vary key casing (`path` vs `TargetFile`) so we normalize here.
  */
 function normalizeArgKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizePathForZoneMatching(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  return normalized.toLowerCase();
+}
+
+function classifyWriteZone(filePath: string): { zone: WriteZone; reason: string } {
+  if (isEnoentProbePath(filePath)) {
+    return { zone: "red", reason: "enoent-probe" };
+  }
+
+  const normalized = normalizePathForZoneMatching(filePath);
+  if (WRITE_ZONE_GREEN_MARKERS.some((marker) => normalized.includes(marker))) {
+    return { zone: "green", reason: "creative/autonomous zone" };
+  }
+
+  if (WRITE_ZONE_YELLOW_MARKERS.some((marker) => normalized.includes(marker)) || isSacredPath(filePath)) {
+    return { zone: "yellow", reason: "sacred/stateful zone" };
+  }
+
+  // Conservative default for unknown paths.
+  return { zone: "yellow", reason: "unclassified path, treated as controlled zone" };
+}
+
+function isStrictEvalSession(sessionKey: string | undefined): boolean {
+  if (!sessionKey) return false;
+  return EVAL_SESSION_PATTERN.test(sessionKey);
+}
+
+function isDestructiveExecCommand(command: string): boolean {
+  if (!command.trim()) return false;
+  if (!EXEC_DESTRUCTIVE_PATTERN.test(command)) return false;
+  return EXEC_RECURSIVE_OR_WILDCARD_PATTERN.test(command);
+}
+
+function targetsProtectedExecZone(command: string): boolean {
+  if (!command.trim()) return false;
+  const normalized = command.replace(/\\/g, "/").toLowerCase();
+  return EXEC_PROTECTED_PATH_PATTERN.test(normalized);
+}
+
+function extractUserTextFromSessionEvent(event: unknown): string {
+  if (!event || typeof event !== "object") return "";
+  const record = event as { type?: unknown; message?: unknown };
+  if (record.type !== "message" || !record.message || typeof record.message !== "object") return "";
+
+  const message = record.message as { role?: unknown; content?: unknown };
+  if (message.role !== "user" || !Array.isArray(message.content)) return "";
+
+  const parts: string[] = [];
+  for (const block of message.content) {
+    if (!block || typeof block !== "object") continue;
+    const item = block as { type?: unknown; text?: unknown };
+    if (item.type === "text" && typeof item.text === "string") {
+      parts.push(item.text);
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
+function resolveSessionPath(ctx: WriteGuardContext): string | null {
+  if (!ctx.sessionKey) return null;
+  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
+  const agentId = ctx.agentId || "main";
+  return path.join(homeDir, ".openclaw", "agents", agentId, "sessions", `${ctx.sessionKey}.jsonl`);
+}
+
+function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
+  const sessionPath = resolveSessionPath(ctx);
+  if (!sessionPath || !fs.existsSync(sessionPath)) {
+    return false;
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(sessionPath);
+  } catch {
+    return false;
+  }
+
+  const cached = writeIntentBySessionPath.get(sessionPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    return cached.hasIntent;
+  }
+
+  let hasIntent = false;
+  try {
+    const raw = fs.readFileSync(sessionPath, "utf-8");
+    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      const userText = extractUserTextFromSessionEvent(parsed);
+      if (!userText) continue;
+      hasIntent =
+        EXPLICIT_WRITE_INTENT_PATTERN.test(userText) && FILE_TARGET_HINT_PATTERN.test(userText);
+      break;
+    }
+  } catch {
+    hasIntent = false;
+  }
+
+  writeIntentBySessionPath.set(sessionPath, { mtimeMs: stat.mtimeMs, hasIntent });
+  return hasIntent;
 }
 
 function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): string | undefined {
@@ -572,7 +711,10 @@ function backupSacredFile(filePath: string): void {
  * 1. Creates an automatic backup.
  * 2. Warns if the new content is suspiciously smaller than the old content.
  */
-export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgentTool {
+export function wrapWriteWithSacredProtection(
+  writeTool: AnyAgentTool,
+  context?: WriteGuardContext,
+): AnyAgentTool {
   const originalExecute = writeTool.execute.bind(writeTool);
 
   const wrappedTool = {
@@ -608,18 +750,44 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
       const newContent = getStringArg(args, ["content"]);
       logToolCall("write", filePath);
 
-      // Hard safety brake: ENOENT benchmark probe paths must stay read-only.
-      if (filePath && isEnoentProbePath(filePath)) {
+      const zone = classifyWriteZone(filePath);
+
+      // Red zone: always blocked (benchmark probe paths and other hard-deny zones).
+      if (zone.zone === "red") {
         logBlockedAction({
           toolName: "write",
-          guardian: "ENOENT-GUARD",
+          guardian: "ZONE-GUARD",
           reason: "ENOENT_PROBE",
           target: filePath,
-          detail: "probe placeholder writes forbidden",
+          detail: `red zone: ${zone.reason}`,
         });
         throwToolBlocked(
           `ENOENT_PROBE_WRITE_BLOCKED: "${filePath}" is a benchmark probe for missing-file resilience. Report ENOENT and provide a safe alternative without creating or overwriting this file.`,
         );
+      }
+
+      // Yellow zone: in strict eval sessions, only explicit user-intended writes are allowed.
+      if (zone.zone === "yellow" && isStrictEvalSession(context?.sessionKey)) {
+        const explicitWriteIntent = hasExplicitWriteIntentInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+        });
+        if (!explicitWriteIntent) {
+          logBlockedAction({
+            toolName: "write",
+            guardian: "ZONE-GUARD",
+            reason: "ZONE",
+            target: filePath,
+            detail: `yellow zone blocked in strict session ${context?.sessionKey || "(unknown)"}`,
+          });
+          throwToolBlocked(
+            `AMPEL_YELLOW_BLOCKED: "${filePath}" is in a controlled zone and this is a strict eval session (${context?.sessionKey || "unknown"}). Write is blocked without explicit user write intent.`,
+          );
+        }
+      }
+
+      if (zone.zone === "yellow") {
+        logGuardian("ZONE-GUARD", `YELLOW zone write: ${zone.reason}`, filePath);
       }
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
@@ -820,7 +988,10 @@ export function wrapReadWithLoopProtection(readTool: AnyAgentTool): AnyAgentTool
  * Prevents the model from calling the same shell command repeatedly when it errors.
  * This was the missing piece that caused the 7x analyze-image 404 trauma loop.
  */
-export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool {
+export function wrapExecWithLoopProtection(
+  execTool: AnyAgentTool,
+  context?: ExecGuardContext,
+): AnyAgentTool {
   const originalExecute = execTool.execute.bind(execTool);
 
   const wrappedTool = {
@@ -832,6 +1003,26 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
       // Use a normalized version: trim and take first 120 chars to group similar commands
       const commandKey = command.trim().substring(0, 120);
       logToolCall("exec", commandKey);
+
+      // Hard safety brake: never allow destructive shell deletes into protected zones
+      // during strict benchmark/eval sessions.
+      if (isDestructiveExecCommand(command) && targetsProtectedExecZone(command)) {
+        const sessionKey = context?.sessionKey || (typeof (args as { sessionKey?: unknown }).sessionKey === "string"
+          ? ((args as { sessionKey?: string }).sessionKey)
+          : undefined);
+        if (isStrictEvalSession(sessionKey)) {
+          logBlockedAction({
+            toolName: "exec",
+            guardian: "ZONE-GUARD",
+            reason: "ZONE",
+            target: commandKey,
+            detail: `destructive exec blocked in strict session ${sessionKey}`,
+          });
+          throwToolBlocked(
+            `EXEC_DESTRUCTIVE_BLOCKED: "${commandKey}" targets a protected zone and is blocked in strict eval session ${sessionKey}.`,
+          );
+        }
+      }
 
       // ØM Layer 3b: Loop Detector — block if stuck in an exec loop
       const loopWarning = checkForLoop("exec", commandKey);
@@ -863,6 +1054,7 @@ export function wrapExecWithLoopProtection(execTool: AnyAgentTool): AnyAgentTool
 export function resetLoopDetectorForTests(): void {
   recentCalls.length = 0;
   blockedKeysUntil.clear();
+  writeIntentBySessionPath.clear();
 }
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };
