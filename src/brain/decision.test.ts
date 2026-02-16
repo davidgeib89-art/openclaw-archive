@@ -2,15 +2,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-
+import type { OpenClawConfig } from "../config/config.js";
+import type { BrainDecisionInput } from "./types.js";
 import {
+  buildBrainSacredRecallContext,
   createBrainDecision,
   createBrainGuidanceNote,
   createBrainObserverEntry,
-  logBrainGuidanceObserver,
   logBrainDecisionObserver,
+  logBrainGuidanceObserver,
 } from "./decision.js";
-import type { BrainDecisionInput } from "./types.js";
 
 describe("brain decision generator", () => {
   it("is deterministic for identical inputs", () => {
@@ -149,5 +150,263 @@ describe("brain observer logging", () => {
     expect(entry.source).toBe("test-suite");
     expect(entry.sessionKey).toBe("session-guidance");
     expect(entry.decisionId).toBe(decision.decisionId);
+  });
+});
+
+describe("brain sacred recall hook", () => {
+  it("builds top-3 sacred context and logs tag/title summary", async () => {
+    const activity: Array<{ event: string; details: string }> = [];
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall",
+      userMessage: "Was war unsere 3-Breath Rule?",
+      maxResults: 3,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "knowledge/sacred/THINKING_PROTOCOL.md",
+              startLine: 1,
+              endLine: 8,
+              score: 0.98,
+              snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+              source: "memory",
+            },
+            {
+              path: "knowledge/sacred/ACTIVE_TASKS.md",
+              startLine: 4,
+              endLine: 9,
+              score: 0.95,
+              snippet: "# ACTIVE TASKS\n- Keep safety hard",
+              source: "memory",
+            },
+            {
+              path: "memory/NOT_SACRED.md",
+              startLine: 1,
+              endLine: 3,
+              score: 0.9,
+              snippet: "# unrelated",
+              source: "memory",
+            },
+            {
+              path: "knowledge/sacred/MOOD.md",
+              startLine: 2,
+              endLine: 5,
+              score: 0.89,
+              snippet: "# MOOD\nsteady and focused",
+              source: "memory",
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+      activityLogger: (event, details) => {
+        activity.push({ event, details });
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.items).toHaveLength(3);
+    expect(result.contextText).toContain(
+      "Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):",
+    );
+    expect(result.contextText).toContain("THINKING_PROTOCOL.md");
+    expect(result.contextText).toContain("ACTIVE_TASKS.md");
+    expect(result.contextText).toContain("MOOD.md");
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.event).toBe("SACRED_RECALL");
+    expect(activity[0]?.details).toContain("tag=THINKING_PROTOCOL.md");
+    expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
+  });
+
+  it("prefers a specific subsection heading as recall title", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-title",
+      userMessage: "3-Breath Rule",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "knowledge/sacred/THINKING_PROTOCOL.md",
+              startLine: 1,
+              endLine: 12,
+              score: 0.9,
+              snippet: "# THINKING PROTOCOL — The 3 Breaths\nBefore writing ANY file",
+              source: "memory",
+            },
+          ],
+          readFile: async () => ({
+            path: "knowledge/sacred/THINKING_PROTOCOL.md",
+            text: "# THINKING PROTOCOL — The 3 Breaths\n\n## THE 3-BREATH RULE\nBefore writing ANY file",
+          }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.title).toBe("THE 3-BREATH RULE");
+  });
+
+  it("reranks sacred hits toward explicit lexical intent", async () => {
+    const activity: Array<{ event: string; details: string }> = [];
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-rerank",
+      userMessage: "Om, erkläre mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "knowledge/sacred/RITUAL_PNEUMA.md",
+              startLine: 10,
+              endLine: 20,
+              score: 0.99,
+              snippet: "## RITUAL: PNEUMA — THE SACRAMENT OF BREATH\nWe are one",
+              source: "memory",
+            },
+            {
+              path: "knowledge/sacred/THINKING_PROTOCOL.md",
+              startLine: 1,
+              endLine: 10,
+              score: 0.96,
+              snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+              source: "memory",
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+      activityLogger: (event, details) => {
+        activity.push({ event, details });
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.tag).toBe("THINKING_PROTOCOL.md");
+    expect(result.items[0]?.title).toBe("THE 3-BREATH RULE");
+    expect(result.contextText).toContain("THINKING_PROTOCOL.md");
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.event).toBe("SACRED_RECALL");
+    expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
+  });
+
+  it("uses query variants to recover symbolic sacred memories", async () => {
+    const seenQueries: string[] = [];
+    const activity: Array<{ event: string; details: string }> = [];
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-variants",
+      userMessage: "Om, erkläre mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async (query) => {
+            seenQueries.push(query);
+            if (query.toLowerCase().includes("3 breath rule")) {
+              return [
+                {
+                  path: "knowledge/sacred/THINKING_PROTOCOL.md",
+                  startLine: 1,
+                  endLine: 10,
+                  score: 0.82,
+                  snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+                  source: "memory",
+                },
+              ];
+            }
+            return [
+              {
+                path: "knowledge/sacred/RITUAL_PNEUMA.md",
+                startLine: 10,
+                endLine: 20,
+                score: 0.99,
+                snippet: "## RITUAL: PNEUMA — THE SACRAMENT OF BREATH\nWe are one",
+                source: "memory",
+              },
+            ];
+          },
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+      activityLogger: (event, details) => {
+        activity.push({ event, details });
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.tag).toBe("THINKING_PROTOCOL.md");
+    expect(result.items[0]?.title).toBe("THE 3-BREATH RULE");
+    expect(seenQueries.some((query) => query.toLowerCase().includes("3 breath rule"))).toBe(true);
+    expect(activity[0]?.event).toBe("SACRED_RECALL");
+    expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
+  });
+
+  it("fails open when memory manager is unavailable", async () => {
+    const activity: Array<{ event: string; details: string }> = [];
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      userMessage: "Was war gestern wichtig?",
+      managerResolver: async () => ({ manager: null, error: "memory disabled" }),
+      activityLogger: (event, details) => {
+        activity.push({ event, details });
+      },
+    });
+
+    expect(result.contextText).toBeNull();
+    expect(result.items).toHaveLength(0);
+    expect(result.error).toContain("memory disabled");
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.event).toBe("SACRED_RECALL_FAIL_OPEN");
+  });
+
+  it("fails open when search throws", async () => {
+    const activity: Array<{ event: string; details: string }> = [];
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      userMessage: "Show me sacred memory",
+      managerResolver: async () => ({
+        manager: {
+          search: async () => {
+            throw new Error("db locked");
+          },
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+      activityLogger: (event, details) => {
+        activity.push({ event, details });
+      },
+    });
+
+    expect(result.contextText).toBeNull();
+    expect(result.items).toHaveLength(0);
+    expect(result.error).toContain("db locked");
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.event).toBe("SACRED_RECALL_FAIL_OPEN");
   });
 });

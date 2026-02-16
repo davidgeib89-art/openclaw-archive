@@ -5,8 +5,12 @@ import { createAgentSession, SessionManager, SettingsManager } from "@mariozechn
 import fs from "node:fs/promises";
 import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
-import { createBrainDecision, logBrainDecisionObserver } from "../../../brain/decision.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
+import {
+  buildBrainSacredRecallContext,
+  createBrainDecision,
+  logBrainDecisionObserver,
+} from "../../../brain/decision.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
@@ -843,8 +847,8 @@ export async function runEmbeddedAttempt(
           }
         }
 
-        // Prototype 33 safety emergency brake:
-        // keep observer logging only (P1 behavior), no runtime guidance influence.
+        // Prototype 33 brain observer:
+        // keep deterministic decision logging and add read-only sacred recall context.
         try {
           const availableTools = [...builtInTools, ...allCustomTools]
             .map((tool) => {
@@ -859,6 +863,21 @@ export async function runEmbeddedAttempt(
             sessionKey: params.sessionKey ?? params.sessionId,
           };
           const brainDecision = createBrainDecision(brainInput);
+          const sacredRecall = await buildBrainSacredRecallContext({
+            cfg: params.config,
+            userMessage: params.prompt,
+            sessionKey: params.sessionKey ?? params.sessionId,
+            agentId: sessionAgentId,
+            maxResults: 3,
+          });
+          if (sacredRecall.contextText) {
+            effectivePrompt = `${sacredRecall.contextText}\n\n${effectivePrompt}`;
+            log.debug(
+              `brain sacred recall injected: hits=${sacredRecall.items.length} decisionId=${brainDecision.decisionId}`,
+            );
+          } else if (sacredRecall.error) {
+            log.debug(`brain sacred recall fail-open: ${sacredRecall.error}`);
+          }
           const brainLogPath = logBrainDecisionObserver(brainInput, brainDecision, {
             source: "proto33-p1.before_agent_start",
             sessionKey: params.sessionKey ?? params.sessionId,
