@@ -7,6 +7,7 @@ import type { BrainSubconsciousInput, BrainSubconsciousResult } from "./types.js
 import {
   createBrainSubconsciousObserverEntry,
   logBrainSubconsciousObserver,
+  parseSubconsciousBrief,
   runBrainSubconsciousObserver,
 } from "./subconscious.js";
 
@@ -81,6 +82,37 @@ describe("brain subconscious observer", () => {
     expect(result.failOpen).toBe(true);
     expect(result.error).toContain("JSON");
     expect(events.map((item) => item.event)).toEqual(["START", "FAIL_OPEN"]);
+  });
+
+  it("accepts empty notes and keeps schema validity", () => {
+    const brief = parseSubconsciousBrief(
+      JSON.stringify({
+        goal: "Safe planning",
+        risk: "medium",
+        mustAskUser: true,
+        recommendedMode: "ask_clarify",
+        notes: "",
+      }),
+    );
+
+    expect(brief.goal).toBe("Safe planning");
+    expect(brief.notes).toBe("");
+    expect(brief.risk).toBe("medium");
+  });
+
+  it("extracts JSON when wrapped with thinking tags and extra text", () => {
+    const wrapped = [
+      "<think>I should reason first.</think>",
+      "some preface text",
+      '{"goal":"Use safe fallback","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"ok"}',
+      "trailing text ignored",
+    ].join("\n");
+    const brief = parseSubconsciousBrief(wrapped);
+
+    expect(brief.goal).toBe("Use safe fallback");
+    expect(brief.risk).toBe("low");
+    expect(brief.recommendedMode).toBe("answer_direct");
+    expect(brief.notes).toBe("ok");
   });
 
   it("fails open on timeout", async () => {

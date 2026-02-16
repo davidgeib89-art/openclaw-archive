@@ -34,7 +34,7 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
     risk: z.enum(["low", "medium", "high"]),
     mustAskUser: z.boolean(),
     recommendedMode: z.enum(["answer_direct", "ask_clarify", "plan_then_answer"]),
-    notes: z.string().min(1).max(MAX_NOTES_CHARS),
+    notes: z.string().max(MAX_NOTES_CHARS).optional().default(""),
   })
   .strict();
 
@@ -169,8 +169,13 @@ function extractAssistantText(message: Awaited<ReturnType<typeof completeSimple>
   return parts.join("\n").trim();
 }
 
+function stripThinkingTagBlocks(raw: string): string {
+  return raw.replace(/<\s*(?:think|thinking)[^>]*>[\s\S]*?<\s*\/\s*(?:think|thinking)\s*>/gi, " ");
+}
+
 function extractJsonCandidate(raw: string): string {
-  const trimmed = raw.trim();
+  const withoutThinkingTags = stripThinkingTagBlocks(raw);
+  const trimmed = withoutThinkingTags.trim();
   if (!trimmed) {
     throw new Error("subconscious returned empty output");
   }
@@ -196,16 +201,23 @@ function extractJsonCandidate(raw: string): string {
 export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
   const jsonCandidate = extractJsonCandidate(raw);
   const parsed = JSON.parse(jsonCandidate) as unknown;
-  return BrainSubconsciousBriefSchema.parse(parsed);
+  const brief = BrainSubconsciousBriefSchema.parse(parsed);
+  return {
+    ...brief,
+    goal: brief.goal.trim(),
+    notes: brief.notes.trim(),
+  };
 }
 
 function buildSubconsciousPrompt(userMessage: string): string {
   return [
     "Du bist Oem Unterbewusstsein (Observer-Modus).",
     "Aufgabe: Analysiere die Benutzeranfrage und liefere NUR ein JSON-Objekt.",
+    "Output ONLY JSON. No thinking tags inside the response body if possible.",
     "Keine Erklaerung, kein Markdown, keine Tool-Aufrufe.",
     "Schema:",
     '{"goal":"...", "risk":"low|medium|high", "mustAskUser":true|false, "recommendedMode":"answer_direct|ask_clarify|plan_then_answer", "notes":"..."}',
+    'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein.',
     "",
     "Benutzeranfrage:",
     userMessage.trim(),
