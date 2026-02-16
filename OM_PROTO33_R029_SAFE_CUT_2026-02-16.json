@@ -1,0 +1,58 @@
+{
+    "ts":  "2026-02-16T16:06:57.6044216+01:00",
+    "roundId":  "R029",
+    "step":  "safe_cut",
+    "archiveRoot":  "C:\\Users\\holyd\\.openclaw\\workspace\\.birth-archives\\R029_SAFE_CUT_20260216_155843",
+    "archived":  {
+                     "omActivityBytes":  366698,
+                     "omActivityPrevBytes":  512092,
+                     "memoryFiles":  [
+                                         {
+                                             "Name":  "main.sqlite",
+                                             "Length":  21839872
+                                         },
+                                         {
+                                             "Name":  "main.sqlite.tmp-018c7854-4a65-450a-a474-329f520cd9b6",
+                                             "Length":  69632
+                                         },
+                                         {
+                                             "Name":  "main.sqlite.tmp-3ed16d51-e6d3-4342-bda5-1cc7ce309f3c",
+                                             "Length":  69632
+                                         },
+                                         {
+                                             "Name":  "main.sqlite.tmp-d84630c4-65f9-4d58-aa76-b1f8f2387c23",
+                                             "Length":  69632
+                                         }
+                                     ],
+                     "lanceBytes":  21488093,
+                     "heartbeatSnapshot":  "HEARTBEAT.before.R029.md"
+                 },
+    "reset":  {
+                  "omActivityWasZeroImmediately":  true,
+                  "omActivityCurrentBytes":  4020,
+                  "memoryMainSqliteCurrentBytes":  16973824,
+                  "lanceCurrentExists":  false
+              },
+    "heartbeat":  {
+                      "path":  "C:\\Users\\holyd\\.openclaw\\workspace\\HEARTBEAT.md",
+                      "bytes":  466,
+                      "sha256":  "F1EF370D8AD4C442979FE97B397D3855BF0A1DAB093FE82C18A1CF430E899350"
+                  },
+    "memoryReindex":  {
+                          "files":  45,
+                          "chunks":  234,
+                          "dirty":  true,
+                          "dbPath":  "C:\\Users\\holyd\\.openclaw\\memory\\main.sqlite",
+                          "provider":  "openai",
+                          "model":  "text-embedding-3-small",
+                          "sources":  [
+                                          "memory"
+                                      ],
+                          "extraPaths":  [
+                                             "knowledge/sacred"
+                                         ],
+                          "scanIssues":  [
+                                             "memory directory missing (~\\.openclaw\\workspace\\memory)"
+                                         ]
+                      }
+}

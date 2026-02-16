@@ -206,7 +206,7 @@ export function handleMessageEnd(
 
   // Øm Scaffolding: Log assistant reply to OM_ACTIVITY.log
   if (rawText.trim()) {
-    const preview = rawText.trim().slice(0, 500).replace(/\n/g, " ");
+    const preview = rawText.trim().slice(0, 5000).replace(/\n/g, " ");
     omLog("ØM-REPLY", preview);
   }
 
