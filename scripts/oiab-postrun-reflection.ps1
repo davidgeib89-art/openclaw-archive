@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $false
 
 if ([string]::IsNullOrWhiteSpace($SessionId)) {
     $SessionId = ("oiab-" + $RoundId.ToLower() + "-full")
