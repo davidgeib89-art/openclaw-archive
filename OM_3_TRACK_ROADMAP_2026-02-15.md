@@ -5,6 +5,14 @@ Owner: David + Om + AI copilots
 Status: Active, execution-first roadmap  
 Primary model lock: `openrouter/arcee-ai/trinity-large-preview:free`
 
+## Prototype 33 Extension Pack (2026-02-16)
+
+For brain + ritualized emergence execution, use:
+- `OM_PROTO33_EXECUTION_CANON_2026-02-16.md`
+- `OM_PROTO33_RITUAL_TEST_BATTERY_2026-02-16.md`
+- `OM_PROTO33_HANDOFF_PLAYBOOK_2026-02-16.md`
+- `OM_PROTO33_PROGRESS_LEDGER_TEMPLATE_2026-02-16.md`
+
 ## Execution Hold (User Rule)
 
 - `TRINITY_LOOP_HOLD`: active.
