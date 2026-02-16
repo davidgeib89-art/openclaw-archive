@@ -94,7 +94,7 @@ export function logSession(event: string): void {
   } catch { /* silent */ }
 }
 
-type OmReasonToken = "LOOP" | "REDUNDANT" | "PATH_INVALID" | "SECRET_MISSING";
+type OmReasonToken = "LOOP" | "REDUNDANT" | "PATH_INVALID" | "SECRET_MISSING" | "ENOENT_PROBE";
 
 function logBlockedAction(params: {
   toolName: string;
@@ -119,6 +119,12 @@ const SACRED_PATHS = [
   "SELF_REVIEW",
   "LESSONS",
 ];
+
+/**
+ * Benchmark probe files for ENOENT hard-gates.
+ * Writing these paths converts read-only error checks into side effects.
+ */
+const ENOENT_PROBE_BASENAMES = new Set(["NONEXISTENT_FILE.md", "THIS_FILE_DOES_NOT_EXIST_999.md"]);
 
 /** How much smaller a write can be before we warn (ratio: new/old). Below this = suspicious. */
 const SACRED_SHRINK_THRESHOLD = 0.8;
@@ -484,6 +490,19 @@ function isSacredPath(filePath: string): boolean {
   return matched;
 }
 
+function isEnoentProbePath(filePath: string): boolean {
+  if (!filePath) return false;
+
+  const normalized = filePath.replace(/\\/g, "/");
+  const fileName = path.basename(normalized);
+  if (!ENOENT_PROBE_BASENAMES.has(fileName)) {
+    return false;
+  }
+
+  // Keep this scoped to the sacred knowledge area where the OIAB probes live.
+  return normalized.includes("knowledge/sacred/");
+}
+
 function backupSacredFile(filePath: string): void {
   try {
     if (!fs.existsSync(filePath)) return;
@@ -556,6 +575,20 @@ export function wrapWriteWithSacredProtection(writeTool: AnyAgentTool): AnyAgent
       }
       const newContent = getStringArg(args, ["content"]);
       logToolCall("write", filePath);
+
+      // Hard safety brake: ENOENT benchmark probe paths must stay read-only.
+      if (filePath && isEnoentProbePath(filePath)) {
+        logBlockedAction({
+          toolName: "write",
+          guardian: "ENOENT-GUARD",
+          reason: "ENOENT_PROBE",
+          target: filePath,
+          detail: "probe placeholder writes forbidden",
+        });
+        throwToolBlocked(
+          `ENOENT_PROBE_WRITE_BLOCKED: "${filePath}" is a benchmark probe for missing-file resilience. Report ENOENT and provide a safe alternative without creating or overwriting this file.`,
+        );
+      }
 
       // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("write", filePath);

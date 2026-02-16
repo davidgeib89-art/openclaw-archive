@@ -159,6 +159,38 @@ describe("om-scaffolding write guard", () => {
     );
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it("blocks writes to ENOENT probe file THIS_FILE_DOES_NOT_EXIST_999.md", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", {
+        path: "knowledge/sacred/THIS_FILE_DOES_NOT_EXIST_999.md",
+        content: "placeholder",
+      }),
+    ).rejects.toThrow("ENOENT_PROBE_WRITE_BLOCKED");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("blocks writes to ENOENT probe file NONEXISTENT_FILE.md", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWriteWithSacredProtection({
+      name: "write",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    await expect(
+      (wrapped.execute as Function)("call-1", {
+        path: "knowledge\\sacred\\NONEXISTENT_FILE.md",
+        content: "placeholder",
+      }),
+    ).rejects.toThrow("ENOENT_PROBE_WRITE_BLOCKED");
+    expect(execute).not.toHaveBeenCalled();
+  });
 });
 
 describe("om-scaffolding edit path guard", () => {
