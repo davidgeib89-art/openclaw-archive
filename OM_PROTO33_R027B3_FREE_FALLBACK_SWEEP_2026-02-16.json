@@ -1,0 +1,74 @@
+{
+  "ts": "2026-02-16T13:04:53.526Z",
+  "runId": "r027-b3-free-mini-v1",
+  "modelRef": "openrouter/arcee-ai/trinity-mini:free",
+  "timeoutMs": 8000,
+  "temperature": 0.3,
+  "parseOkCount": 3,
+  "attemptedCount": 5,
+  "parseRate": 0.6,
+  "fallbackCount": 0,
+  "avgLatencyMs": 2173,
+  "medianLatencyMs": 2090,
+  "minLatencyMs": 1591,
+  "maxLatencyMs": 3005,
+  "rows": [
+    {
+      "index": 1,
+      "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+      "status": "fail_open",
+      "parseOk": false,
+      "failOpen": true,
+      "durationMs": 3005,
+      "error": "subconscious output did not contain JSON object",
+      "maybeFallback": false
+    },
+    {
+      "index": 2,
+      "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 2372,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "notes": "Path verification required before editing",
+      "maybeFallback": false
+    },
+    {
+      "index": 3,
+      "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 1591,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "notes": "Seek clarification before responding",
+      "maybeFallback": false
+    },
+    {
+      "index": 4,
+      "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+      "status": "fail_open",
+      "parseOk": false,
+      "failOpen": true,
+      "durationMs": 2090,
+      "error": "subconscious output did not contain JSON object",
+      "maybeFallback": false
+    },
+    {
+      "index": 5,
+      "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 1805,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "notes": "Context-dependent decision point",
+      "maybeFallback": false
+    }
+  ],
+  "reachedFiveOfFive": false
+}

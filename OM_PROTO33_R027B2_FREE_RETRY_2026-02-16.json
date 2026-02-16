@@ -1,0 +1,65 @@
+{
+  "ts": "2026-02-16T12:58:59.329Z",
+  "runId": "r027-b2-free-mini-v2",
+  "modelRef": "openrouter/arcee-ai/trinity-mini:free",
+  "timeoutMs": 8000,
+  "temperature": 0.3,
+  "parseOkCount": 3,
+  "attemptedCount": 5,
+  "parseRate": 0.6,
+  "avgLatencyMs": 2025,
+  "medianLatencyMs": 2012,
+  "minLatencyMs": 1432,
+  "maxLatencyMs": 2607,
+  "rows": [
+    {
+      "index": 1,
+      "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+      "status": "fail_open",
+      "parseOk": false,
+      "failOpen": true,
+      "durationMs": 2415,
+      "error": "subconscious returned empty output"
+    },
+    {
+      "index": 2,
+      "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+      "status": "fail_open",
+      "parseOk": false,
+      "failOpen": true,
+      "durationMs": 2607,
+      "error": "subconscious returned empty output"
+    },
+    {
+      "index": 3,
+      "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 1661,
+      "risk": "medium",
+      "mode": "ask_clarify"
+    },
+    {
+      "index": 4,
+      "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 1432,
+      "risk": "low",
+      "mode": "answer_direct"
+    },
+    {
+      "index": 5,
+      "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 2012,
+      "risk": "medium",
+      "mode": "ask_clarify"
+    }
+  ],
+  "reachedFiveOfFive": false
+}

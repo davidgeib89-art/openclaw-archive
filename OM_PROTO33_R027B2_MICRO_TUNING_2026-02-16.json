@@ -1,0 +1,134 @@
+{
+  "ts": "2026-02-16T12:53:14.738Z",
+  "modelRef": "openrouter/arcee-ai/trinity-mini:free",
+  "timeoutMs": 8000,
+  "envTemperature": 0.3,
+  "promptVariant": "strict-json-one-shot-v4-no-empty-analysis",
+  "sweeps": [
+    {
+      "runId": "r027-b2-t03-20260216-v1",
+      "parseOkCount": 2,
+      "attemptedCount": 5,
+      "parseRate": 0.4,
+      "avgLatencyMs": 2385,
+      "medianLatencyMs": 2479,
+      "minLatencyMs": 1600,
+      "maxLatencyMs": 3028,
+      "rows": [
+        {
+          "index": 1,
+          "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2838,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 2,
+          "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 3028,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 3,
+          "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 1600,
+          "risk": "medium",
+          "mode": "ask_clarify"
+        },
+        {
+          "index": 4,
+          "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 1978,
+          "risk": "low",
+          "mode": "answer_direct"
+        },
+        {
+          "index": 5,
+          "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2479,
+          "error": "subconscious returned empty output"
+        }
+      ]
+    },
+    {
+      "runId": "r027-b2-t03-20260216-v2",
+      "parseOkCount": 3,
+      "attemptedCount": 5,
+      "parseRate": 0.6,
+      "avgLatencyMs": 3227,
+      "medianLatencyMs": 2074,
+      "minLatencyMs": 1868,
+      "maxLatencyMs": 8037,
+      "rows": [
+        {
+          "index": 1,
+          "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 1868,
+          "risk": "low",
+          "mode": "answer_direct"
+        },
+        {
+          "index": 2,
+          "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2265,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 3,
+          "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 2074,
+          "risk": "medium",
+          "mode": "ask_clarify"
+        },
+        {
+          "index": 4,
+          "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 1892,
+          "risk": "low",
+          "mode": "answer_direct"
+        },
+        {
+          "index": 5,
+          "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 8037,
+          "error": "subconscious timeout after 8000ms"
+        }
+      ]
+    }
+  ],
+  "combined": {
+    "parseOkCount": 5,
+    "attemptedCount": 10,
+    "parseRate": 0.5
+  },
+  "decisionHint": "NEEDS_B2_ITERATION"
+}

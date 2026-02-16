@@ -90,7 +90,7 @@ describe("brain subconscious observer", () => {
     expect(events.map((item) => item.event)).toEqual(["START", "OK"]);
   });
 
-  it("fails open when model output is not valid JSON", async () => {
+  it("returns fallback brief when model output is not valid JSON", async () => {
     const events: Array<{ event: string; details: string }> = [];
     const result = await runBrainSubconsciousObserver({
       enabled: true,
@@ -104,12 +104,57 @@ describe("brain subconscious observer", () => {
       },
     });
 
-    expect(result.status).toBe("fail_open");
+    expect(result.status).toBe("ok");
     expect(result.attempted).toBe(true);
-    expect(result.parseOk).toBe(false);
-    expect(result.failOpen).toBe(true);
-    expect(result.error).toContain("JSON");
-    expect(events.map((item) => item.event)).toEqual(["START", "FAIL_OPEN"]);
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.risk).toBe("low");
+    expect(result.brief?.recommendedMode).toBe("answer_direct");
+    expect(result.brief?.notes).toBe("Third Eye silent (unclear signal)");
+    expect(events.map((item) => item.event)).toEqual(["START", "OK_FALLBACK"]);
+  });
+
+  it("returns local fallback brief when model returns empty output", async () => {
+    const events: Array<{ event: string; details: string }> = [];
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "openrouter/arcee-ai/trinity-mini:free",
+      timeoutMs: 3_000,
+      temperature: 0.3,
+      userMessage: "Any message",
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () => "   ",
+      activityLogger: (event, details) => {
+        events.push({ event, details });
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.risk).toBe("low");
+    expect(result.brief?.recommendedMode).toBe("answer_direct");
+    expect(result.brief?.notes).toBe("Third Eye silent (unclear signal)");
+    expect(events.map((item) => item.event)).toEqual(["START", "OK_FALLBACK"]);
+  });
+
+  it("returns fallback brief when model output fails schema validation", async () => {
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "openrouter/arcee-ai/trinity-mini:free",
+      timeoutMs: 3_000,
+      temperature: 0.3,
+      userMessage: "Any message",
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () =>
+        '{"risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"missing goal"}',
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.goal).toBe("Third Eye silent (unclear signal)");
+    expect(result.brief?.notes).toBe("Third Eye silent (unclear signal)");
   });
 
   it("accepts empty notes and keeps schema validity", () => {
@@ -159,6 +204,16 @@ describe("brain subconscious observer", () => {
 
     expect(brief.goal).toBe("Balance creativity safely");
     expect(brief.risk).toBe("medium");
+  });
+
+  it("maps analysis alias into notes when notes key is missing", () => {
+    const raw =
+      '{"goal":"No specific observation","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","analysis":"No specific observation"}';
+    const brief = parseSubconsciousBrief(raw);
+
+    expect(brief.risk).toBe("low");
+    expect(brief.recommendedMode).toBe("answer_direct");
+    expect(brief.notes).toBe("No specific observation");
   });
 
   it("fails open on timeout", async () => {

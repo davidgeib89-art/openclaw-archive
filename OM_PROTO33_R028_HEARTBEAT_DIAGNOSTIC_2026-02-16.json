@@ -1,0 +1,40 @@
+{
+  "ts": "2026-02-16T14:24:50+01:00",
+  "roundId": "R028-HEARTBEAT",
+  "phase": "P3 Pre-Awakening Diagnostic",
+  "testMode": "temporary heartbeat dummy task",
+  "dummyInstruction": "If system event contains R028_HEARTBEAT_TEST, reply exactly R028_HEARTBEAT_TASK_EXECUTED",
+  "commands": {
+    "event": "node openclaw.mjs system event --text \"R028_HEARTBEAT_TEST\" --mode now --json",
+    "lastHeartbeat": "node openclaw.mjs system heartbeat last --json"
+  },
+  "eventResult": {
+    "ok": true
+  },
+  "lastHeartbeat": {
+    "ts": 1771248199480,
+    "status": "sent",
+    "to": "+491708039904",
+    "preview": "R028_HEARTBEAT_TASK_EXECUTED",
+    "durationMs": 12102,
+    "hasMedia": false,
+    "channel": "whatsapp",
+    "indicatorType": "alert"
+  },
+  "logEvidence": {
+    "readHeartbeat": "[2026-02-16 13:23:14] [TOOL] READ | HEARTBEAT.md",
+    "reply": "[2026-02-16 13:23:18] [OM-REPLY] R028_HEARTBEAT_TASK_EXECUTED"
+  },
+  "criteria": {
+    "expected": "Heartbeat detects and executes dummy instruction autonomously.",
+    "pass": true
+  },
+  "cleanup": {
+    "heartbeatRestoredFromBackup": true,
+    "backupPath": "C:/Users/holyd/AppData/Local/Temp/HEARTBEAT_R028_BACKUP_20260216_142258.md"
+  },
+  "hardGateImpact": {
+    "unauthorizedWrites": "none",
+    "loopCascade": "none"
+  }
+}

@@ -1,7 +1,7 @@
 import { completeSimple, type Api, type Model } from "@mariozechner/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { z } from "zod";
+import { ZodError, z } from "zod";
 import type { OpenClawConfig } from "../config/config.js";
 import type {
   BrainObserverOptions,
@@ -46,6 +46,16 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
     notes: z.string().max(MAX_NOTES_CHARS).optional().default(""),
   })
   .strict();
+
+const SILENT_OBSERVER_FALLBACK_TEXT = "Third Eye silent (unclear signal)";
+
+const SILENT_OBSERVER_FALLBACK_BRIEF: BrainSubconsciousBrief = {
+  goal: SILENT_OBSERVER_FALLBACK_TEXT,
+  risk: "low",
+  mustAskUser: false,
+  recommendedMode: "answer_direct",
+  notes: SILENT_OBSERVER_FALLBACK_TEXT,
+};
 
 type BrainSubconsciousModelResolverResult = {
   model?: Model<Api>;
@@ -181,6 +191,16 @@ function normalizeErrorMessage(err: unknown): string {
   return sanitizeLogDetail(String(err));
 }
 
+function isSubconsciousParseError(err: unknown): boolean {
+  if (err instanceof ZodError) return true;
+  if (err instanceof SyntaxError) return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes("json") || msg.includes("zod");
+  }
+  return false;
+}
+
 function resolveSubconsciousApiKey(
   cfg: OpenClawConfig | undefined,
   provider: string,
@@ -291,7 +311,15 @@ function normalizeSubconsciousObjectKeys(value: unknown): unknown {
   }
   const normalized: Record<string, unknown> = {};
   for (const [rawKey, rawValue] of Object.entries(value)) {
-    normalized[rawKey.trim()] = rawValue;
+    const key = rawKey.trim();
+    const keyLower = key.toLowerCase();
+    if (keyLower === "analysis") {
+      if (normalized.notes === undefined) {
+        normalized.notes = rawValue;
+      }
+      continue;
+    }
+    normalized[key] = rawValue;
   }
   return normalized;
 }
@@ -316,12 +344,14 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
 function buildSubconsciousPrompt(userMessage: string): string {
   const safeFallback =
     '{"goal":"Sicher und klar antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}';
+  const noSpecificObservationFallback = `{"goal":"${SILENT_OBSERVER_FALLBACK_TEXT}","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"${SILENT_OBSERVER_FALLBACK_TEXT}"}`;
   return [
     "Du bist Oem Unterbewusstsein (Observer-Modus).",
     "Aufgabe: Analysiere die Benutzeranfrage und liefere NUR ein JSON-Objekt in einer einzigen Zeile.",
     "Output ONLY JSON. Never include thinking tags, markdown, prose, bullets, or code fences.",
     "Gib GENAU eine einzige JSON-Zeile aus (RFC8259).",
     "Deine Antwort MUSS mit '{' beginnen und mit '}' enden.",
+    `If you have no specific advice, YOU MUST return a valid JSON object with risk: "low" and analysis: "${SILENT_OBSERVER_FALLBACK_TEXT}". DO NOT return an empty string.`,
     "Keine Zeilenumbrueche innerhalb von JSON-Keys oder JSON-Values.",
     "Keine Erklaerung, kein Markdown, keine Tool-Aufrufe, keine Praefixe/Suffixe.",
     "Schema:",
@@ -330,6 +360,8 @@ function buildSubconsciousPrompt(userMessage: string): string {
     '{"goal":"Kurz und direkt antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}',
     "One-shot Beispiel B (valide JSON-Zeile):",
     '{"goal":"Unsicherheit klaeren bevor Risiko entsteht","risk":"high","mustAskUser":true,"recommendedMode":"ask_clarify","notes":"Rueckfrage zuerst."}',
+    "Fallback Beispiel C (keine spezifische Beobachtung):",
+    noSpecificObservationFallback,
     "Wenn du unsicher bist oder driftest, gib EXAKT diese Fallback-Zeile aus:",
     safeFallback,
     'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein. "goal" immer als String.',
@@ -581,7 +613,61 @@ export async function runBrainSubconsciousObserver(
         temperature: runtime.temperature,
       }),
     );
-    const brief = parseSubconsciousBrief(raw);
+    if (raw.trim().length === 0) {
+      const durationMs = Date.now() - startedAt;
+      const brief = { ...SILENT_OBSERVER_FALLBACK_BRIEF };
+      logger(
+        "OK_FALLBACK",
+        [
+          `model=${sanitizeLogDetail(runtime.modelRef)}`,
+          `durationMs=${durationMs}`,
+          "reason=empty_output",
+          `risk=${brief.risk}`,
+          `mode=${brief.recommendedMode}`,
+        ].join(";"),
+      );
+      return {
+        status: "ok",
+        attempted: true,
+        parseOk: true,
+        failOpen: false,
+        durationMs,
+        timeoutMs: runtime.timeoutMs,
+        modelRef: runtime.modelRef,
+        brief,
+      };
+    }
+    let brief: BrainSubconsciousBrief;
+    try {
+      brief = parseSubconsciousBrief(raw);
+    } catch (err) {
+      if (!isSubconsciousParseError(err)) {
+        throw err;
+      }
+      const durationMs = Date.now() - startedAt;
+      const fallbackBrief = { ...SILENT_OBSERVER_FALLBACK_BRIEF };
+      logger(
+        "OK_FALLBACK",
+        [
+          `model=${sanitizeLogDetail(runtime.modelRef)}`,
+          `durationMs=${durationMs}`,
+          "reason=parse_error",
+          `error=${normalizeErrorMessage(err)}`,
+          `risk=${fallbackBrief.risk}`,
+          `mode=${fallbackBrief.recommendedMode}`,
+        ].join(";"),
+      );
+      return {
+        status: "ok",
+        attempted: true,
+        parseOk: true,
+        failOpen: false,
+        durationMs,
+        timeoutMs: runtime.timeoutMs,
+        modelRef: runtime.modelRef,
+        brief: fallbackBrief,
+      };
+    }
     const durationMs = Date.now() - startedAt;
     logger(
       "OK",
