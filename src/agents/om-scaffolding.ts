@@ -195,9 +195,18 @@ function logBlockedAction(params: {
 
 // ─── CONFIGURATION ─────────────────────────────────────────────────────────────
 
+const SACRED_RELATIVE_PREFIX = "knowledge/sacred/";
+/**
+ * Bare sacred filenames that should canonicalize to the sacred relative path.
+ * This closes a loophole where the model alternates aliases like
+ * `MANIFEST_RITUALS.md` and `knowledge/sacred/MANIFEST_RITUALS.md`.
+ */
+const SACRED_BARE_READ_FILENAME_PATTERN =
+  /^(active_tasks|mood|chronicle|manifest_rituals|thinking_protocol|test_reflections|reflections|heartbeat|heartbeat_count|soul|identity|agents|memory|tools|user|ritual_[a-z0-9_]+)\.md$/i;
+
 /** Files/directories considered "sacred" — auto-backed-up before write overwrites. */
 const SACRED_PATHS = [
-  "knowledge/sacred/",
+  SACRED_RELATIVE_PREFIX,
   "CHRONICLE_OF_",
   "ACTIVE_TASKS",
   "THINKING_PROTOCOL",
@@ -634,7 +643,26 @@ function extractToolArgsFromExecuteCall(executeArgs: unknown[]): Record<string, 
 }
 
 function normalizeLoopPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/").trim();
+  const normalized = filePath.replace(/\\/g, "/").trim();
+  if (!normalized) return normalized;
+
+  const lowered = normalized.toLowerCase();
+  const workspacePrefix = OM_LOG_DIR.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  if (workspacePrefix.length > 0 && lowered.startsWith(`${workspacePrefix}/`)) {
+    return lowered.slice(workspacePrefix.length + 1);
+  }
+
+  const sacredIndex = lowered.indexOf(SACRED_RELATIVE_PREFIX);
+  if (sacredIndex >= 0) {
+    return lowered.slice(sacredIndex);
+  }
+
+  const baseName = path.posix.basename(lowered);
+  if (SACRED_BARE_READ_FILENAME_PATTERN.test(baseName)) {
+    return `${SACRED_RELATIVE_PREFIX}${baseName}`;
+  }
+
+  return lowered;
 }
 
 function resolveLoopThresholds(toolName: string): {

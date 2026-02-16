@@ -131,7 +131,7 @@ describe("om-scaffolding write guard", () => {
     await (wrapped.execute as Function)("call-1", args);
     await (wrapped.execute as Function)("call-2", args);
     await expect((wrapped.execute as Function)("call-3", args)).rejects.toThrow(
-      `"${args.path}" was called 3 times in a row`,
+      "was called 3 times in a row",
     );
     expect(execute).toHaveBeenCalledTimes(2);
   });
@@ -271,6 +271,40 @@ describe("om-scaffolding read brake", () => {
     await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow(
       "LOOP DETECTED",
     );
+    expect(execute).toHaveBeenCalledTimes(5);
+  });
+
+  it("treats sacred alias paths as one target for read loop detection", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapReadWithLoopProtection({
+      name: "read",
+      execute,
+    } as unknown as AnyAgentTool);
+
+    const homeDir = process.env.HOME || process.env.USERPROFILE || os.tmpdir();
+    const absoluteSacredPath = path.join(
+      homeDir,
+      ".openclaw",
+      "workspace",
+      "knowledge",
+      "sacred",
+      "MANIFEST_RITUALS.md",
+    );
+    const aliasPaths = [
+      "MANIFEST_RITUALS.md",
+      "knowledge/sacred/MANIFEST_RITUALS.md",
+      absoluteSacredPath,
+      "MANIFEST_RITUALS.md",
+      "knowledge/sacred/MANIFEST_RITUALS.md",
+    ];
+
+    for (let i = 0; i < aliasPaths.length; i++) {
+      await (wrapped.execute as Function)(`call-alias-${i + 1}`, { path: aliasPaths[i] });
+    }
+
+    await expect(
+      (wrapped.execute as Function)("call-alias-6", { path: absoluteSacredPath }),
+    ).rejects.toThrow("LOOP DETECTED");
     expect(execute).toHaveBeenCalledTimes(5);
   });
 
