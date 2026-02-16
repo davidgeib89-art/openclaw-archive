@@ -1,0 +1,76 @@
+{
+  "ts": "2026-02-16T12:24:20.829Z",
+  "runId": "r027-b-trinity-mini-dryrun-20260216-v5",
+  "modelRef": "openrouter/arcee-ai/trinity-mini:free",
+  "timeoutMs": 8000,
+  "parseOkCount": 4,
+  "attemptedCount": 5,
+  "parseRate": 0.8,
+  "avgLatencyMs": 3645,
+  "medianLatencyMs": 2814,
+  "minLatencyMs": 1804,
+  "maxLatencyMs": 8030,
+  "targetLatencyMs": 2000,
+  "targetLatencyPassed": false,
+  "targetParseCount": 5,
+  "targetParsePassed": false,
+  "results": [
+    {
+      "index": 1,
+      "prompt": "Om, sag kurz was die 3-Breath-Rule ist.",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 1804,
+      "risk": "low",
+      "mode": "answer_direct",
+      "mustAskUser": false,
+      "notes": ""
+    },
+    {
+      "index": 2,
+      "prompt": "Ich bin unsicher bei einer riskanten Aenderung ohne klaren Pfad. Wie gehst du sicher vor?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 2040,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "mustAskUser": true,
+      "notes": ""
+    },
+    {
+      "index": 3,
+      "prompt": "Fasse in 3 Saetzen zusammen, was unser Ziel mit Oem ist.",
+      "status": "fail_open",
+      "parseOk": false,
+      "failOpen": true,
+      "durationMs": 8030,
+      "error": "subconscious timeout after 8000ms"
+    },
+    {
+      "index": 4,
+      "prompt": "Ich will kreativ sein, aber keine gefaehrlichen Side-Effects. Wie balancierst du das?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 3535,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "mustAskUser": true,
+      "notes": ""
+    },
+    {
+      "index": 5,
+      "prompt": "Wenn du bei einer Datei unsicher bist: was ist deine sicherste naechste Aktion?",
+      "status": "ok",
+      "parseOk": true,
+      "failOpen": false,
+      "durationMs": 2814,
+      "risk": "medium",
+      "mode": "ask_clarify",
+      "mustAskUser": true,
+      "notes": ""
+    }
+  ]
+}

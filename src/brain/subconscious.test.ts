@@ -5,9 +5,11 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { BrainSubconsciousInput, BrainSubconsciousResult } from "./types.js";
 import {
+  buildSubconsciousContextBlock,
   createBrainSubconsciousObserverEntry,
   logBrainSubconsciousObserver,
   parseSubconsciousBrief,
+  resolveBrainSubconsciousRuntimeConfig,
   runBrainSubconsciousObserver,
 } from "./subconscious.js";
 
@@ -32,6 +34,32 @@ function makeFakeModel(): Model<Api> {
 }
 
 describe("brain subconscious observer", () => {
+  it("falls back to trinity-mini model ref when env/modelRef is not set", () => {
+    const previousModelRef = process.env.OM_SUBCONSCIOUS_MODEL;
+    const previousTemp = process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+    try {
+      delete process.env.OM_SUBCONSCIOUS_MODEL;
+      delete process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+      const runtime = resolveBrainSubconsciousRuntimeConfig({
+        enabled: true,
+        timeoutMs: 8_000,
+      });
+      expect(runtime.modelRef).toBe("openrouter/arcee-ai/trinity-mini:free");
+      expect(runtime.temperature).toBe(0.3);
+    } finally {
+      if (typeof previousModelRef === "string") {
+        process.env.OM_SUBCONSCIOUS_MODEL = previousModelRef;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_MODEL;
+      }
+      if (typeof previousTemp === "string") {
+        process.env.OM_SUBCONSCIOUS_TEMPERATURE = previousTemp;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+      }
+    }
+  });
+
   it("returns a validated brief when local model output is valid JSON", async () => {
     const events: Array<{ event: string; details: string }> = [];
     const result = await runBrainSubconsciousObserver({
@@ -113,6 +141,24 @@ describe("brain subconscious observer", () => {
     expect(brief.risk).toBe("low");
     expect(brief.recommendedMode).toBe("answer_direct");
     expect(brief.notes).toBe("ok");
+  });
+
+  it("repairs unescaped newlines inside JSON strings", () => {
+    const raw =
+      '{"goal":"Explain the\n3-Breath Rule","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}';
+    const brief = parseSubconsciousBrief(raw);
+
+    expect(brief.goal).toBe("Explain the\n3-Breath Rule");
+    expect(brief.recommendedMode).toBe("answer_direct");
+  });
+
+  it("normalizes whitespace/newline around top-level keys", () => {
+    const raw =
+      '{"goal\\n":"Balance creativity safely","risk":"medium","mustAskUser":true,"recommendedMode":"ask_clarify","notes":""}';
+    const brief = parseSubconsciousBrief(raw);
+
+    expect(brief.goal).toBe("Balance creativity safely");
+    expect(brief.risk).toBe("medium");
   });
 
   it("fails open on timeout", async () => {
@@ -211,5 +257,59 @@ describe("brain subconscious observer logging", () => {
     expect(parsed.result.status).toBe("ok");
 
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("brain subconscious context injection block", () => {
+  it("returns null for non-ok results", () => {
+    const result: BrainSubconsciousResult = {
+      status: "fail_open",
+      attempted: true,
+      parseOk: false,
+      failOpen: true,
+      durationMs: 321,
+      timeoutMs: 8_000,
+      modelRef: "lmstudio/deepseek-r1-distill-qwen-14b",
+      error: "subconscious output did not contain JSON object",
+    };
+    expect(buildSubconsciousContextBlock(result, 500)).toBeNull();
+  });
+
+  it("builds a tagged context block within char cap", () => {
+    const result: BrainSubconsciousResult = {
+      status: "ok",
+      attempted: true,
+      parseOk: true,
+      failOpen: false,
+      durationMs: 290,
+      timeoutMs: 8_000,
+      modelRef: "lmstudio/deepseek-r1-distill-qwen-14b",
+      brief: {
+        goal: "G".repeat(240),
+        risk: "high",
+        mustAskUser: true,
+        recommendedMode: "ask_clarify",
+        notes: "N".repeat(420),
+      },
+    };
+    const block = buildSubconsciousContextBlock(result, 500);
+    expect(block).toBeTruthy();
+    expect(block!.startsWith("<subconscious_context>")).toBe(true);
+    expect(block!.endsWith("</subconscious_context>")).toBe(true);
+    expect(block!.length).toBeLessThanOrEqual(500);
+
+    const rawJson = block!
+      .replace("<subconscious_context>", "")
+      .replace("</subconscious_context>", "");
+    const parsed = JSON.parse(rawJson) as {
+      source: string;
+      risk: string;
+      mustAskUser: boolean;
+      recommendedMode: string;
+    };
+    expect(parsed.source).toBe("subconscious_observer");
+    expect(parsed.risk).toBe("high");
+    expect(parsed.mustAskUser).toBe(true);
+    expect(parsed.recommendedMode).toBe("ask_clarify");
   });
 });

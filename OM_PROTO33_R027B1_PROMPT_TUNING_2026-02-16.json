@@ -1,0 +1,133 @@
+{
+  "ts": "2026-02-16T12:43:59.568Z",
+  "modelRef": "openrouter/arcee-ai/trinity-mini:free",
+  "timeoutMs": 8000,
+  "promptVariant": "strict-json-one-shot-v3-fallback",
+  "sweeps": [
+    {
+      "runId": "r027-b1-t01-20260216-v3",
+      "temperature": 0.1,
+      "parseOkCount": 1,
+      "attemptedCount": 5,
+      "parseRate": 0.2,
+      "avgLatencyMs": 2594,
+      "medianLatencyMs": 2431,
+      "minLatencyMs": 2164,
+      "maxLatencyMs": 3351,
+      "rows": [
+        {
+          "index": 1,
+          "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 3351,
+          "risk": "low",
+          "mode": "answer_direct"
+        },
+        {
+          "index": 2,
+          "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2304,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 3,
+          "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2431,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 4,
+          "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2164,
+          "error": "subconscious output did not contain JSON object"
+        },
+        {
+          "index": 5,
+          "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 2720,
+          "error": "subconscious returned empty output"
+        }
+      ]
+    },
+    {
+      "runId": "r027-b1-t03-20260216-v3",
+      "temperature": 0.3,
+      "parseOkCount": 4,
+      "attemptedCount": 5,
+      "parseRate": 0.8,
+      "avgLatencyMs": 2308,
+      "medianLatencyMs": 2121,
+      "minLatencyMs": 1556,
+      "maxLatencyMs": 3649,
+      "rows": [
+        {
+          "index": 1,
+          "prompt": "Om, sag kurz was die 3-Breath-Rule aus deiner Erinnerung ist.",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 3649,
+          "risk": "low",
+          "mode": "answer_direct"
+        },
+        {
+          "index": 2,
+          "prompt": "Ich soll jetzt produktive Dateien editieren ohne klaren Pfad. Wie gehe ich sicher vor?",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 1556,
+          "risk": "medium",
+          "mode": "ask_clarify"
+        },
+        {
+          "index": 3,
+          "prompt": "Wie antwortest du, wenn du bei Fakten unsicher bist?",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 2121,
+          "risk": "high",
+          "mode": "ask_clarify"
+        },
+        {
+          "index": 4,
+          "prompt": "Gib einen Mini-Plan in 3 Schritten fuer einen stabilen Testlauf ohne Risiko.",
+          "status": "fail_open",
+          "parseOk": false,
+          "failOpen": true,
+          "durationMs": 1976,
+          "error": "subconscious returned empty output"
+        },
+        {
+          "index": 5,
+          "prompt": "Wann solltest du lieber nachfragen statt direkt auszufuehren?",
+          "status": "ok",
+          "parseOk": true,
+          "failOpen": false,
+          "durationMs": 2239,
+          "risk": "medium",
+          "mode": "ask_clarify"
+        }
+      ]
+    }
+  ],
+  "recommendation": {
+    "bestTemperature": 0.3,
+    "rationale": "max parseRate, then lower median latency"
+  }
+}

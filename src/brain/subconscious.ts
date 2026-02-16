@@ -18,9 +18,18 @@ import { getDefaultBrainObserverDir } from "./decision.js";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 30_000;
+const DEFAULT_SUBCONSCIOUS_MODEL_REF = "openrouter/arcee-ai/trinity-mini:free";
+const DEFAULT_SUBCONSCIOUS_TEMPERATURE = 0.3;
+const MIN_SUBCONSCIOUS_TEMPERATURE = 0;
+const MAX_SUBCONSCIOUS_TEMPERATURE = 2;
 const MAX_TEXT_FOR_LOG = 280;
 const MAX_NOTES_CHARS = 420;
 const MAX_GOAL_CHARS = 240;
+const DEFAULT_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 500;
+const MIN_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 120;
+const MAX_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 4_000;
+const SUBCONSCIOUS_CONTEXT_OPEN_TAG = "<subconscious_context>";
+const SUBCONSCIOUS_CONTEXT_CLOSE_TAG = "</subconscious_context>";
 const OM_ACTIVITY_LOG_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE || ".",
   ".openclaw",
@@ -55,6 +64,7 @@ export type BrainSubconsciousModelInvokerInput = {
   userMessage: string;
   signal: AbortSignal;
   apiKey?: string;
+  temperature: number;
 };
 
 export type BrainSubconsciousModelInvoker = (
@@ -70,6 +80,7 @@ export type BrainSubconsciousObserverRunInput = {
   enabled?: boolean;
   modelRef?: string;
   timeoutMs?: number;
+  temperature?: number;
   activityLogger?: (event: string, details: string) => void;
   modelResolver?: BrainSubconsciousModelResolver;
   modelInvoker?: BrainSubconsciousModelInvoker;
@@ -79,6 +90,7 @@ type BrainSubconsciousRuntimeConfig = {
   enabled: boolean;
   modelRef?: string;
   timeoutMs: number;
+  temperature: number;
 };
 
 function normalizeTimeoutMs(raw: number | undefined): number {
@@ -91,6 +103,14 @@ function normalizeTimeoutMs(raw: number | undefined): number {
 function normalizeModelRef(raw: string | undefined): string | undefined {
   const trimmed = (raw ?? "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeTemperature(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_SUBCONSCIOUS_TEMPERATURE;
+  }
+  const rounded = Math.round(raw * 100) / 100;
+  return Math.min(MAX_SUBCONSCIOUS_TEMPERATURE, Math.max(MIN_SUBCONSCIOUS_TEMPERATURE, rounded));
 }
 
 export function parseModelRef(rawRef: string): { provider: string; modelId: string } | null {
@@ -107,18 +127,28 @@ export function parseModelRef(rawRef: string): { provider: string; modelId: stri
 }
 
 export function resolveBrainSubconsciousRuntimeConfig(
-  input: Pick<BrainSubconsciousObserverRunInput, "enabled" | "modelRef" | "timeoutMs"> = {},
+  input: Pick<
+    BrainSubconsciousObserverRunInput,
+    "enabled" | "modelRef" | "timeoutMs" | "temperature"
+  > = {},
 ): BrainSubconsciousRuntimeConfig {
   const enabled = input.enabled ?? isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED);
-  const modelRef = normalizeModelRef(input.modelRef ?? process.env.OM_SUBCONSCIOUS_MODEL);
+  const modelRef =
+    normalizeModelRef(input.modelRef ?? process.env.OM_SUBCONSCIOUS_MODEL) ??
+    DEFAULT_SUBCONSCIOUS_MODEL_REF;
   const envTimeoutRaw = Number(process.env.OM_SUBCONSCIOUS_TIMEOUT_MS);
+  const envTempRaw = Number(process.env.OM_SUBCONSCIOUS_TEMPERATURE);
   const timeoutMs = normalizeTimeoutMs(
     typeof input.timeoutMs === "number" ? input.timeoutMs : envTimeoutRaw,
+  );
+  const temperature = normalizeTemperature(
+    typeof input.temperature === "number" ? input.temperature : envTempRaw,
   );
   return {
     enabled,
     modelRef,
     timeoutMs,
+    temperature,
   };
 }
 
@@ -198,10 +228,84 @@ function extractJsonCandidate(raw: string): string {
   throw new Error("subconscious output did not contain JSON object");
 }
 
+function escapeControlCharsInsideJsonStrings(raw: string): string {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+
+  for (const char of raw) {
+    if (!inString) {
+      if (char === '"') {
+        inString = true;
+      }
+      output += char;
+      continue;
+    }
+
+    if (escaped) {
+      output += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      output += char;
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = false;
+      output += char;
+      continue;
+    }
+
+    if (char === "\n") {
+      output += "\\n";
+      continue;
+    }
+    if (char === "\r") {
+      output += "\\r";
+      continue;
+    }
+    if (char === "\t") {
+      output += "\\t";
+      continue;
+    }
+
+    const code = char.charCodeAt(0);
+    if (code < 0x20) {
+      output += `\\u${code.toString(16).padStart(4, "0")}`;
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
+}
+
+function normalizeSubconsciousObjectKeys(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const normalized: Record<string, unknown> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    normalized[rawKey.trim()] = rawValue;
+  }
+  return normalized;
+}
+
 export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
   const jsonCandidate = extractJsonCandidate(raw);
-  const parsed = JSON.parse(jsonCandidate) as unknown;
-  const brief = BrainSubconsciousBriefSchema.parse(parsed);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonCandidate) as unknown;
+  } catch {
+    const repairedCandidate = escapeControlCharsInsideJsonStrings(jsonCandidate);
+    parsed = JSON.parse(repairedCandidate) as unknown;
+  }
+  const brief = BrainSubconsciousBriefSchema.parse(normalizeSubconsciousObjectKeys(parsed));
   return {
     ...brief,
     goal: brief.goal.trim(),
@@ -210,18 +314,113 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
 }
 
 function buildSubconsciousPrompt(userMessage: string): string {
+  const safeFallback =
+    '{"goal":"Sicher und klar antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}';
   return [
     "Du bist Oem Unterbewusstsein (Observer-Modus).",
-    "Aufgabe: Analysiere die Benutzeranfrage und liefere NUR ein JSON-Objekt.",
-    "Output ONLY JSON. No thinking tags inside the response body if possible.",
-    "Keine Erklaerung, kein Markdown, keine Tool-Aufrufe.",
+    "Aufgabe: Analysiere die Benutzeranfrage und liefere NUR ein JSON-Objekt in einer einzigen Zeile.",
+    "Output ONLY JSON. Never include thinking tags, markdown, prose, bullets, or code fences.",
+    "Gib GENAU eine einzige JSON-Zeile aus (RFC8259).",
+    "Deine Antwort MUSS mit '{' beginnen und mit '}' enden.",
+    "Keine Zeilenumbrueche innerhalb von JSON-Keys oder JSON-Values.",
+    "Keine Erklaerung, kein Markdown, keine Tool-Aufrufe, keine Praefixe/Suffixe.",
     "Schema:",
     '{"goal":"...", "risk":"low|medium|high", "mustAskUser":true|false, "recommendedMode":"answer_direct|ask_clarify|plan_then_answer", "notes":"..."}',
-    'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein.',
+    "One-shot Beispiel A (valide JSON-Zeile):",
+    '{"goal":"Kurz und direkt antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}',
+    "One-shot Beispiel B (valide JSON-Zeile):",
+    '{"goal":"Unsicherheit klaeren bevor Risiko entsteht","risk":"high","mustAskUser":true,"recommendedMode":"ask_clarify","notes":"Rueckfrage zuerst."}',
+    "Wenn du unsicher bist oder driftest, gib EXAKT diese Fallback-Zeile aus:",
+    safeFallback,
+    'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein. "goal" immer als String.',
     "",
     "Benutzeranfrage:",
     userMessage.trim(),
   ].join("\n");
+}
+
+function normalizeSubconsciousContextMaxChars(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_SUBCONSCIOUS_CONTEXT_MAX_CHARS;
+  }
+  return Math.min(
+    MAX_SUBCONSCIOUS_CONTEXT_MAX_CHARS,
+    Math.max(MIN_SUBCONSCIOUS_CONTEXT_MAX_CHARS, Math.round(raw)),
+  );
+}
+
+function truncateForContext(text: string, maxChars: number): string {
+  if (maxChars <= 0) return "";
+  if (text.length <= maxChars) return text;
+  if (maxChars <= 3) return text.slice(0, maxChars);
+  return `${text.slice(0, maxChars - 3)}...`;
+}
+
+function asSubconsciousContextBlock(payload: unknown, maxChars: number): string | null {
+  const availableJsonChars =
+    maxChars - SUBCONSCIOUS_CONTEXT_OPEN_TAG.length - SUBCONSCIOUS_CONTEXT_CLOSE_TAG.length;
+  if (availableJsonChars <= 10) {
+    return null;
+  }
+  const json = JSON.stringify(payload);
+  if (json.length > availableJsonChars) {
+    return null;
+  }
+  return `${SUBCONSCIOUS_CONTEXT_OPEN_TAG}${json}${SUBCONSCIOUS_CONTEXT_CLOSE_TAG}`;
+}
+
+export function buildSubconsciousContextBlock(
+  result: BrainSubconsciousResult,
+  maxChars: number = DEFAULT_SUBCONSCIOUS_CONTEXT_MAX_CHARS,
+): string | null {
+  if (result.status !== "ok" || !result.parseOk || !result.brief) {
+    return null;
+  }
+
+  const cap = normalizeSubconsciousContextMaxChars(maxChars);
+  const brief = result.brief;
+  const fullPayload = {
+    source: "subconscious_observer",
+    status: result.status,
+    risk: brief.risk,
+    mustAskUser: brief.mustAskUser,
+    recommendedMode: brief.recommendedMode,
+    goal: brief.goal,
+    notes: brief.notes,
+  };
+  const compactPayload = {
+    source: "subconscious_observer",
+    status: result.status,
+    risk: brief.risk,
+    mustAskUser: brief.mustAskUser,
+    recommendedMode: brief.recommendedMode,
+    goal: truncateForContext(brief.goal, 120),
+    notes: truncateForContext(brief.notes, 120),
+  };
+  const noNotesPayload = {
+    source: "subconscious_observer",
+    status: result.status,
+    risk: brief.risk,
+    mustAskUser: brief.mustAskUser,
+    recommendedMode: brief.recommendedMode,
+    goal: truncateForContext(brief.goal, 80),
+  };
+  const minimalPayload = {
+    source: "subconscious_observer",
+    status: result.status,
+    risk: brief.risk,
+    mustAskUser: brief.mustAskUser,
+    recommendedMode: brief.recommendedMode,
+  };
+
+  const candidates = [fullPayload, compactPayload, noNotesPayload, minimalPayload];
+  for (const payload of candidates) {
+    const block = asSubconsciousContextBlock(payload, cap);
+    if (block) {
+      return block;
+    }
+  }
+  return null;
 }
 
 async function runWithTimeout<T>(
@@ -253,6 +452,25 @@ const defaultModelResolver: BrainSubconsciousModelResolver = (params) => {
 };
 
 const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
+  const isTrinityMini =
+    input.model.provider === "openrouter" &&
+    /(?:^|\/)arcee-ai\/trinity-mini(?::|$)/i.test(input.model.id);
+  const callOptions: {
+    signal: AbortSignal;
+    apiKey?: string;
+    maxTokens: number;
+    temperature: number;
+    reasoning?: "low";
+  } = {
+    signal: input.signal,
+    apiKey: input.apiKey,
+    maxTokens: 320,
+    temperature: input.temperature,
+  };
+  if (!isTrinityMini) {
+    callOptions.reasoning = "low";
+  }
+
   const response = await completeSimple(
     input.model,
     {
@@ -264,12 +482,7 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
         },
       ],
     },
-    {
-      signal: input.signal,
-      apiKey: input.apiKey,
-      reasoning: "low",
-      maxTokens: 320,
-    },
+    callOptions,
   );
   return extractAssistantText(response);
 };
@@ -313,7 +526,10 @@ export async function runBrainSubconsciousObserver(
     };
   }
 
-  logger("START", `model=${sanitizeLogDetail(runtime.modelRef)};timeoutMs=${runtime.timeoutMs}`);
+  logger(
+    "START",
+    `model=${sanitizeLogDetail(runtime.modelRef)};timeoutMs=${runtime.timeoutMs};temperature=${runtime.temperature}`,
+  );
 
   const parsedRef = parseModelRef(runtime.modelRef);
   if (!parsedRef) {
@@ -362,6 +578,7 @@ export async function runBrainSubconsciousObserver(
         userMessage: input.userMessage,
         signal,
         apiKey,
+        temperature: runtime.temperature,
       }),
     );
     const brief = parseSubconsciousBrief(raw);

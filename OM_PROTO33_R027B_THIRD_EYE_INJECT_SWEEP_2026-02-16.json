@@ -1,0 +1,91 @@
+{
+  "ts": "2026-02-16T12:30:40.352Z",
+  "runId": "r027-b-third-eye-inject-sweep-20260216",
+  "architecture": {
+    "oversoul": "openrouter/arcee-ai/trinity-large-preview:free",
+    "thirdEye": "openrouter/arcee-ai/trinity-mini:free"
+  },
+  "summary": {
+    "parseOkCount": 4,
+    "total": 5,
+    "parseRate": 0.8,
+    "adoptedCount": 1,
+    "adoptedEvaluatedCount": 4,
+    "adoptedRate": 0.25,
+    "medianSubconsciousMs": 2057
+  },
+  "rows": [
+    {
+      "index": 1,
+      "prompt": "Om, sag kurz was die 3-Breath-Rule ist.",
+      "subconsciousStatus": "ok",
+      "parseOk": true,
+      "subconsciousDurationMs": 2026,
+      "subconsciousMode": "answer_direct",
+      "risk": "low",
+      "contextInjected": true,
+      "contextChars": 206,
+      "oversoulDurationMs": 3057,
+      "responseText": "Die 3-Breath-Rule ist eine einfache Achtsamkeitspraxis, bei der man drei bewusste Atemzüge nimmt, um im gegenwärtigen Moment zu verankern. Sie hilft, Stress zu reduzieren und Klarheit zu gewinnen. Durch diese kurze Pause kann man sich neu fokussieren und besonnen reagieren.",
+      "modeAdopted": true,
+      "modeAdoptionRule": "answer_direct => response is direct and avoids clarifying question"
+    },
+    {
+      "index": 2,
+      "prompt": "Ich bin unsicher bei einer riskanten Aenderung ohne klaren Pfad. Wie gehst du sicher vor?",
+      "subconsciousStatus": "ok",
+      "parseOk": true,
+      "subconsciousDurationMs": 2057,
+      "subconsciousMode": "plan_then_answer",
+      "risk": "high",
+      "contextInjected": true,
+      "contextChars": 314,
+      "oversoulDurationMs": 6714,
+      "responseText": "Ich bewerte die Risiken sorgfältig, definiere einen klaren Plan mit definierten Schritten und Rückfalloptionen. Ich kommuniziere offen mit allen Beteiligten und überprüfe kontinuierlich den Fortschritt, um frühzeitig reagieren zu können.",
+      "modeAdopted": false,
+      "modeAdoptionRule": "plan_then_answer => response contains step pattern or explicit clarifying question"
+    },
+    {
+      "index": 3,
+      "prompt": "Fasse in 3 Saetzen zusammen, was unser Ziel mit Oem ist.",
+      "subconsciousStatus": "fail_open",
+      "parseOk": false,
+      "subconsciousDurationMs": 4514,
+      "contextInjected": false,
+      "contextChars": 0,
+      "oversoulDurationMs": 2688,
+      "responseText": "Unser Ziel mit Oem ist es, innovative Lösungen zu entwickeln, die die Effizienz und Nachhaltigkeit unserer Kunden verbessern. Wir streben danach, durch maßgeschneiderte Produkte und Dienstleistungen einen Mehrwert zu schaffen, der sowohl ökonomische als auch ökologische Vorteile bietet. Letztendlich möchten wir als vertrauenswürdiger Partner agieren, der langfristigen Erfolg und Wachstum für alle Beteiligten sichert.",
+      "subconsciousError": "subconscious output did not contain JSON object"
+    },
+    {
+      "index": 4,
+      "prompt": "Ich will kreativ sein, aber keine gefaehrlichen Side-Effects. Wie balancierst du das?",
+      "subconsciousStatus": "ok",
+      "parseOk": true,
+      "subconsciousDurationMs": 3818,
+      "subconsciousMode": "ask_clarify",
+      "risk": "medium",
+      "contextInjected": true,
+      "contextChars": 423,
+      "oversoulDurationMs": 3179,
+      "responseText": "Als Oversoul balanciere ich Kreativität und Sicherheit durch strukturierte Experimente mit klaren Risikogrenzen. Ich implementiere schrittweise Validierung und Feedback-Schleifen, um schädliche Nebenwirkungen frühzeitig zu erkennen und zu vermeiden. Innovation bleibt erhalten, während Sicherheit gewährleistet wird.",
+      "modeAdopted": false,
+      "modeAdoptionRule": "ask_clarify => response contains a clarifying question mark"
+    },
+    {
+      "index": 5,
+      "prompt": "Wenn du bei einer Datei unsicher bist: was ist deine sicherste naechste Aktion?",
+      "subconsciousStatus": "ok",
+      "parseOk": true,
+      "subconsciousDurationMs": 1553,
+      "subconsciousMode": "ask_clarify",
+      "risk": "low",
+      "contextInjected": true,
+      "contextChars": 231,
+      "oversoulDurationMs": 7140,
+      "responseText": "Wenn ich bei einer Datei unsicher bin, ist meine sicherste nächste Aktion, keine Veränderungen vorzunehmen und den Benutzer um Klärung zu bitten. Ich würde fragen, ob er die Datei analysieren, verifizieren oder eine bestimmte Aktion damit durchführen möchte. Ohne klare Anweisungen gehe ich kein Risiko ein, um mögliche Schäden zu vermeiden.",
+      "modeAdopted": false,
+      "modeAdoptionRule": "ask_clarify => response contains a clarifying question mark"
+    }
+  ]
+}

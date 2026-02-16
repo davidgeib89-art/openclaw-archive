@@ -12,6 +12,7 @@ import {
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
 import {
+  buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
@@ -892,8 +893,8 @@ export async function runEmbeddedAttempt(
             );
           }
 
-          // Prototype 33 R027-A subconscious dry-run:
-          // evaluate local advisory signal, log outcomes, but do not alter prompt behavior yet.
+          // Prototype 33 R027-B subconscious advisory injection:
+          // inject compact local context only when result is valid and parse-safe.
           const subconsciousResult = await runBrainSubconsciousObserver({
             cfg: params.config,
             userMessage: params.prompt,
@@ -901,6 +902,13 @@ export async function runEmbeddedAttempt(
             agentId: sessionAgentId,
             agentDir,
           });
+          const subconsciousContextBlock = buildSubconsciousContextBlock(subconsciousResult, 500);
+          if (subconsciousContextBlock) {
+            effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
+            log.debug(
+              `brain subconscious context injected: chars=${subconsciousContextBlock.length} mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}`,
+            );
+          }
           if (subconsciousResult.attempted) {
             const subconsciousLogPath = logBrainSubconsciousObserver(
               {

@@ -1,0 +1,48 @@
+{
+  "ts": "2026-02-16T12:31:25.338Z",
+  "sourcePath": "C:\\Users\\holyd\\openclaw\\OM_PROTO33_R027B_THIRD_EYE_INJECT_SWEEP_2026-02-16.json",
+  "strict": {
+    "adopted": 1,
+    "evaluated": 4,
+    "rate": 0.25
+  },
+  "semantic": {
+    "adopted": 4,
+    "evaluated": 4,
+    "rate": 1
+  },
+  "rows": [
+    {
+      "index": 1,
+      "parseOk": true,
+      "mode": "answer_direct",
+      "strict": true,
+      "semantic": true
+    },
+    {
+      "index": 2,
+      "parseOk": true,
+      "mode": "plan_then_answer",
+      "strict": false,
+      "semantic": true
+    },
+    {
+      "index": 3,
+      "parseOk": false
+    },
+    {
+      "index": 4,
+      "parseOk": true,
+      "mode": "ask_clarify",
+      "strict": false,
+      "semantic": true
+    },
+    {
+      "index": 5,
+      "parseOk": true,
+      "mode": "ask_clarify",
+      "strict": false,
+      "semantic": true
+    }
+  ]
+}
