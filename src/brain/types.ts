@@ -33,6 +33,37 @@ export type BrainDecisionInput = {
   sessionKey?: string;
 };
 
+export type BrainSubconsciousMode = "answer_direct" | "ask_clarify" | "plan_then_answer";
+
+export type BrainSubconsciousBrief = {
+  goal: string;
+  risk: BrainRiskLevel;
+  mustAskUser: boolean;
+  recommendedMode: BrainSubconsciousMode;
+  notes: string;
+};
+
+export type BrainSubconsciousStatus = "ok" | "fail_open" | "skipped";
+
+export type BrainSubconsciousResult = {
+  status: BrainSubconsciousStatus;
+  attempted: boolean;
+  parseOk: boolean;
+  failOpen: boolean;
+  durationMs: number;
+  timeoutMs: number;
+  modelRef?: string;
+  brief?: BrainSubconsciousBrief;
+  error?: string;
+};
+
+export type BrainSubconsciousInput = {
+  userMessage: string;
+  sessionKey?: string;
+  modelRef?: string;
+  timeoutMs: number;
+};
+
 export type BrainObserverEntry = {
   ts: string;
   event: "brain.decision.observer";
@@ -59,7 +90,20 @@ export type BrainGuidanceEntry = {
   note: string;
 };
 
-export type BrainAuditEntry = BrainObserverEntry | BrainGuidanceEntry;
+export type BrainSubconsciousObserverEntry = {
+  ts: string;
+  event: "brain.subconscious.observer";
+  mode: "observer";
+  source: string;
+  sessionKey?: string;
+  input: BrainSubconsciousInput;
+  result: BrainSubconsciousResult;
+};
+
+export type BrainAuditEntry =
+  | BrainObserverEntry
+  | BrainGuidanceEntry
+  | BrainSubconsciousObserverEntry;
 
 export type BrainObserverOptions = {
   now?: Date;

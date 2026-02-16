@@ -11,6 +11,10 @@ import {
   createBrainDecision,
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
+import {
+  logBrainSubconsciousObserver,
+  runBrainSubconsciousObserver,
+} from "../../../brain/subconscious.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
@@ -886,6 +890,36 @@ export async function runEmbeddedAttempt(
             log.debug(
               `brain observer decision logged: decisionId=${brainDecision.decisionId} path=${brainLogPath}`,
             );
+          }
+
+          // Prototype 33 R027-A subconscious dry-run:
+          // evaluate local advisory signal, log outcomes, but do not alter prompt behavior yet.
+          const subconsciousResult = await runBrainSubconsciousObserver({
+            cfg: params.config,
+            userMessage: params.prompt,
+            sessionKey: params.sessionKey ?? params.sessionId,
+            agentId: sessionAgentId,
+            agentDir,
+          });
+          if (subconsciousResult.attempted) {
+            const subconsciousLogPath = logBrainSubconsciousObserver(
+              {
+                userMessage: params.prompt,
+                sessionKey: params.sessionKey ?? params.sessionId,
+                modelRef: subconsciousResult.modelRef,
+                timeoutMs: subconsciousResult.timeoutMs,
+              },
+              subconsciousResult,
+              {
+                source: "proto33-r027.dry-run",
+                sessionKey: params.sessionKey ?? params.sessionId,
+              },
+            );
+            if (subconsciousLogPath) {
+              log.debug(
+                `brain subconscious dry-run logged: status=${subconsciousResult.status} path=${subconsciousLogPath}`,
+              );
+            }
           }
         } catch (brainErr) {
           log.warn(`brain observer setup failed: ${String(brainErr)}`);
