@@ -32,6 +32,7 @@ import {
   wrapWebSearchWithEvalGuard,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
+import { withSacredMemorySearchConfig } from "../brain/memory-ingestion.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicies,
@@ -244,6 +245,9 @@ export function createOpenClawCodingTools(options?: {
     subagentPolicy,
   ]);
   const execConfig = resolveExecConfig({ cfg: options?.config, agentId });
+  const brainMemoryConfig = options?.config
+    ? withSacredMemorySearchConfig({ cfg: options.config, agentId })
+    : options?.config;
   const sandboxRoot = sandbox?.workspaceDir;
   const sandboxFsBridge = sandbox?.fsBridge;
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
@@ -390,7 +394,7 @@ export function createOpenClawCodingTools(options?: {
       sandboxFsBridge,
       workspaceDir: options?.workspaceDir,
       sandboxed: !!sandbox,
-      config: options?.config,
+      config: brainMemoryConfig,
       pluginToolAllowlist: collectExplicitAllowlist([
         profilePolicy,
         providerProfilePolicy,
