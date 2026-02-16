@@ -5,6 +5,7 @@ import { createAgentSession, SessionManager, SettingsManager } from "@mariozechn
 import fs from "node:fs/promises";
 import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
+import { createBrainDecision, logBrainDecisionObserver } from "../../../brain/decision.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
@@ -840,6 +841,35 @@ export async function runEmbeddedAttempt(
           } catch (hookErr) {
             log.warn(`before_agent_start hook failed: ${String(hookErr)}`);
           }
+        }
+
+        // Prototype 33 Phase P1: observer-only brain decision logging.
+        // This must never block or alter runtime behavior.
+        try {
+          const availableTools = [...builtInTools, ...allCustomTools]
+            .map((tool) => {
+              if (!tool || typeof tool !== "object") return "";
+              const record = tool as { name?: unknown };
+              return typeof record.name === "string" ? record.name.trim() : "";
+            })
+            .filter((name): name is string => name.length > 0);
+          const brainInput = {
+            userMessage: params.prompt,
+            availableTools,
+            sessionKey: params.sessionKey ?? params.sessionId,
+          };
+          const brainDecision = createBrainDecision(brainInput);
+          const brainLogPath = logBrainDecisionObserver(brainInput, brainDecision, {
+            source: "proto33-p1.before_agent_start",
+            sessionKey: params.sessionKey ?? params.sessionId,
+          });
+          if (brainLogPath) {
+            log.debug(
+              `brain observer decision logged: decisionId=${brainDecision.decisionId} path=${brainLogPath}`,
+            );
+          }
+        } catch (brainErr) {
+          log.warn(`brain observer logging failed: ${String(brainErr)}`);
         }
 
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);
