@@ -296,4 +296,72 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads[0]?.isError).toBe(true);
     expect(payloads[0]?.text).toContain("connection timeout");
   });
+
+  it("replaces leaked tool-call JSON with plain-text fallback in consistency-guard sessions", () => {
+    const leakedToolJson =
+      '{"name":"read","arguments":{"path":"C:/Users/holyd/.openclaw/workspace/knowledge/sacred/ACTIVE_TASKS.md"}}';
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [{ type: "text", text: leakedToolJson }],
+    });
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [leakedToolJson],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "oiab-r024-quality",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("answer in plain text");
+    expect(payloads[0]?.text).not.toContain('"name":"read"');
+  });
+
+  it("keeps JSON text untouched outside consistency-guard sessions", () => {
+    const leakedToolJson =
+      '{"name":"read","arguments":{"path":"C:/Users/holyd/.openclaw/workspace/knowledge/sacred/ACTIVE_TASKS.md"}}';
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [{ type: "text", text: leakedToolJson }],
+    });
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [leakedToolJson],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "creative-main-session",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(leakedToolJson);
+  });
+
+  it("adds plain-text fallback for empty assistant replies in consistency-guard sessions", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "oiab-r024-quality",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("do not want to stay silent");
+  });
 });

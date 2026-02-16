@@ -21,6 +21,52 @@ import {
 
 type ToolMetaEntry = { toolName: string; meta?: string };
 
+const CONSISTENCY_GUARD_SESSION_PATTERN =
+  /(^|[-_])(oiab|eval|benchmark|retest|sweep|quality)([-_]|$)/i;
+const TOOL_JSON_FALLBACK_TEXT =
+  "I might be uncertain, so I will answer in plain text: please clarify your goal in one sentence.";
+const EMPTY_REPLY_FALLBACK_TEXT =
+  "I am uncertain and do not want to stay silent: please restate your request in one clear sentence.";
+
+function isConsistencyGuardSession(sessionKey: string): boolean {
+  return CONSISTENCY_GUARD_SESSION_PATTERN.test(sessionKey);
+}
+
+function stripCodeFence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("```") || !trimmed.endsWith("```")) {
+    return trimmed;
+  }
+  const lines = trimmed.split("\n");
+  if (lines.length < 2) {
+    return trimmed;
+  }
+  return lines.slice(1, -1).join("\n").trim();
+}
+
+function isLikelyToolCallJsonLeak(text: string): boolean {
+  const candidate = stripCodeFence(text);
+  if (!candidate.startsWith("{") || !candidate.endsWith("}")) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(candidate);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.name === "string" && "arguments" in record) {
+      return true;
+    }
+    if (record.type === "tool_call" && typeof record.tool_name === "string") {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function buildEmbeddedRunPayloads(params: {
   assistantTexts: string[];
   toolMetas: ToolMetaEntry[];
@@ -54,6 +100,7 @@ export function buildEmbeddedRunPayloads(params: {
   }> = [];
 
   const useMarkdown = params.toolResultFormat === "markdown";
+  const consistencyGuardEnabled = isConsistencyGuardSession(params.sessionKey);
   const lastAssistantErrored = params.lastAssistant?.stopReason === "error";
   const errorText = params.lastAssistant
     ? formatAssistantErrorText(params.lastAssistant, {
@@ -178,8 +225,16 @@ export function buildEmbeddedRunPayloads(params: {
         ? [fallbackAnswerText]
         : []
   ).filter((text) => !shouldSuppressRawErrorText(text));
+  const containsSilentDirective = answerTexts.some((text) =>
+    isSilentReplyText(text, SILENT_REPLY_TOKEN),
+  );
+  let droppedToolJsonLeak = false;
 
   for (const text of answerTexts) {
+    if (consistencyGuardEnabled && isLikelyToolCallJsonLeak(text)) {
+      droppedToolJsonLeak = true;
+      continue;
+    }
     const {
       text: cleanedText,
       mediaUrls,
@@ -240,6 +295,23 @@ export function buildEmbeddedRunPayloads(params: {
         isError: true,
       });
     }
+  }
+
+  const hasUserFacingReply = replyItems.some(
+    (item) => Boolean(item.text?.trim()) || Boolean(item.media?.length),
+  );
+  if (
+    consistencyGuardEnabled &&
+    !containsSilentDirective &&
+    !hasUserFacingReply &&
+    !errorText &&
+    !params.lastToolError &&
+    params.lastAssistant &&
+    params.lastAssistant.stopReason !== "toolUse"
+  ) {
+    replyItems.push({
+      text: droppedToolJsonLeak ? TOOL_JSON_FALLBACK_TEXT : EMPTY_REPLY_FALLBACK_TEXT,
+    });
   }
 
   const hasAudioAsVoiceTag = replyItems.some((item) => item.audioAsVoice);

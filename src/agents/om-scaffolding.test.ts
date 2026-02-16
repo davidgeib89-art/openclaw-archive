@@ -10,6 +10,7 @@ import {
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
   wrapReadWithLoopProtection,
+  wrapWebSearchWithEvalGuard,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
 
@@ -272,6 +273,36 @@ describe("om-scaffolding read brake", () => {
     );
     expect(execute).toHaveBeenCalledTimes(5);
   });
+
+  it("redirects REFLECTIONS.md reads to TEST_REFLECTIONS.md in strict eval sessions", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapReadWithLoopProtection(
+      { name: "read", execute } as unknown as AnyAgentTool,
+      { sessionKey: "oiab-r024-consistency" },
+    );
+
+    await (wrapped.execute as Function)("call-1", {
+      path: "knowledge/sacred/REFLECTIONS.md",
+    });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[1]?.path).toBe("knowledge/sacred/TEST_REFLECTIONS.md");
+  });
+
+  it("keeps REFLECTIONS.md reads unchanged outside strict eval sessions", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapReadWithLoopProtection(
+      { name: "read", execute } as unknown as AnyAgentTool,
+      { sessionKey: "creative-main-session" },
+    );
+
+    await (wrapped.execute as Function)("call-1", {
+      path: "knowledge/sacred/REFLECTIONS.md",
+    });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[1]?.path).toBe("knowledge/sacred/REFLECTIONS.md");
+  });
 });
 
 describe("om-scaffolding exec safety guard", () => {
@@ -300,6 +331,156 @@ describe("om-scaffolding exec safety guard", () => {
     );
 
     await (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("om-scaffolding web search eval guard", () => {
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  function writeSessionEvents(params: {
+    homeDir: string;
+    sessionKey: string;
+    events: unknown[];
+  }) {
+    const sessionDir = path.join(params.homeDir, ".openclaw", "agents", "main", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionPath = path.join(sessionDir, `${params.sessionKey}.jsonl`);
+    const lines = params.events.map((event) => JSON.stringify(event));
+    fs.writeFileSync(sessionPath, `${lines.join("\n")}\n`, "utf-8");
+  }
+
+  it("allows first web_search in strict eval sessions", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-web-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r024-consistency";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Explain this." }] },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWebSearchWithEvalGuard(
+      { name: "web_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-1", { query: "what is the difference?" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks second web_search in strict eval sessions within same prompt", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-web-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r024-consistency";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Explain this." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"status":"ok"}' }],
+          },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWebSearchWithEvalGuard(
+      { name: "web_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await expect(
+      (wrapped.execute as Function)("call-2", { query: "second query" }),
+    ).rejects.toThrow("EVAL_WEB_SEARCH_LIMIT_REACHED");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("resets web_search budget after a new user prompt in strict eval sessions", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-web-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "oiab-r024-consistency";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "First prompt." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"status":"ok"}' }],
+          },
+        },
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Second prompt." }] },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWebSearchWithEvalGuard(
+      { name: "web_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-3", { query: "second prompt search" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows web_search outside strict eval sessions", async () => {
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWebSearchWithEvalGuard(
+      { name: "web_search", execute } as unknown as AnyAgentTool,
+      { sessionKey: "creative-main-session" },
+    );
+
+    await (wrapped.execute as Function)("call-1", { query: "what is the difference?" });
     expect(execute).toHaveBeenCalledTimes(1);
   });
 });

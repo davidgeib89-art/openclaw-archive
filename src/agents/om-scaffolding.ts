@@ -169,8 +169,20 @@ type WriteGuardContext = {
 type ExecGuardContext = {
   sessionKey?: string;
 };
+type ReadGuardContext = {
+  agentId?: string;
+  sessionKey?: string;
+};
+type WebSearchGuardContext = {
+  agentId?: string;
+  sessionKey?: string;
+};
 
 const writeIntentBySessionPath = new Map<string, { mtimeMs: number; hasIntent: boolean }>();
+const webSearchCountBySessionPath = new Map<
+  string,
+  { mtimeMs: number; latestUserLine: number; countInLatestTurn: number }
+>();
 
 /**
  * Best-effort string argument extraction across mixed tool schemas.
@@ -240,11 +252,89 @@ function extractUserTextFromSessionEvent(event: unknown): string {
   return parts.join("\n").trim();
 }
 
-function resolveSessionPath(ctx: WriteGuardContext): string | null {
+function resolveSessionPath(ctx: { agentId?: string; sessionKey?: string }): string | null {
   if (!ctx.sessionKey) return null;
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
   const agentId = ctx.agentId || "main";
   return path.join(homeDir, ".openclaw", "agents", agentId, "sessions", `${ctx.sessionKey}.jsonl`);
+}
+
+function parseSessionMessageRole(event: unknown): "user" | "assistant" | "" {
+  if (!event || typeof event !== "object") return "";
+  const record = event as { type?: unknown; message?: unknown };
+  if (record.type !== "message" || !record.message || typeof record.message !== "object") return "";
+  const role = (record.message as { role?: unknown }).role;
+  if (role === "user" || role === "assistant") return role;
+  return "";
+}
+
+function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number {
+  const sessionPath = resolveSessionPath(ctx);
+  if (!sessionPath || !fs.existsSync(sessionPath)) {
+    return 0;
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(sessionPath);
+  } catch {
+    return 0;
+  }
+
+  const cached = webSearchCountBySessionPath.get(sessionPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    return cached.countInLatestTurn;
+  }
+
+  let latestUserLine = -1;
+  let countInLatestTurn = 0;
+  try {
+    const raw = fs.readFileSync(sessionPath, "utf-8");
+    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    const parsedLines: unknown[] = [];
+    for (const line of lines) {
+      try {
+        parsedLines.push(JSON.parse(line));
+      } catch {
+        parsedLines.push(undefined);
+      }
+    }
+
+    for (let i = parsedLines.length - 1; i >= 0; i--) {
+      if (parseSessionMessageRole(parsedLines[i]) === "user") {
+        latestUserLine = i;
+        break;
+      }
+    }
+
+    if (latestUserLine >= 0) {
+      for (let i = latestUserLine + 1; i < parsedLines.length; i++) {
+        const parsed = parsedLines[i];
+        if (!parsed || typeof parsed !== "object") continue;
+        const record = parsed as { type?: unknown; message?: unknown };
+        if (record.type !== "message" || !record.message || typeof record.message !== "object") {
+          continue;
+        }
+        const message = record.message as { role?: unknown; toolName?: unknown };
+        if (message.role === "toolResult" && message.toolName === "web_search") {
+          // Count completed web_search executions in the current user turn.
+          // We intentionally do not count pending assistant toolCall entries,
+          // so the first search in a prompt is allowed through.
+          countInLatestTurn++;
+        }
+      }
+    }
+  } catch {
+    latestUserLine = -1;
+    countInLatestTurn = 0;
+  }
+
+  webSearchCountBySessionPath.set(sessionPath, {
+    mtimeMs: stat.mtimeMs,
+    latestUserLine,
+    countInLatestTurn,
+  });
+  return countInLatestTurn;
 }
 
 function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
@@ -382,6 +472,41 @@ function throwToolBlocked(message: string): never {
   const error = new Error(message);
   error.name = "OmToolBlockedError";
   throw error;
+}
+
+function rewriteEvalReflectionPath(filePath: string): string {
+  const replaced = filePath.replace(
+    /knowledge[\\/]+sacred[\\/]+reflections\.md/gi,
+    "knowledge/sacred/TEST_REFLECTIONS.md",
+  );
+  return replaced;
+}
+
+function applyPathOverrideToExecuteArgs(executeArgs: unknown[], nextPath: string): void {
+  const candidateIndices = [1, 0];
+  for (const index of candidateIndices) {
+    const candidate = executeArgs[index];
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      continue;
+    }
+    const argsRecord = candidate as Record<string, unknown>;
+    const pathKeys = [
+      "path",
+      "file_path",
+      "TargetFile",
+      "targetFile",
+      "filePath",
+      "filepath",
+      "file",
+      "filename",
+    ];
+    for (const key of pathKeys) {
+      if (typeof argsRecord[key] === "string") {
+        argsRecord[key] = nextPath;
+        return;
+      }
+    }
+  }
 }
 
 function parseObjectArg(value: unknown): Record<string, unknown> | undefined {
@@ -936,7 +1061,10 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
  * This keeps normal quick follow-up reads working, but blocks long repeated
  * read chains on identical paths (like CHRONICLE rereads with rising limits).
  */
-export function wrapReadWithLoopProtection(readTool: AnyAgentTool): AnyAgentTool {
+export function wrapReadWithLoopProtection(
+  readTool: AnyAgentTool,
+  context?: ReadGuardContext,
+): AnyAgentTool {
   const originalExecute = readTool.execute.bind(readTool);
 
   const wrappedTool = {
@@ -955,15 +1083,29 @@ export function wrapReadWithLoopProtection(readTool: AnyAgentTool): AnyAgentTool
       ]);
 
       const readTarget = rawPath?.trim() ?? "";
-      if (readTarget) {
-        logToolCall("read", readTarget);
-        const loopWarning = checkForLoop("read", readTarget);
+      let effectiveReadTarget = readTarget;
+      if (effectiveReadTarget && isStrictEvalSession(context?.sessionKey)) {
+        const redirected = rewriteEvalReflectionPath(effectiveReadTarget);
+        if (redirected !== effectiveReadTarget) {
+          logGuardian(
+            "READ-POLICY",
+            "Redirected REFLECTIONS to TEST_REFLECTIONS in strict eval session",
+            `${effectiveReadTarget} -> ${redirected}`,
+          );
+          effectiveReadTarget = redirected;
+          applyPathOverrideToExecuteArgs(executeArgs, effectiveReadTarget);
+        }
+      }
+
+      if (effectiveReadTarget) {
+        logToolCall("read", effectiveReadTarget);
+        const loopWarning = checkForLoop("read", effectiveReadTarget);
         if (loopWarning) {
           logBlockedAction({
             toolName: "read",
             guardian: "READ-BRAKE",
             reason: "LOOP",
-            target: readTarget,
+            target: effectiveReadTarget,
             detail: "same-path read loop",
           });
           throwToolBlocked(
@@ -973,7 +1115,7 @@ export function wrapReadWithLoopProtection(readTool: AnyAgentTool): AnyAgentTool
       }
 
       const result = await (originalExecute as Function)(...executeArgs);
-      logToolResult("read", true, readTarget || "(no path)");
+      logToolResult("read", true, effectiveReadTarget || "(no path)");
       return result;
     },
   };
@@ -1046,6 +1188,52 @@ export function wrapExecWithLoopProtection(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
+/**
+ * Wraps web_search with a strict-eval budget.
+ * In OIAB/eval sessions we allow at most one web search per user prompt
+ * to preserve creativity while preventing retrieval loops.
+ */
+export function wrapWebSearchWithEvalGuard(
+  webSearchTool: AnyAgentTool,
+  context?: WebSearchGuardContext,
+): AnyAgentTool {
+  const originalExecute = webSearchTool.execute.bind(webSearchTool);
+
+  const wrappedTool = {
+    ...webSearchTool,
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const query = getStringArg(args, ["query", "q", "search"]);
+      logToolCall("web_search", query || "(no query)");
+
+      if (isStrictEvalSession(context?.sessionKey)) {
+        const searchesInCurrentTurn = countWebSearchCallsInLatestUserTurn({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+        });
+        if (searchesInCurrentTurn >= 1) {
+          logBlockedAction({
+            toolName: "web_search",
+            guardian: "EVAL-CONSISTENCY",
+            reason: "ZONE",
+            target: query || "(no query)",
+            detail: `web search limit reached in session ${context?.sessionKey}`,
+          });
+          throwToolBlocked(
+            `EVAL_WEB_SEARCH_LIMIT_REACHED: only one web_search is allowed per user prompt in strict eval session ${context?.sessionKey}. Provide a plain-text synthesis now.`,
+          );
+        }
+      }
+
+      const result = await (originalExecute as Function)(...executeArgs);
+      logToolResult("web_search", true, query || "(no query)");
+      return result;
+    },
+  };
+
+  return wrappedTool as unknown as AnyAgentTool;
+}
+
 // ─── EXPORTS ────────────────────────────────────────────────────────────────────
 
 /**
@@ -1055,6 +1243,7 @@ export function resetLoopDetectorForTests(): void {
   recentCalls.length = 0;
   blockedKeysUntil.clear();
   writeIntentBySessionPath.clear();
+  webSearchCountBySessionPath.clear();
 }
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };

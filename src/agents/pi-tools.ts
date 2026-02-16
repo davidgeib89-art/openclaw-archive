@@ -29,6 +29,7 @@ import {
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
   wrapReadWithLoopProtection,
+  wrapWebSearchWithEvalGuard,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
 import {
@@ -270,11 +271,17 @@ export function createOpenClawCodingTools(options?: {
               root: sandboxRoot,
               bridge: sandboxFsBridge!,
             }),
+            { agentId, sessionKey: options?.sessionKey },
           ),
         ];
       }
       const freshReadTool = createReadTool(workspaceRoot);
-      return [wrapReadWithLoopProtection(createOpenClawReadTool(freshReadTool))];
+      return [
+        wrapReadWithLoopProtection(createOpenClawReadTool(freshReadTool), {
+          agentId,
+          sessionKey: options?.sessionKey,
+        }),
+      ];
     }
     if (tool.name === "bash" || tool.name === execToolName) {
       return [];
@@ -405,9 +412,14 @@ export function createOpenClawCodingTools(options?: {
       requesterAgentIdOverride: agentId,
     }),
   ];
+  const toolsWithConsistencyGuards = tools.map((tool) =>
+    tool.name === "web_search"
+      ? wrapWebSearchWithEvalGuard(tool, { agentId, sessionKey: options?.sessionKey })
+      : tool,
+  );
   // Security: treat unknown/undefined as unauthorized (opt-in, not opt-out)
   const senderIsOwner = options?.senderIsOwner === true;
-  const toolsByAuthorization = applyOwnerOnlyToolPolicy(tools, senderIsOwner);
+  const toolsByAuthorization = applyOwnerOnlyToolPolicy(toolsWithConsistencyGuards, senderIsOwner);
   const coreToolNames = new Set(
     toolsByAuthorization
       .filter((tool) => !getPluginToolMeta(tool))
