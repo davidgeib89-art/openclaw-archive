@@ -843,8 +843,8 @@ export async function runEmbeddedAttempt(
           }
         }
 
-        // Prototype 33 Phase P1: observer-only brain decision logging.
-        // This must never block or alter runtime behavior.
+        // Prototype 33 safety emergency brake:
+        // keep observer logging only (P1 behavior), no runtime guidance influence.
         try {
           const availableTools = [...builtInTools, ...allCustomTools]
             .map((tool) => {
@@ -869,7 +869,7 @@ export async function runEmbeddedAttempt(
             );
           }
         } catch (brainErr) {
-          log.warn(`brain observer logging failed: ${String(brainErr)}`);
+          log.warn(`brain observer setup failed: ${String(brainErr)}`);
         }
 
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);

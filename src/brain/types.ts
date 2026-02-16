@@ -46,6 +46,21 @@ export type BrainObserverEntry = {
   decision: BrainDecision;
 };
 
+export type BrainGuidanceEntry = {
+  ts: string;
+  event: "brain.guidance.soft";
+  mode: "guidance";
+  source: string;
+  sessionKey?: string;
+  decisionId: string;
+  riskLevel: BrainRiskLevel;
+  mustAskUser: boolean;
+  allowedTools: string[];
+  note: string;
+};
+
+export type BrainAuditEntry = BrainObserverEntry | BrainGuidanceEntry;
+
 export type BrainObserverOptions = {
   now?: Date;
   baseDir?: string;

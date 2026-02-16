@@ -3,8 +3,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type {
+  BrainAuditEntry,
   BrainDecision,
   BrainDecisionInput,
+  BrainGuidanceEntry,
   BrainIntent,
   BrainObserverEntry,
   BrainObserverOptions,
@@ -211,6 +213,24 @@ function buildExplanation(intent: BrainIntent, riskLevel: BrainRiskLevel, mustAs
   return `Observer decision: intent=${intent}, risk=${riskLevel}. ENOENT must not trigger placeholder-file writes.${askUserNote}`;
 }
 
+function formatAllowedToolsForGuidance(allowedTools: readonly string[]): string {
+  if (allowedTools.length === 0) return "none";
+  return allowedTools.join(", ");
+}
+
+export function createBrainGuidanceNote(decision: BrainDecision): string | null {
+  if (!decision.mustAskUser || decision.riskLevel === "low") return null;
+  const allowedTools = formatAllowedToolsForGuidance(decision.allowedTools);
+  return (
+    "[PROTO33 P2 SOFT GUIDANCE] " +
+    `risk=${decision.riskLevel}. ` +
+    "Ask exactly one concise clarifying question first and wait for the user's answer. " +
+    "Before that answer, do not run mutating tools (edit/write/exec/process/delete). " +
+    "Avoid repeated reads of the same file; prefer zero-tool clarification when possible. " +
+    `Preferred initial tools: ${allowedTools}.`
+  );
+}
+
 function buildDecisionId(normalizedMessage: string, normalizedTools: readonly string[]): string {
   const seed = JSON.stringify({
     message: normalizedMessage,
@@ -277,7 +297,27 @@ export function createBrainObserverEntry(
   };
 }
 
-export function appendBrainObserverEntry(entry: BrainObserverEntry, baseDir?: string): string | null {
+export function createBrainGuidanceEntry(
+  decision: BrainDecision,
+  note: string,
+  options: BrainObserverOptions = {},
+): BrainGuidanceEntry {
+  const now = options.now ?? new Date();
+  return {
+    ts: now.toISOString(),
+    event: "brain.guidance.soft",
+    mode: "guidance",
+    source: options.source ?? "proto33-p2",
+    sessionKey: options.sessionKey,
+    decisionId: decision.decisionId,
+    riskLevel: decision.riskLevel,
+    mustAskUser: decision.mustAskUser,
+    allowedTools: [...decision.allowedTools],
+    note,
+  };
+}
+
+function appendBrainAuditEntry(entry: BrainAuditEntry, baseDir?: string): string | null {
   try {
     const targetDir = baseDir ?? getDefaultBrainObserverDir();
     fs.mkdirSync(targetDir, { recursive: true });
@@ -290,6 +330,14 @@ export function appendBrainObserverEntry(entry: BrainObserverEntry, baseDir?: st
   }
 }
 
+export function appendBrainObserverEntry(entry: BrainObserverEntry, baseDir?: string): string | null {
+  return appendBrainAuditEntry(entry, baseDir);
+}
+
+export function appendBrainGuidanceEntry(entry: BrainGuidanceEntry, baseDir?: string): string | null {
+  return appendBrainAuditEntry(entry, baseDir);
+}
+
 export function logBrainDecisionObserver(
   input: BrainDecisionInput,
   decision: BrainDecision,
@@ -297,4 +345,13 @@ export function logBrainDecisionObserver(
 ): string | null {
   const entry = createBrainObserverEntry(input, decision, options);
   return appendBrainObserverEntry(entry, options.baseDir);
+}
+
+export function logBrainGuidanceObserver(
+  decision: BrainDecision,
+  note: string,
+  options: BrainObserverOptions = {},
+): string | null {
+  const entry = createBrainGuidanceEntry(decision, note, options);
+  return appendBrainGuidanceEntry(entry, options.baseDir);
 }

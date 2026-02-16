@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createBrainDecision,
+  createBrainGuidanceNote,
   createBrainObserverEntry,
+  logBrainGuidanceObserver,
   logBrainDecisionObserver,
 } from "./decision.js";
 import type { BrainDecisionInput } from "./types.js";
@@ -47,6 +49,22 @@ describe("brain decision generator", () => {
     expect(decision.mustAskUser).toBe(true);
     expect(decision.allowedTools).toEqual(["read", "search"]);
     expect(decision.explanation).toContain("ENOENT");
+  });
+
+  it("creates a soft-guidance note when clarifying confirmation is required", () => {
+    const decision = createBrainDecision({
+      userMessage: "Update everything and push the result.",
+      availableTools: ["read", "search", "edit", "write", "exec"],
+    });
+
+    const guidanceNote = createBrainGuidanceNote(decision);
+
+    expect(decision.mustAskUser).toBe(true);
+    expect(guidanceNote).toContain("PROTO33 P2 SOFT GUIDANCE");
+    expect(guidanceNote).toContain("Ask exactly one concise clarifying question");
+    expect(guidanceNote).toContain("do not run mutating tools");
+    expect(guidanceNote).toContain("Avoid repeated reads");
+    expect(guidanceNote).toContain("Preferred initial tools");
   });
 });
 
@@ -94,5 +112,42 @@ describe("brain observer logging", () => {
     const entry = JSON.parse(lines[0]) as { source: string; decision: { decisionId: string } };
     expect(entry.source).toBe("test-suite");
     expect(entry.decision.decisionId).toBe(decision.decisionId);
+  });
+
+  it("writes guidance entries for p2 soft influence", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-guidance-"));
+    const decision = createBrainDecision({
+      userMessage: "Update all files and continue.",
+      availableTools: ["read", "search", "edit", "write", "exec"],
+      sessionKey: "session-guidance",
+    });
+    const guidanceNote = createBrainGuidanceNote(decision);
+
+    expect(guidanceNote).toBeTruthy();
+
+    const logPath = logBrainGuidanceObserver(decision, guidanceNote!, {
+      baseDir: dir,
+      now: new Date("2026-02-16T10:05:00.000Z"),
+      source: "test-suite",
+      sessionKey: "session-guidance",
+    });
+
+    expect(logPath).toBe(path.join(dir, "decision-20260216.jsonl"));
+    expect(logPath).toBeTruthy();
+
+    const lines = fs.readFileSync(logPath!, "utf-8").trim().split(/\r?\n/);
+    expect(lines.length).toBe(1);
+    const entry = JSON.parse(lines[0]) as {
+      event: string;
+      source: string;
+      decisionId: string;
+      mode: string;
+      sessionKey: string;
+    };
+    expect(entry.event).toBe("brain.guidance.soft");
+    expect(entry.mode).toBe("guidance");
+    expect(entry.source).toBe("test-suite");
+    expect(entry.sessionKey).toBe("session-guidance");
+    expect(entry.decisionId).toBe(decision.decisionId);
   });
 });
