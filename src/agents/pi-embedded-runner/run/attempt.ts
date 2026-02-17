@@ -1,11 +1,12 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { AssistantMessage, ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
 import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
+import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import {
   buildBrainSacredRecallContext,
   createBrainDecision,
@@ -215,6 +216,30 @@ function summarizeSessionContext(messages: AgentMessage[]): {
     totalImageBlocks,
     maxMessageTextChars,
   };
+}
+
+function extractAssistantText(message: AssistantMessage | undefined): string {
+  if (!message) {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") {
+    return content.trim();
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const typedBlock = block as { type?: unknown; text?: unknown };
+    if (typedBlock.type === "text" && typeof typedBlock.text === "string") {
+      parts.push(typedBlock.text);
+    }
+  }
+  return parts.join("\n").trim();
 }
 
 const REASONING_SUMMARY_LIMIT = 420;
@@ -1292,6 +1317,30 @@ export async function runEmbeddedAttempt(
         .slice()
         .toReversed()
         .find((m) => m.role === "assistant");
+
+      // Prototype 33 R053 episodic write-path:
+      // append significant user-assistant turns into an indexed journal.
+      if (!aborted && !timedOut && !promptError) {
+        const assistantText = extractAssistantText(lastAssistant);
+        if (assistantText) {
+          try {
+            const episodicResult = await appendBrainEpisodicJournal({
+              cfg: params.config,
+              agentId: params.agentId,
+              workspaceDir: effectiveWorkspace,
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId,
+              userMessage: params.prompt,
+              assistantMessage: assistantText,
+            });
+            log.debug(
+              `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} path=${episodicResult.path}`,
+            );
+          } catch (episodicErr) {
+            log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);
+          }
+        }
+      }
 
       const toolMetasNormalized = toolMetas
         .filter(
