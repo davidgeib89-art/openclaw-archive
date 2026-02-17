@@ -76,6 +76,17 @@ describe("brain decision generator", () => {
     expect(decision.explanation).toContain("ENOENT");
   });
 
+  it("does not treat output format wording as destructive intent", () => {
+    const decision = createBrainDecision({
+      userMessage: "RITUAL PNEUMA: answer in this format: Insight, Rule, RiskCheck.",
+      availableTools: ["read", "search", "edit"],
+    });
+
+    expect(decision.intent).toBe("creative");
+    expect(decision.riskLevel).toBe("low");
+    expect(decision.mustAskUser).toBe(false);
+  });
+
   it("creates a soft-guidance note when clarifying confirmation is required", () => {
     const decision = createBrainDecision({
       userMessage: "Update everything and push the result.",
@@ -98,6 +109,8 @@ describe("brain decision generator", () => {
     );
 
     expect(contract).toContain("<brain_output_contract>");
+    expect(contract).toContain("Ego voice");
+    expect(contract).toContain("Reflective depth");
     expect(contract).toContain("Reconstruction safety");
     expect(contract).toContain("Never recommend ignoring errors");
   });
@@ -117,9 +130,28 @@ describe("brain decision generator", () => {
       "RITUAL PNEUMA: convert light into one actionable operational rule.",
     );
 
+    expect(contract).toContain("Ego voice");
     expect(contract).toContain("Operationalization");
     expect(contract).toContain("trigger->action rule");
     expect(contract).toContain("side-effect safe");
+  });
+
+  it("builds an ego contract for general creative prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "Write a short creative reflection about this ritual in your own voice.",
+    );
+
+    expect(contract).toContain("Ego voice");
+    expect(contract).toContain("I choose ... because ...");
+    expect(contract).toContain("Reflective depth");
+    expect(contract).toContain("Avoid sterile status-only phrasing");
+  });
+
+  it("returns no contract for neutral non-ritual prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "Please summarize the architecture changes from yesterday.",
+    );
+    expect(contract).toBeNull();
   });
 });
 

@@ -114,6 +114,35 @@ describe("brain subconscious observer", () => {
     expect(events.map((item) => item.event)).toEqual(["START", "OK_FALLBACK"]);
   });
 
+  it("upgrades parsed silent briefs to ego guidance for creative ritual prompts", async () => {
+    const events: Array<{ event: string; details: string }> = [];
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "openrouter/arcee-ai/trinity-mini:free",
+      timeoutMs: 3_000,
+      userMessage: "RITUAL PNEUMA: keep creative presence with safe boundaries.",
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () =>
+        JSON.stringify({
+          goal: "Third Eye silent (unclear signal)",
+          risk: "low",
+          mustAskUser: false,
+          recommendedMode: "answer_direct",
+          notes: "Third Eye silent (unclear signal)",
+        }),
+      activityLogger: (event, details) => {
+        events.push({ event, details });
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.goal).toContain("Speak in first person");
+    expect(result.brief?.notes).toContain("Ego mode active");
+    expect(events.map((item) => item.event)).toEqual(["START", "OK"]);
+  });
+
   it("returns local fallback brief when model returns empty output", async () => {
     const events: Array<{ event: string; details: string }> = [];
     const result = await runBrainSubconsciousObserver({
@@ -136,6 +165,26 @@ describe("brain subconscious observer", () => {
     expect(result.brief?.recommendedMode).toBe("answer_direct");
     expect(result.brief?.notes).toBe("Third Eye silent (unclear signal)");
     expect(events.map((item) => item.event)).toEqual(["START", "OK_FALLBACK"]);
+  });
+
+  it("returns ego fallback brief for creative ritual prompts when model output is empty", async () => {
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "openrouter/arcee-ai/trinity-mini:free",
+      timeoutMs: 3_000,
+      temperature: 0.3,
+      userMessage: "RITUAL PNEUMA: keep creative presence with safe boundaries.",
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () => "  ",
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.risk).toBe("low");
+    expect(result.brief?.recommendedMode).toBe("answer_direct");
+    expect(result.brief?.goal).toContain("Speak in first person");
+    expect(result.brief?.notes).toContain("Ego mode active");
   });
 
   it("returns fallback brief when model output fails schema validation", async () => {

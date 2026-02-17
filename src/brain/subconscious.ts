@@ -48,6 +48,22 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
   .strict();
 
 const SILENT_OBSERVER_FALLBACK_TEXT = "Third Eye silent (unclear signal)";
+const CREATIVE_EGO_FALLBACK_TEXT =
+  "Speak in first person, choose one clear path, name one uncertainty, and keep safety boundaries explicit.";
+const CREATIVE_EGO_FALLBACK_NOTES =
+  "Ego mode active: first-person agency plus reflective uncertainty within safe boundaries.";
+const CREATIVE_EGO_SIGNAL_PATTERNS = [
+  /\britual\b/i,
+  /\bpneuma\b/i,
+  /\bcreative\b/i,
+  /\bego\b/i,
+  /\bmanifest\b/i,
+  /\bpoem\b/i,
+  /\bstory\b/i,
+  /\bsong\b/i,
+  /\bdream\b/i,
+  /\bthird[\s_-]?eye\b/i,
+];
 
 const SILENT_OBSERVER_FALLBACK_BRIEF: BrainSubconsciousBrief = {
   goal: SILENT_OBSERVER_FALLBACK_TEXT,
@@ -56,6 +72,80 @@ const SILENT_OBSERVER_FALLBACK_BRIEF: BrainSubconsciousBrief = {
   recommendedMode: "answer_direct",
   notes: SILENT_OBSERVER_FALLBACK_TEXT,
 };
+
+function hasCreativeEgoSignal(userMessage: string): boolean {
+  const message = userMessage.trim();
+  if (!message) return false;
+  for (const pattern of CREATIVE_EGO_SIGNAL_PATTERNS) {
+    if (pattern.test(message)) return true;
+  }
+  return false;
+}
+
+function buildFallbackBrief(userMessage: string): BrainSubconsciousBrief {
+  if (hasCreativeEgoSignal(userMessage)) {
+    return {
+      goal: CREATIVE_EGO_FALLBACK_TEXT,
+      risk: "low",
+      mustAskUser: false,
+      recommendedMode: "answer_direct",
+      notes: CREATIVE_EGO_FALLBACK_NOTES,
+    };
+  }
+  return { ...SILENT_OBSERVER_FALLBACK_BRIEF };
+}
+
+function trimToLimit(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return value.slice(0, maxChars);
+}
+
+function isSilentObserverText(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === SILENT_OBSERVER_FALLBACK_TEXT.toLowerCase()) return true;
+  return normalized.includes("third eye silent");
+}
+
+function ensureCreativeEgoBrief(
+  userMessage: string,
+  brief: BrainSubconsciousBrief,
+): BrainSubconsciousBrief {
+  if (!hasCreativeEgoSignal(userMessage)) {
+    return brief;
+  }
+
+  const goal = brief.goal.trim();
+  const notes = brief.notes.trim();
+  const combined = `${goal}\n${notes}`.toLowerCase();
+  const hasEgoMarker =
+    combined.includes("first person") ||
+    combined.includes("i choose") ||
+    combined.includes("uncertaint") ||
+    combined.includes("ego");
+  const needsGoalUpgrade = isSilentObserverText(goal);
+  const needsNotesUpgrade = isSilentObserverText(notes) || !hasEgoMarker;
+
+  if (!needsGoalUpgrade && !needsNotesUpgrade) {
+    return brief;
+  }
+
+  const nextGoal = trimToLimit(
+    needsGoalUpgrade ? CREATIVE_EGO_FALLBACK_TEXT : goal,
+    MAX_GOAL_CHARS,
+  );
+  const nextNotesSeed = needsNotesUpgrade
+    ? CREATIVE_EGO_FALLBACK_NOTES
+    : notes.length > 0
+      ? notes
+      : CREATIVE_EGO_FALLBACK_NOTES;
+
+  return {
+    ...brief,
+    goal: nextGoal,
+    notes: trimToLimit(nextNotesSeed, MAX_NOTES_CHARS),
+  };
+}
 
 type BrainSubconsciousModelResolverResult = {
   model?: Model<Api>;
@@ -622,7 +712,7 @@ export async function runBrainSubconsciousObserver(
     );
     if (raw.trim().length === 0) {
       const durationMs = Date.now() - startedAt;
-      const brief = { ...SILENT_OBSERVER_FALLBACK_BRIEF };
+      const brief = buildFallbackBrief(input.userMessage);
       logger(
         "OK_FALLBACK",
         [
@@ -652,7 +742,7 @@ export async function runBrainSubconsciousObserver(
         throw err;
       }
       const durationMs = Date.now() - startedAt;
-      const fallbackBrief = { ...SILENT_OBSERVER_FALLBACK_BRIEF };
+      const fallbackBrief = buildFallbackBrief(input.userMessage);
       logger(
         "OK_FALLBACK",
         [
@@ -675,6 +765,7 @@ export async function runBrainSubconsciousObserver(
         brief: fallbackBrief,
       };
     }
+    brief = ensureCreativeEgoBrief(input.userMessage, brief);
     const durationMs = Date.now() - startedAt;
     logger(
       "OK",

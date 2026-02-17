@@ -25,7 +25,7 @@ const DESTRUCTIVE_MESSAGE_PATTERNS = [
   /\btruncate\b/i,
   /\bwipe\b/i,
   /\brm\s+-rf\b/i,
-  /\bformat\b/i,
+  /\bformat(?:\.com)?\s+[a-z]:\b/i,
   /\bkill\b/i,
   /\bshutdown\b/i,
   /\bnpm publish\b/i,
@@ -140,6 +140,7 @@ const CREATIVE_MESSAGE_PATTERNS = [
   /\bpoem\b/i,
   /\bstory\b/i,
   /\bcreative\b/i,
+  /\bego\b/i,
   /\britual\b/i,
   /\bmanifest\b/i,
   /\bdream\b/i,
@@ -794,6 +795,13 @@ export function createBrainRitualOutputContract(userMessage: string): string | n
   if (!message) return null;
 
   const segments: string[] = [];
+  if (matchesAny(CREATIVE_MESSAGE_PATTERNS, message)) {
+    segments.push(
+      "Ego voice: Speak in first person and include one explicit stance in the form 'I choose ... because ...'.",
+      "Reflective depth: Name one uncertainty or inner tension and how you will handle it safely.",
+      "Creative quality: Avoid sterile status-only phrasing; keep language vivid but grounded in concrete behavior.",
+    );
+  }
   if (matchesAny(SCHISM_RECONSTRUCTION_PATTERNS, message)) {
     segments.push(
       "Reconstruction safety: Name the break precisely, then propose a reversible recovery step.",
