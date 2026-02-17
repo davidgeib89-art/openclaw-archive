@@ -220,11 +220,21 @@ Completed:
      - `4/5` R03 contract-compliant runs under B-profile toggles
      - echo-like failure pattern did not reproduce
      - variance remains (`1/5` non-compliant run), so no lock promotion
+12. 3-6-9 gate flow activated with Gate 3 execution (R063):
+   - Artifacts:
+     - `OM_369_GATE_FLOW_2026-02-17.md`
+     - `OM_PROTO33_R063_G3_R3_R4_R8_RUNS_2026-02-17.json`
+     - `OM_PROTO33_R063_G3_R3_R4_R8_RESCORE_2026-02-17.json`
+     - `OM_PROTO33_PROGRESS_LEDGER_2026-02-17_R063_G3_369_CANARY.md`
+   - Gate outcome:
+     - Gate 3 pass (`3/3`)
+     - slight negative delta vs `R060`
+     - `R060` lock retained (no promotion)
 
 Immediate next:
-1. Keep route/session shaping behind feature toggles during HOLD.
-2. Re-run compact mini-gate after R062 diagnosis and compare strictly against `R060` lock.
-3. Only then proceed with coherence-track rollout (Q1 read-only observer).
+1. Execute Gate 6 under 3-6-9 flow (`R03`, `R04`, `R08`, `R06`, `R07`, `R09`).
+2. If Gate 6 passes, execute Gate 9 full battery before any lock promotion.
+3. Keep route/session shaping behind feature toggles during HOLD until Gate 9 confirms.
 
 ## 11) Brainstorm Integration Update (Quantum/Field Thread)
 

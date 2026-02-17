@@ -144,15 +144,21 @@ Main regressions:
 
 ## 8) Immediate operator plan
 
-Next mandatory cycle (single-variable discipline):
-1. Targeted remediation only for R3, R4, R8.
-2. Immediate re-score of those three.
-3. Compare delta directly against R050.
-4. Promote only if battery threshold reaches >=7/9.
-5. If still below threshold, patch decision soft-guidance for:
-- safer reconstruction language
-- anti-churn memory behavior
-- trigger->action concrete rules
+Active run protocol is now 3-6-9:
+1. Gate 3 (canary): `R03`, `R04`, `R08`
+2. Gate 6 (stability): `R03`, `R04`, `R08`, `R06`, `R07`, `R09`
+3. Gate 9 (release truth): full 9-ritual battery
+
+Rules:
+1. Keep single-variable discipline for each gate cycle.
+2. `R060` remains lock until Gate 9 passes non-regressively.
+3. Gate 3/6 pass alone does not promote lock.
+4. Hard-gate regression at any gate returns to targeted remediation.
+
+Current position:
+1. R062: R03 B-profile diagnosis recovered with variance.
+2. R063 Gate 3: pass (`3/3`) with slight negative delta vs `R060`.
+3. Next immediate step: execute Gate 6.
 
 ## 9) Creativity doctrine (operator interpretation)
 

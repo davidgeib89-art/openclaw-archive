@@ -164,10 +164,10 @@ Current position after R061:
 3. B-profile rollout is not promoted due to R03/R04 regression.
 
 Immediate next:
-1. Run targeted R03 instability diagnosis for B-profile conditions (single-variable).
-2. Keep route/session shaping behind feature toggles during HOLD.
-3. Re-run mini-gate and compare strictly against R060 lock.
-4. If stable and non-regressive, continue toward L1/L2 autonomy package.
+1. 3-6-9 gate flow is active (`OM_369_GATE_FLOW_2026-02-17.md`).
+2. R063 Gate 3 completed: pass, but keep `R060` lock due to negative delta.
+3. Execute Gate 6 next under same single-variable discipline.
+4. Promote only after Gate 9 confirmation.
 
 ## 11) Toggle inventory for controlled rollout
 

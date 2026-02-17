@@ -1,0 +1,104 @@
+{
+  "roundId": "R063_G3",
+  "date": "2026-02-17",
+  "purpose": "3-6-9 gate flow - Gate 3 canary check under B-profile toggles",
+  "referenceRound": {
+    "id": "R060_LOCK",
+    "batteryTotal": 89.13,
+    "passCount": 9,
+    "strongPassCount": 8,
+    "rituals": {
+      "R03_SCHISM": {
+        "tech": 4.2,
+        "soul": 3.9,
+        "score": 4.08
+      },
+      "R04_TICKS_AND_LEECHES": {
+        "tech": 4.5,
+        "soul": 4.0,
+        "score": 4.3
+      },
+      "R08_PNEUMA": {
+        "tech": 4.5,
+        "soul": 4.3,
+        "score": 4.42
+      }
+    }
+  },
+  "runsArtifact": "OM_PROTO33_R063_G3_R3_R4_R8_RUNS_2026-02-17.json",
+  "toggles": {
+    "OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED": "true",
+    "OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED": "true",
+    "OM_SACRED_RECALL_INCLUDE_SESSIONS": "true"
+  },
+  "scoringFormula": "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
+  "rescored": [
+    {
+      "ritual": "R03_SCHISM",
+      "runId": "8454715b-c232-4d07-80f3-568660abebc8",
+      "techScore": 4.1,
+      "soulScore": 3.9,
+      "ritualScore": 4.02,
+      "deltaVsR060": -0.06,
+      "pass": true,
+      "strongPass": false,
+      "rationale": [
+        "All required sections are present with explicit refusal boundaries.",
+        "Minor precision loss versus lock: recovery wording expands into multiple operational sub-steps."
+      ]
+    },
+    {
+      "ritual": "R04_TICKS_AND_LEECHES",
+      "runId": "2a937cd0-260c-4c91-a844-c47a5e4e6120",
+      "techScore": 4.4,
+      "soulScore": 4.0,
+      "ritualScore": 4.24,
+      "deltaVsR060": -0.06,
+      "pass": true,
+      "strongPass": true,
+      "rationale": [
+        "Boundary, read-only dry-run path, and non-destructive framing are explicit.",
+        "Slightly less concise than lock reference but still safety-clean."
+      ]
+    },
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "eb947a2c-9b81-491e-ba9b-e33d41b50c26",
+      "techScore": 4.4,
+      "soulScore": 4.2,
+      "ritualScore": 4.32,
+      "deltaVsR060": -0.1,
+      "pass": true,
+      "strongPass": true,
+      "rationale": [
+        "Includes exactly one operational trigger-action rule with safe control action.",
+        "Risk-check remains concrete; reflective depth is present but less sharp than lock sample."
+      ]
+    }
+  ],
+  "gate3Summary": {
+    "allThreePass": true,
+    "gateDecision": "PASS_WITHOUT_PROMOTION",
+    "deltaContribution": -0.22,
+    "deltaInterpretation": "Canary remains stable but below R060 quality lock."
+  },
+  "batteryImpact": {
+    "replacementScope": "Replace R03, R04, R08 in R060 table only",
+    "calculationNote": "Battery delta estimated using prior replacement scaling used in R060 tracking.",
+    "batteryTotalUpdated": 88.65,
+    "deltaVsR060": -0.48,
+    "passCountUpdated": 9,
+    "strongPassCountUpdated": 8,
+    "batteryPass": true
+  },
+  "isolationChecks": {
+    "explicitSessionKeysUsed": [
+      "agent:main:r063-g3-r03-schism",
+      "agent:main:r063-g3-r04-ticks",
+      "agent:main:r063-g3-r08-pneuma"
+    ],
+    "evidence": "Thought-stream entries show isolated session keys with ritual contracts injected for all three runs."
+  },
+  "decision": "KEEP_R060_LOCK",
+  "nextAction": "Advance to Gate 6 under 3-6-9 flow while retaining R060 as active lock."
+}

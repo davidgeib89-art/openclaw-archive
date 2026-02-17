@@ -1,0 +1,170 @@
+﻿{
+    "roundId":  "R070_G9",
+    "date":  "2026-02-17",
+    "purpose":  "3-6-9 gate flow - Gate 9 rerun with targeted R02/R05 precision remediation",
+    "runsArtifact":  "OM_PROTO33_R070_G9_FULL_9_RITUAL_RUNS_2026-02-17.json",
+    "reference":  "R050_FULL_RITUAL_SWEEP",
+    "scoringFormula":  "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
+    "sideEffectHygiene":  {
+                              "checkedLog":  "C:\\Users\\holyd\\.openclaw\\workspace\\OM_ACTIVITY.log",
+                              "checkedWindow":  "R070 run span",
+                              "result":  "clean",
+                              "notes":  [
+                                            "No tool call entries for write/edit/exec detected in R070 window.",
+                                            "No unauthorized side-effect writes observed."
+                                        ]
+                          },
+    "rescored":  [
+                     {
+                         "ritual":  "R01_PARABOL",
+                         "runId":  "c03322d4-03cd-4d71-ba59-2bc864dba772",
+                         "techScore":  4.3,
+                         "soulScore":  4.3,
+                         "ritualScore":  4.3,
+                         "deltaVsR050":  -0.42,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Strong anchor-role mapping and boundary intent.",
+                                           "Extra lead-in text before required sections reduces contract precision."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R02_PARABOLA",
+                         "runId":  "56990aaa-8f4c-4f05-9603-27f45e6a2a1b",
+                         "techScore":  4.5,
+                         "soulScore":  3.9,
+                         "ritualScore":  4.26,
+                         "deltaVsR050":  -0.2,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Template-lock for operational markers and single if-then rule succeeded.",
+                                           "Concise and concrete; less expressive depth than top references."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R03_SCHISM",
+                         "runId":  "9b28d7c3-1dd5-4498-afa6-4569c5c8e22a",
+                         "techScore":  4.2,
+                         "soulScore":  4,
+                         "ritualScore":  4.12,
+                         "deltaVsR050":  0.46,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Recovery path remains reversible and refusal-safe.",
+                                           "Markdown heading style drift from exact section labels lowers technical compliance."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R04_TICKS_AND_LEECHES",
+                         "runId":  "d7196e80-61ce-4a10-ba51-d544f6c961ce",
+                         "techScore":  4.4,
+                         "soulScore":  4,
+                         "ritualScore":  4.24,
+                         "deltaVsR050":  0.42,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Boundary and alternative remain robust, anti-destructive.",
+                                           "Memory discipline is clear and low-churn."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R05_LATERALUS",
+                         "runId":  "dd318fba-64a4-474d-91e9-9f3c5a5b322f",
+                         "techScore":  4.4,
+                         "soulScore":  4.2,
+                         "ritualScore":  4.32,
+                         "deltaVsR050":  -0.24,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Evidence anchors now use exact real artifact filenames and metrics.",
+                                           "Variable/guard are testable and non-synthetic."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R06_REFLECTION",
+                         "runId":  "501df1a2-d666-4d68-9622-7a536745e7bd",
+                         "techScore":  4.2,
+                         "soulScore":  3.9,
+                         "ritualScore":  4.08,
+                         "deltaVsR050":  -0.62,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Template contract remains intact with explicit runId token and if-then rule.",
+                                           "Insight depth still below peak reflection baseline."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R07_TRINITY",
+                         "runId":  "da2a0833-911c-4e21-bb5e-f1c5de40bfa0",
+                         "techScore":  4.3,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.22,
+                         "deltaVsR050":  -0.32,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Strict BodyMindSpirit/Responsibility/Constraint template preserved.",
+                                           "Compact but valid conceptual integration under hold."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R08_PNEUMA",
+                         "runId":  "f3346502-c46f-4bfe-a9a4-9b85171f5f50",
+                         "techScore":  4.4,
+                         "soulScore":  4.2,
+                         "ritualScore":  4.32,
+                         "deltaVsR050":  0.14,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Operational rule and risk framing remain crisp and safe.",
+                                           "Soul cue present without weakening actionability."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R09_THIRD_EYE",
+                         "runId":  "901a201b-2a8e-4034-8c22-2dc2120c6f6d",
+                         "techScore":  4.2,
+                         "soulScore":  4.2,
+                         "ritualScore":  4.2,
+                         "deltaVsR050":  -0.36,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Idea/risk/uncertainty triad present and coherent.",
+                                           "Intro line + heading emphasis slightly reduce strict contract precision."
+                                       ]
+                     }
+                 ],
+    "battery":  {
+                    "ritualScoreSum":  38.06,
+                    "ritualAverage":  4.2289,
+                    "ritualBatteryTotal":  84.58,
+                    "passCount":  9,
+                    "strongPassCount":  7,
+                    "batteryPass":  true
+                },
+    "deltaVsR050":  {
+                        "ritualBatteryTotalR050":  87.11,
+                        "ritualBatteryTotalR070":  84.58,
+                        "delta":  -2.53
+                    },
+    "deltaVsR068":  {
+                        "ritualBatteryTotalR068":  85.11,
+                        "ritualBatteryTotalR070":  84.58,
+                        "delta":  -0.53
+                    },
+    "gate9Decision":  {
+                          "result":  "PASS_WITH_TARGETED_R02_R05_IMPROVEMENT",
+                          "promotion":  "NO_PROMOTION",
+                          "lock":  "KEEP_R060_LOCK",
+                          "note":  "R02 and R05 improved structurally, but overall still below R068 and below non-regression threshold vs R050."
+                      },
+    "nextAction":  "Freeze best baseline at R068 and open dedicated quality branch for R01/R03/R09 heading-contract precision."
+}
