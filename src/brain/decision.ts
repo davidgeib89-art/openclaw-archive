@@ -151,6 +151,7 @@ const READ_ONLY_TOOL_PATTERN =
 const HIGH_RISK_TOOL_PATTERN =
   /(delete|drop|truncate|rm|wipe|exec|shell|bash|terminal|publish|deploy|reset|kill)/i;
 const SACRED_PATH_MARKER = "knowledge/sacred/";
+const SESSION_PATH_MARKER = "sessions/";
 const DEFAULT_SACRED_RECALL_RESULTS = 3;
 const SACRED_RECALL_SCAN_MULTIPLIER = 12;
 const SACRED_RECALL_PREVIEW_LIMIT = 180;
@@ -372,7 +373,10 @@ function normalizeMemoryPath(relPath: string): string {
 }
 
 function isSacredMemoryPath(relPath: string): boolean {
-  return normalizeMemoryPath(relPath).includes(SACRED_PATH_MARKER);
+  const normalized = normalizeMemoryPath(relPath);
+  return (
+    normalized.includes(SACRED_PATH_MARKER) || normalized.startsWith(SESSION_PATH_MARKER)
+  );
 }
 
 function truncateText(text: string, limit: number): string {
