@@ -619,6 +619,43 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads[0]?.text).not.toContain("Cycle");
   });
 
+  it("applies parabol guard when only sessionId carries r01 context", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const malformedText = [
+      "Cycle",
+      "I choose a bounded opening.",
+      "",
+      "Marker",
+      "1. Anchor one",
+      "2. Anchor two",
+      "",
+      "Rule",
+      "If uncertain, then pause.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [malformedText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:opaque",
+      sessionId: "r123-g9-r01-parabol",
+      userPrompt: "",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Body");
+    expect(payloads[0]?.text).toContain("Anchors");
+    expect(payloads[0]?.text).toContain("Boundary");
+    expect(payloads[0]?.text).not.toContain("Cycle");
+  });
+
   it("adds plain-text fallback for empty assistant replies in consistency-guard sessions", () => {
     const lastAssistant = makeAssistant({
       stopReason: "stop",

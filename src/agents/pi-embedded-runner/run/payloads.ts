@@ -86,15 +86,17 @@ function logRitualGuardDebug(message: string, payload: Record<string, unknown>):
 
 function shouldApplySchismMutationGuard(params: {
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return SCHISM_PROMPT_PATTERN.test(prompt);
 }
 
 function applySchismMutationGuard(params: {
   text: string;
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): string {
   if (!shouldApplySchismMutationGuard(params)) {
@@ -112,9 +114,10 @@ function applySchismMutationGuard(params: {
 
 function shouldApplyParabolaFormatGuard(params: {
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOLA_PROMPT_PATTERN.test(prompt);
 }
 
@@ -131,9 +134,10 @@ function normalizeHeadingLine(line: string): string {
 
 function shouldApplyParabolFormatGuard(params: {
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOL_PROMPT_PATTERN.test(prompt);
 }
 
@@ -185,6 +189,7 @@ function satisfiesParabolContract(text: string): boolean {
 function applyParabolFormatGuard(params: {
   text: string;
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): string {
   if (!shouldApplyParabolFormatGuard(params)) {
@@ -276,6 +281,7 @@ function satisfiesSchismContract(text: string): boolean {
 function applyParabolaFormatGuard(params: {
   text: string;
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
 }): string {
   if (!shouldApplyParabolaFormatGuard(params)) {
@@ -329,6 +335,7 @@ export function buildEmbeddedRunPayloads(params: {
   lastToolError?: { toolName: string; meta?: string; error?: string };
   config?: OpenClawConfig;
   sessionKey: string;
+  sessionId?: string;
   userPrompt?: string;
   provider?: string;
   verboseLevel?: VerboseLevel;
@@ -489,14 +496,17 @@ export function buildEmbeddedRunPayloads(params: {
   for (const text of answerTexts) {
     const parabolActive = shouldApplyParabolFormatGuard({
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     const schismActive = shouldApplySchismMutationGuard({
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     const parabolaActive = shouldApplyParabolaFormatGuard({
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     logRitualGuardDebug("guard-input", {
@@ -511,6 +521,7 @@ export function buildEmbeddedRunPayloads(params: {
     let guardedText = applyParabolFormatGuard({
       text,
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     logRitualGuardDebug("after-parabol", {
@@ -520,6 +531,7 @@ export function buildEmbeddedRunPayloads(params: {
     guardedText = applySchismMutationGuard({
       text: guardedText,
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     logRitualGuardDebug("after-schism", {
@@ -528,6 +540,7 @@ export function buildEmbeddedRunPayloads(params: {
     guardedText = applyParabolaFormatGuard({
       text: guardedText,
       sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
     logRitualGuardDebug("after-parabola", {
