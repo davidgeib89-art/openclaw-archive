@@ -212,11 +212,19 @@ Completed:
      - keep `R060` lock
      - reject `R061B` promotion (R03/R04 regression)
      - retain `R061A` as control profile reference only
+11. Post-gate targeted diagnosis executed (R062):
+   - Artifact:
+     - `OM_PROTO33_R062_R03_B_PROFILE_STABILITY_2026-02-17.json`
+     - `OM_PROTO33_PROGRESS_LEDGER_2026-02-17_R062_R03_B_PROFILE_DIAGNOSIS.md`
+   - Diagnostic outcome:
+     - `4/5` R03 contract-compliant runs under B-profile toggles
+     - echo-like failure pattern did not reproduce
+     - variance remains (`1/5` non-compliant run), so no lock promotion
 
 Immediate next:
-1. Run targeted `R03` instability diagnosis for B-profile conditions (single-variable).
-2. Keep route/session shaping behind feature toggles during HOLD.
-3. Re-run mini-gate after diagnosis and compare strictly against `R060` lock.
+1. Keep route/session shaping behind feature toggles during HOLD.
+2. Re-run compact mini-gate after R062 diagnosis and compare strictly against `R060` lock.
+3. Only then proceed with coherence-track rollout (Q1 read-only observer).
 
 ## 11) Brainstorm Integration Update (Quantum/Field Thread)
 
