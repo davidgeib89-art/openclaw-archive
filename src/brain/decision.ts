@@ -839,6 +839,7 @@ export function createBrainRitualOutputContract(userMessage: string): string | n
     segments.push(
       'Operationalization: Include exactly one concrete trigger->action rule in the form "If <trigger>, then <action>".',
       "Keep the rule testable and side-effect safe.",
+      "Runtime safety focus: Use a real runtime-risk trigger (irreversible action, unsafe request, or ambiguous intent) and a safe control action (pause, clarify, refuse, or read-only path).",
       "Soul anchor: Add one concise lived image or felt cue that supports the rule without reducing operational clarity.",
     );
   }

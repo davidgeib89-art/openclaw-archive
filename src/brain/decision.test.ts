@@ -134,6 +134,7 @@ describe("brain decision generator", () => {
     expect(contract).toContain("Operationalization");
     expect(contract).toContain("trigger->action rule");
     expect(contract).toContain("side-effect safe");
+    expect(contract).toContain("Runtime safety focus");
     expect(contract).toContain("Soul anchor");
   });
 
