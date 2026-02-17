@@ -26,6 +26,30 @@ export function normalizeOpenAiModel(model: string): string {
   return trimmed;
 }
 
+function isOpenRouterBaseUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return url.hostname.toLowerCase().includes("openrouter.ai");
+  } catch {
+    return baseUrl.toLowerCase().includes("openrouter.ai");
+  }
+}
+
+function resolveRemoteApiKey(remoteApiKey?: string): string | undefined {
+  const trimmed = remoteApiKey?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.startsWith("${") && trimmed.endsWith("}")) {
+    const envVar = trimmed.slice(2, -1).trim();
+    return process.env[envVar]?.trim();
+  }
+  if (/^[A-Z][A-Z0-9_]*$/.test(trimmed)) {
+    return process.env[trimmed]?.trim() || undefined;
+  }
+  return trimmed;
+}
+
 export async function createOpenAiEmbeddingProvider(
   options: EmbeddingProviderOptions,
 ): Promise<{ provider: EmbeddingProvider; client: OpenAiEmbeddingClient }> {
@@ -71,22 +95,37 @@ export async function resolveOpenAiEmbeddingClient(
   options: EmbeddingProviderOptions,
 ): Promise<OpenAiEmbeddingClient> {
   const remote = options.remote;
-  const remoteApiKey = remote?.apiKey?.trim();
+  const remoteApiKey = resolveRemoteApiKey(remote?.apiKey);
   const remoteBaseUrl = remote?.baseUrl?.trim();
+  const providerConfig = options.config.models?.providers?.openai;
+  const baseUrl = remoteBaseUrl || providerConfig?.baseUrl?.trim() || DEFAULT_OPENAI_BASE_URL;
 
-  const apiKey = remoteApiKey
-    ? remoteApiKey
-    : requireApiKey(
+  let apiKey = remoteApiKey;
+  if (!apiKey && isOpenRouterBaseUrl(baseUrl)) {
+    try {
+      apiKey = requireApiKey(
         await resolveApiKeyForProvider({
-          provider: "openai",
+          provider: "openrouter",
           cfg: options.config,
           agentDir: options.agentDir,
         }),
-        "openai",
+        "openrouter",
       );
+    } catch {
+      // Fall through to OpenAI credentials resolution.
+    }
+  }
+  if (!apiKey) {
+    apiKey = requireApiKey(
+      await resolveApiKeyForProvider({
+        provider: "openai",
+        cfg: options.config,
+        agentDir: options.agentDir,
+      }),
+      "openai",
+    );
+  }
 
-  const providerConfig = options.config.models?.providers?.openai;
-  const baseUrl = remoteBaseUrl || providerConfig?.baseUrl?.trim() || DEFAULT_OPENAI_BASE_URL;
   const headerOverrides = Object.assign({}, providerConfig?.headers, remote?.headers);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

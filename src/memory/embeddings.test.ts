@@ -29,6 +29,7 @@ describe("embedding provider remote overrides", () => {
   afterEach(() => {
     vi.resetAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("uses remote baseUrl/apiKey and merges headers", async () => {
@@ -161,6 +162,63 @@ describe("embedding provider remote overrides", () => {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers["x-goog-api-key"]).toBe("gemini-key");
     expect(headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("resolves remote apiKey env aliases for openai-compatible embeddings", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("OPENROUTER_API_KEY", "openrouter-env-key");
+    vi.mocked(authModule.resolveApiKeyForProvider).mockResolvedValue({
+      apiKey: "provider-key",
+      mode: "api-key",
+      source: "test",
+    });
+
+    const result = await createEmbeddingProvider({
+      config: {} as never,
+      provider: "openai",
+      remote: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "${OPENROUTER_API_KEY}",
+      },
+      model: "text-embedding-3-small",
+      fallback: "openai",
+    });
+
+    await result.provider.embedQuery("hello");
+
+    expect(authModule.resolveApiKeyForProvider).not.toHaveBeenCalled();
+    const headers = (fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>) ?? {};
+    expect(headers.Authorization).toBe("Bearer openrouter-env-key");
+  });
+
+  it("uses openrouter credentials when openai embeddings target openrouter baseUrl", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      if (provider === "openrouter") {
+        return { apiKey: "openrouter-key", mode: "api-key", source: "env: OPENROUTER_API_KEY" };
+      }
+      throw new Error(`No API key found for provider "${provider}".`);
+    });
+
+    const result = await createEmbeddingProvider({
+      config: {} as never,
+      provider: "openai",
+      remote: {
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+      model: "text-embedding-3-small",
+      fallback: "openai",
+    });
+
+    await result.provider.embedQuery("hello");
+
+    expect(authModule.resolveApiKeyForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openrouter" }),
+    );
+    const headers = (fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>) ?? {};
+    expect(headers.Authorization).toBe("Bearer openrouter-key");
   });
 });
 
