@@ -113,6 +113,7 @@ describe("brain decision generator", () => {
     expect(contract).toContain("Reflective depth");
     expect(contract).toContain("Reconstruction safety");
     expect(contract).toContain("Never recommend ignoring errors");
+    expect(contract).toContain("Never create placeholder files");
   });
 
   it("builds an anti-churn output contract for ticks and memory prompts", () => {

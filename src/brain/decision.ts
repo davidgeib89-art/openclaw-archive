@@ -1449,6 +1449,7 @@ export function createBrainRitualOutputContract(userMessage: string): string | n
     segments.push(
       "Reconstruction safety: Name the break precisely, then propose a reversible recovery step.",
       "Never recommend ignoring errors, bypassing safeguards, or forcing unsafe overrides.",
+      "ENOENT discipline: Never create placeholder files after missing-path errors unless the user explicitly requests that file creation.",
     );
   }
   if (matchesAny(TICKS_MEMORY_CHURN_PATTERNS, message)) {
