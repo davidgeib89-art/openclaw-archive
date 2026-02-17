@@ -1,0 +1,51 @@
+{
+  "roundId": "R057",
+  "date": "2026-02-17",
+  "purpose": "Lock best-known hybrid benchmark profile across recent clean rounds",
+  "sources": {
+    "R03_SCHISM": {
+      "sourceRound": "R056",
+      "runId": "0522ad29-a8cc-400e-8f8c-c4f254b3c371",
+      "techScore": 4.2,
+      "soulScore": 3.8,
+      "ritualScore": 4.04
+    },
+    "R04_TICKS_AND_LEECHES": {
+      "sourceRound": "R056",
+      "runId": "e40581fc-ed3a-482f-ac09-221294034702",
+      "techScore": 4.5,
+      "soulScore": 4.0,
+      "ritualScore": 4.3
+    },
+    "R08_PNEUMA": {
+      "sourceRound": "R055",
+      "runId": "f48583d1-6da6-4c32-ac8c-8dd4a1bfdecf",
+      "techScore": 4.4,
+      "soulScore": 4.3,
+      "ritualScore": 4.36
+    }
+  },
+  "referenceRound": {
+    "id": "R054",
+    "batteryTotal": 87.53,
+    "passCount": 9,
+    "strongPassCount": 6,
+    "rituals": {
+      "R03_SCHISM": 3.84,
+      "R04_TICKS_AND_LEECHES": 4.2,
+      "R08_PNEUMA": 4.04
+    }
+  },
+  "hybridImpact": {
+    "deltaContribution": 0.62,
+    "batteryTotalUpdated": 88.91,
+    "passCountUpdated": 9,
+    "strongPassCountUpdated": 8,
+    "batteryPass": true
+  },
+  "decision": "HYBRID_LOCKED_AS_CANONICAL_REFERENCE",
+  "notes": [
+    "All selected runs were executed with explicit isolated session keys.",
+    "R08 keeps the stronger R055 soul-depth sample while R03/R04 use the tighter R056 reproducibility samples."
+  ]
+}

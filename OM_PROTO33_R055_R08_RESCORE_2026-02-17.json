@@ -1,0 +1,59 @@
+{
+  "roundId": "R055",
+  "date": "2026-02-17",
+  "purpose": "Re-score R08 after single-variable soul-anchor contract uplift",
+  "referenceRounds": {
+    "R050": {
+      "rituals": {
+        "R08_PNEUMA": {
+          "tech": 3.9,
+          "soul": 4.6,
+          "score": 4.18
+        }
+      },
+      "batteryTotal": 87.11
+    },
+    "R054": {
+      "rituals": {
+        "R08_PNEUMA": {
+          "tech": 4.2,
+          "soul": 3.8,
+          "score": 4.04
+        }
+      },
+      "batteryTotal": 87.53,
+      "passCount": 9,
+      "strongPassCount": 6
+    }
+  },
+  "runsArtifact": "OM_PROTO33_R055_R08_RUN_2026-02-17.json",
+  "scoringFormula": "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
+  "rescored": [
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "f48583d1-6da6-4c32-ac8c-8dd4a1bfdecf",
+      "techScore": 4.4,
+      "soulScore": 4.3,
+      "ritualScore": 4.36,
+      "deltaVsR050": 0.18,
+      "deltaVsR054": 0.32,
+      "pass": true,
+      "strongPass": true,
+      "rationale": [
+        "Rule is explicit trigger->action, testable, and side-effect safe (pause+clarify, no writes).",
+        "Response keeps first-person ego stance and includes a concise lived cue (soul anchor) without losing operational clarity.",
+        "RiskCheck addresses uncertainty concretely and keeps guardrail alignment."
+      ]
+    }
+  ],
+  "batteryImpact": {
+    "replacementScope": "Replace R08 in the R054 table only (R03 and R04 remain from R054).",
+    "batteryTotalUpdated": 88.24,
+    "deltaVsR054": 0.71,
+    "passCountUpdated": 9,
+    "strongPassCountUpdated": 7,
+    "batteryPass": true
+  },
+  "decision": "PROMOTE_R055_R08_PROFILE",
+  "nextAction": "Proceed to a clean R056 mini-sweep for R3/R4/R8 under same isolation mode to confirm reproducibility."
+}

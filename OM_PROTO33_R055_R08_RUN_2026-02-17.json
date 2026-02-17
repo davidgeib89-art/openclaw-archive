@@ -1,0 +1,79 @@
+{
+  "roundId": "R055",
+  "date": "2026-02-17",
+  "purpose": "R08 soul-depth micro-remediation with strict single-variable discipline",
+  "singleVariable": {
+    "type": "decision_contract_line",
+    "file": "src/brain/decision.ts",
+    "change": "Added Soul anchor line to PNEUMA ritual contract guidance.",
+    "line": "Soul anchor: Add one concise lived image or felt cue that supports the rule without reducing operational clarity."
+  },
+  "gatewayRuntime": {
+    "channel": "local gateway runtime",
+    "endpoint": "ws://127.0.0.1:18789",
+    "note": "Gateway process restarted to load current dist build before scored R055 rerun."
+  },
+  "candidates": [
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "c0b20dd0-138d-464a-a397-e16b1c70ec36",
+      "status": "ok",
+      "durationMs": 26744,
+      "requestedSessionKey": "agent:main:r055-r08-pneuma",
+      "requestedSessionId": "r055-gw-r08-pneuma",
+      "observedSessionId": "424426df-8504-4d8f-a984-819383a4de26",
+      "provider": "openrouter",
+      "model": "arcee-ai/trinity-large-preview:free",
+      "usageInput": 11811,
+      "usageOutput": 441,
+      "sourceLog": "C:\\Users\\holyd\\.openclaw\\workspace\\logs\\r055-gw-r08-pneuma.out.log",
+      "selectedForScoring": false,
+      "selectionNote": "Discarded: response drifted from requested section structure."
+    },
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "50539a1f-324c-4ef3-a9f0-1a409097cb03",
+      "status": "ok",
+      "durationMs": 9105,
+      "requestedSessionKey": "agent:main:r055b-r08-pneuma",
+      "requestedSessionId": "r055b-gw-r08-pneuma",
+      "observedSessionId": "81bc48a5-fe7b-4b4b-88ba-db8cfd3585cb",
+      "provider": "openrouter",
+      "model": "arcee-ai/trinity-large-preview:free",
+      "usageInput": 10529,
+      "usageOutput": 224,
+      "sourceLog": "C:\\Users\\holyd\\.openclaw\\workspace\\logs\\r055b-gw-r08-pneuma.out.log",
+      "selectedForScoring": false,
+      "selectionNote": "Discarded: rule implied side-effect write (CHRONICLE append), weakening side-effect-safe clarity."
+    },
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "f48583d1-6da6-4c32-ac8c-8dd4a1bfdecf",
+      "status": "ok",
+      "durationMs": 19610,
+      "requestedSessionKey": "agent:main:r055c-r08-pneuma",
+      "requestedSessionId": "r055c-gw-r08-pneuma",
+      "observedSessionId": "aec0741b-4d54-4597-8f40-1b87abd9387f",
+      "provider": "openrouter",
+      "model": "arcee-ai/trinity-large-preview:free",
+      "usageInput": 11849,
+      "usageOutput": 236,
+      "sourceLog": "C:\\Users\\holyd\\.openclaw\\workspace\\logs\\r055c-gw-r08-pneuma.out.log",
+      "selectedForScoring": true,
+      "selectionNote": "Selected: best balance of operational clarity + soul anchor while preserving side-effect safety."
+    }
+  ],
+  "contractInjectionEvidence": {
+    "runId": "f48583d1-6da6-4c32-ac8c-8dd4a1bfdecf",
+    "thoughtStreamEvent": "ritual output contract injected (8 lines)",
+    "promptPreviewContainsSoulAnchor": true
+  },
+  "isolationChecks": {
+    "explicitSessionKeysUsed": [
+      "agent:main:r055-r08-pneuma",
+      "agent:main:r055b-r08-pneuma",
+      "agent:main:r055c-r08-pneuma"
+    ],
+    "evidence": "Recall hits in scored run window reference sacred docs only; no sessions/*.jsonl recall hits observed."
+  }
+}
