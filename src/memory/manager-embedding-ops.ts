@@ -708,9 +708,18 @@ class MemoryManagerEmbeddingOps {
     if (options.source === "sessions" && "lineMap" in entry) {
       remapChunkLines(chunks, entry.lineMap);
     }
-    const embeddings = this.batch.enabled
-      ? await this.embedChunksWithBatch(chunks, entry, options.source)
-      : await this.embedChunksInBatches(chunks);
+    let embeddings: number[][];
+    try {
+      embeddings = this.batch.enabled
+        ? await this.embedChunksWithBatch(chunks, entry, options.source)
+        : await this.embedChunksInBatches(chunks);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn(
+        `memory embeddings failed while indexing ${options.source}:${entry.path}; falling back to text-only indexing: ${message}`,
+      );
+      embeddings = chunks.map(() => []);
+    }
     const sample = embeddings.find((embedding) => embedding.length > 0);
     const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
     const now = Date.now();

@@ -94,4 +94,35 @@ describe("memory manager sync failures", () => {
     process.off("unhandledRejection", handler);
     expect(unhandled).toHaveLength(0);
   });
+
+  it("continues with text-only indexing when embeddings fail", async () => {
+    const cfg = {
+      agents: {
+        defaults: {
+          workspace: workspaceDir,
+          memorySearch: {
+            provider: "openai",
+            model: "mock-embed",
+            store: { path: indexPath },
+            sync: { watch: false, onSessionStart: false, onSearch: false },
+            query: { minScore: 0 },
+          },
+        },
+        list: [{ id: "main", default: true }],
+      },
+    };
+
+    const result = await getMemorySearchManager({ cfg, agentId: "main" });
+    expect(result.manager).not.toBeNull();
+    if (!result.manager) {
+      throw new Error("manager missing");
+    }
+    manager = result.manager;
+
+    await expect(manager.sync({ force: true })).resolves.toBeUndefined();
+
+    const hits = await manager.search("hello");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]?.source).toBe("memory");
+  });
 });
