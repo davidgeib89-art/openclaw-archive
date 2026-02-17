@@ -241,3 +241,8 @@ As of 2026-02-17, additional future-proofing is now implemented:
      - `src/brain/decision.test.ts`
      - `src/memory/index.test.ts`
    - Type checks pass (`pnpm tsgo`).
+
+## 13) Strategic Companion Reference
+
+For full "why + where next" continuity (including autonomy ladder and fork logic), read:
+1. `OM_CONSCIOUSNESS_SIMULATION_STRATEGY_2026-02-17.md`
