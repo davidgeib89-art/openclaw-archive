@@ -217,3 +217,23 @@ Immediate next:
 1. Run targeted `R03` instability diagnosis for B-profile conditions (single-variable).
 2. Keep route/session shaping behind feature toggles during HOLD.
 3. Re-run mini-gate after diagnosis and compare strictly against `R060` lock.
+
+## 11) Brainstorm Integration Update (Quantum/Field Thread)
+
+The new brainstorming thread is adopted as follows:
+1. Keep quantum language as metaphor and design lens.
+2. Keep release gates grounded in measured runtime behavior.
+3. Add coherence observability as a new additive track after stability gate.
+
+New coherence track (post-R03 stabilization):
+1. Q1: Read-only coherence observer
+   - Add metrics for cross-layer consistency and contradiction drift.
+2. Q2: Memory conflict policy
+   - Define deterministic tie-break rules when session/journal/sacred memories disagree.
+3. Q3: Fractal recall experiment (flagged)
+   - Test multi-scale recall traversal with strict fail-open fallback.
+4. Q4: Coherence-aware release note gate
+   - Report coherence deltas alongside ritual deltas; do not replace hard gates.
+
+Reference:
+1. `OM_QUANTUM_METAPHOR_BRAINSTORM_INTEGRATION_2026-02-17.md`

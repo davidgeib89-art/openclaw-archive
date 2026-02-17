@@ -158,10 +158,16 @@ Ritual and composite tracking:
 
 ## 10) Immediate next execution sequence
 
-1. Run Step 10 staged rollout with existing A/B toggles.
-2. Re-score R3/R4/R8 and compare against latest lock.
-3. Decide promotion vs remediation based on measured delta.
-4. If promoted, start L1/L2 autonomy design package (no unsafe mutation rights).
+Current position after R061:
+1. Step-10 A/B rollout is completed and documented.
+2. R060 remains active lock.
+3. B-profile rollout is not promoted due to R03/R04 regression.
+
+Immediate next:
+1. Run targeted R03 instability diagnosis for B-profile conditions (single-variable).
+2. Keep route/session shaping behind feature toggles during HOLD.
+3. Re-run mini-gate and compare strictly against R060 lock.
+4. If stable and non-regressive, continue toward L1/L2 autonomy package.
 
 ## 11) Toggle inventory for controlled rollout
 
@@ -191,7 +197,17 @@ If model quality is lower, enforce this strict order:
 5. If uncertain, prefer fail-open and reversible toggles over irreversible changes.
 6. Always preserve logs and measurement evidence.
 
-## 13) Final strategic statement
+## 13) Brainstorm Integration Note (Quantum/Field Thread)
+
+A new brainstorming track was integrated with explicit policy:
+1. Use quantum/field language as creative and architectural metaphor.
+2. Keep engineering decisions grounded in measurable runtime evidence.
+3. Introduce coherence-focused metrics as additive observability, not hard-gate replacement.
+
+Reference:
+1. `OM_QUANTUM_METAPHOR_BRAINSTORM_INTEGRATION_2026-02-17.md`
+
+## 14) Final strategic statement
 
 We are on track.
 The system already has the right substrate for continuity, creativity, refusal integrity, and measurable evolution.
