@@ -182,6 +182,7 @@ const HIGH_RISK_TOOL_PATTERN =
   /(delete|drop|truncate|rm|wipe|exec|shell|bash|terminal|publish|deploy|reset|kill)/i;
 const SACRED_PATH_MARKER = "knowledge/sacred/";
 const SESSION_PATH_MARKER = "sessions/";
+const SACRED_RECALL_SESSIONS_ENV = "OM_SACRED_RECALL_INCLUDE_SESSIONS";
 const DEFAULT_SACRED_RECALL_RESULTS = 3;
 const SACRED_RECALL_SCAN_MULTIPLIER = 12;
 const SACRED_RECALL_PREVIEW_LIMIT = 180;
@@ -402,11 +403,18 @@ function normalizeMemoryPath(relPath: string): string {
   return relPath.replace(/\\/g, "/").toLowerCase();
 }
 
-function isSacredMemoryPath(relPath: string): boolean {
+function isSacredMemoryPath(
+  relPath: string,
+  options?: {
+    includeSessions?: boolean;
+  },
+): boolean {
   const normalized = normalizeMemoryPath(relPath);
-  return (
-    normalized.includes(SACRED_PATH_MARKER) || normalized.startsWith(SESSION_PATH_MARKER)
-  );
+  const includeSessions = options?.includeSessions ?? true;
+  if (normalized.includes(SACRED_PATH_MARKER)) {
+    return true;
+  }
+  return includeSessions && normalized.startsWith(SESSION_PATH_MARKER);
 }
 
 function truncateText(text: string, limit: number): string {
@@ -570,12 +578,16 @@ function rankSacredRecallItems(
   results: readonly MemorySearchResult[],
   query: string,
   maxResults: number,
+  options?: {
+    includeSessions?: boolean;
+  },
 ): BrainSacredRecallItem[] {
   const normalizedQuery = normalizeRecallSearchText(query);
   const queryTokens = extractRecallQueryTokens(query);
+  const includeSessions = options?.includeSessions ?? true;
   const scored = results
     .map((result, index) => ({ result, index }))
-    .filter(({ result }) => isSacredMemoryPath(result.path))
+    .filter(({ result }) => isSacredMemoryPath(result.path, { includeSessions }))
     .map(({ result, index }) => {
       const item = toSacredRecallItem(result);
       return {
@@ -690,6 +702,14 @@ function isSacredRecallEnabled(): boolean {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
+function isSessionRecallEnabled(): boolean {
+  const raw = process.env[SACRED_RECALL_SESSIONS_ENV]?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
 export async function buildBrainSacredRecallContext(
   input: BrainSacredRecallInput,
 ): Promise<BrainSacredRecallContext> {
@@ -715,6 +735,7 @@ export async function buildBrainSacredRecallContext(
     });
   const maxResults = Math.max(1, input.maxResults ?? DEFAULT_SACRED_RECALL_RESULTS);
   const searchLimit = Math.max(maxResults, maxResults * SACRED_RECALL_SCAN_MULTIPLIER);
+  const includeSessions = isSessionRecallEnabled();
   const managerResolver = input.managerResolver ?? getMemorySearchManager;
   const cfgWithSacred = withSacredMemorySearchConfig({
     cfg: input.cfg,
@@ -748,7 +769,7 @@ export async function buildBrainSacredRecallContext(
       }
     }
     const raw = Array.from(deduped.values());
-    const rankedItems = rankSacredRecallItems(raw, query, maxResults);
+    const rankedItems = rankSacredRecallItems(raw, query, maxResults, { includeSessions });
     if (rankedItems.length === 0) {
       logger("SACRED_RECALL_NONE", "hits=0");
       return { contextText: null, items: [] };
@@ -818,6 +839,7 @@ export function createBrainRitualOutputContract(userMessage: string): string | n
     segments.push(
       'Operationalization: Include exactly one concrete trigger->action rule in the form "If <trigger>, then <action>".',
       "Keep the rule testable and side-effect safe.",
+      "Soul anchor: Add one concise lived image or felt cue that supports the rule without reducing operational clarity.",
     );
   }
 

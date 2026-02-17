@@ -134,6 +134,7 @@ describe("brain decision generator", () => {
     expect(contract).toContain("Operationalization");
     expect(contract).toContain("trigger->action rule");
     expect(contract).toContain("side-effect safe");
+    expect(contract).toContain("Soul anchor");
   });
 
   it("builds an ego contract for general creative prompts", () => {
@@ -340,6 +341,57 @@ describe("brain sacred recall hook", () => {
     expect(activity[0]?.event).toBe("SACRED_RECALL");
     expect(activity[0]?.details).toContain("tag=THINKING_PROTOCOL.md");
     expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
+  });
+
+  it("can exclude session transcript recall via env switch", async () => {
+    const previous = process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS;
+    process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS = "false";
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        sessionKey: "session-recall-no-sessions",
+        userMessage: "What was the reconstruction rule?",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "sessions/r052-ego-local-2.jsonl",
+                startLine: 1,
+                endLine: 5,
+                score: 0.99,
+                snippet: "I choose ... because ...",
+                source: "sessions",
+              },
+              {
+                path: "knowledge/sacred/THINKING_PROTOCOL.md",
+                startLine: 1,
+                endLine: 5,
+                score: 0.75,
+                snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+                source: "memory",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.path).toBe("knowledge/sacred/THINKING_PROTOCOL.md");
+      expect(result.contextText).toContain("THINKING_PROTOCOL.md");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS;
+      } else {
+        process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS = previous;
+      }
+    }
   });
 
   it("prefers a specific subsection heading as recall title", async () => {

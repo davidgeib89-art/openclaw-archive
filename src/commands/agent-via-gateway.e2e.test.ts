@@ -95,6 +95,39 @@ describe("agentCliCommand", () => {
     }
   });
 
+  it("accepts explicit sessionKey routing without to/sessionId", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-agent-cli-"));
+    const store = path.join(dir, "sessions.json");
+    mockConfig(store);
+
+    vi.mocked(callGateway).mockResolvedValue({
+      runId: "idem-1",
+      status: "ok",
+      result: {
+        payloads: [{ text: "hello-session-key" }],
+        meta: { stub: true },
+      },
+    });
+
+    try {
+      await agentCliCommand(
+        {
+          message: "hi",
+          sessionKey: "agent:main:ritual-isolated",
+        },
+        runtime,
+      );
+
+      expect(callGateway).toHaveBeenCalledTimes(1);
+      const firstCall = vi.mocked(callGateway).mock.calls[0]?.[0];
+      const params = firstCall?.params as { sessionKey?: string };
+      expect(params?.sessionKey).toBe("agent:main:ritual-isolated");
+      expect(runtime.log).toHaveBeenCalledWith("hello-session-key");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("skips gateway when --local is set", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-agent-cli-"));
     const store = path.join(dir, "sessions.json");
