@@ -117,4 +117,44 @@ describe("memory embedding token limits", () => {
     const inputs = embedBatch.mock.calls.flatMap((call) => call[0] ?? []);
     expect(inputs.every((input) => Buffer.byteLength(input, "utf8") <= 8192)).toBe(true);
   });
+
+  it("falls back to keyword search when embedding query fails", async () => {
+    await fs.writeFile(
+      path.join(workspaceDir, "memory", "2026-01-11.md"),
+      "Alpha protocol memory keeps the reconstruction grounded.",
+    );
+
+    const cfg = {
+      agents: {
+        defaults: {
+          workspace: workspaceDir,
+          memorySearch: {
+            provider: "openai",
+            model: "mock-embed",
+            store: { path: indexPath },
+            sync: { watch: false, onSessionStart: false, onSearch: false },
+            query: { minScore: 0 },
+          },
+        },
+        list: [{ id: "main", default: true }],
+      },
+    };
+
+    const result = await getMemorySearchManager({ cfg, agentId: "main" });
+    expect(result.manager).not.toBeNull();
+    if (!result.manager) {
+      throw new Error("manager missing");
+    }
+    manager = result.manager;
+    await manager.sync({ force: true });
+
+    embedQuery.mockImplementationOnce(async () => {
+      throw new Error('openai embeddings failed: 401 {"error":{"message":"User not found."}}');
+    });
+
+    const results = await manager.search("alpha reconstruction");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]?.source).toBe("memory");
+    expect(results[0]?.snippet.toLowerCase()).toContain("alpha");
+  });
 });

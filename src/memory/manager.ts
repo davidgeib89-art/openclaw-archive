@@ -225,14 +225,33 @@ export class MemoryIndexManager implements MemorySearchManager {
       ? await this.searchKeyword(cleaned, candidates).catch(() => [])
       : [];
 
-    const queryVec = (await this.embedQueryWithTimeout(cleaned)) as number[];
-    const hasVector = queryVec.some((v) => v !== 0);
-    const vectorResults = hasVector
-      ? await this.searchVector(queryVec, candidates).catch(() => [])
-      : [];
+    let vectorLookupFailed = false;
+    const vectorResults = await (async () => {
+      try {
+        const queryVec = (await this.embedQueryWithTimeout(cleaned)) as number[];
+        const hasVector = queryVec.some((v) => v !== 0);
+        if (!hasVector) {
+          return [];
+        }
+        return await this.searchVector(queryVec, candidates).catch(() => []);
+      } catch (err) {
+        vectorLookupFailed = true;
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn(`memory search vector lookup failed; using keyword fallback: ${message}`);
+        return [];
+      }
+    })();
 
     if (!hybrid.enabled) {
+      if (vectorLookupFailed) {
+        const keywordFallback = await this.searchKeyword(cleaned, candidates).catch(() => []);
+        return keywordFallback.filter((entry) => entry.score >= minScore).slice(0, maxResults);
+      }
       return vectorResults.filter((entry) => entry.score >= minScore).slice(0, maxResults);
+    }
+
+    if (vectorLookupFailed) {
+      return keywordResults.filter((entry) => entry.score >= minScore).slice(0, maxResults);
     }
 
     const merged = this.mergeHybridResults({
