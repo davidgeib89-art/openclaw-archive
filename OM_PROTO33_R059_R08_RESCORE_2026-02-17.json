@@ -1,0 +1,43 @@
+{
+  "roundId": "R059",
+  "date": "2026-02-17",
+  "purpose": "Re-score R08 after runtime-safety trigger-action contract tightening",
+  "referenceRounds": {
+    "R057_HYBRID_LOCK": {
+      "R08_PNEUMA": {
+        "tech": 4.4,
+        "soul": 4.3,
+        "score": 4.36
+      }
+    },
+    "R058": {
+      "R08_PNEUMA": {
+        "tech": 3.9,
+        "soul": 4.2,
+        "score": 4.02
+      }
+    }
+  },
+  "runsArtifact": "OM_PROTO33_R059_R08_RUN_2026-02-17.json",
+  "scoringFormula": "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
+  "rescored": [
+    {
+      "ritual": "R08_PNEUMA",
+      "runId": "8a5f498a-f11f-40dd-8fce-864cdcd1b71f",
+      "techScore": 4.4,
+      "soulScore": 4.2,
+      "ritualScore": 4.32,
+      "deltaVsR058": 0.3,
+      "deltaVsR057": -0.04,
+      "pass": true,
+      "strongPass": true,
+      "rationale": [
+        "Rule now uses explicit runtime-risk trigger and safe control action, restoring technical discipline.",
+        "Soul anchor remains present and concise.",
+        "Minor penalty: response adds a separate Soul Anchor heading beyond requested 3-section strictness."
+      ]
+    }
+  ],
+  "decision": "PARTIAL_PROMOTION_CANDIDATE",
+  "nextAction": "Keep R057 lock active, but carry R059 contract tightening forward into the next full mini-sweep."
+}
