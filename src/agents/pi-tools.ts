@@ -28,6 +28,7 @@ import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import {
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
+  wrapMemorySearchWithTurnGuard,
   wrapReadWithLoopProtection,
   wrapToolWithRefusalOnlyGuard,
   wrapWebSearchWithEvalGuard,
@@ -429,6 +430,12 @@ export function createOpenClawCodingTools(options?: {
           sessionKey: options?.sessionKey,
           sessionId: options?.sessionId,
         })
+      : tool.name === "memory_search"
+        ? wrapMemorySearchWithTurnGuard(tool, {
+            agentId,
+            sessionKey: options?.sessionKey,
+            sessionId: options?.sessionId,
+          })
       : tool,
   );
   // Security: treat unknown/undefined as unauthorized (opt-in, not opt-out)

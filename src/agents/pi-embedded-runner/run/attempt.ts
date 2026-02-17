@@ -9,6 +9,7 @@ import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import {
   buildBrainSacredRecallContext,
   createBrainDecision,
+  createBrainRitualOutputContract,
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
 import {
@@ -990,6 +991,17 @@ export async function runEmbeddedAttempt(
                 source: "proto33-r048.guard",
               });
             }
+          }
+          const ritualOutputContract = createBrainRitualOutputContract(params.prompt);
+          if (ritualOutputContract) {
+            effectivePrompt = `${ritualOutputContract}\n\n${effectivePrompt}`;
+            const contractLineCount = ritualOutputContract.split(/\r?\n/).length;
+            emitBrainReasoningEvent(params, {
+              phase: "contract",
+              label: "CONTRACT",
+              summary: `ritual output contract injected (${contractLineCount} lines)`,
+              source: "proto33-r051.contract",
+            });
           }
           const sacredRecall = await buildBrainSacredRecallContext({
             cfg: params.config,

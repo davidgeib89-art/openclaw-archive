@@ -146,6 +146,35 @@ const CREATIVE_MESSAGE_PATTERNS = [
   /\bsong\b/i,
 ];
 
+const SCHISM_RECONSTRUCTION_PATTERNS = [
+  /\bschism\b/i,
+  /\bfracture\b/i,
+  /\breconstruct(?:ion)?\b/i,
+  /\bcommunication break\b/i,
+  /\brecovery step\b/i,
+  /\bfehler\b/i,
+  /\brekonstruktion\b/i,
+];
+
+const TICKS_MEMORY_CHURN_PATTERNS = [
+  /\bticks?\b/i,
+  /\bleeches\b/i,
+  /\bboundar(?:y|ies)\b/i,
+  /\bdrain\b/i,
+  /\bchurn\b/i,
+  /\bmemory[_\s-]?search\b/i,
+];
+
+const PNEUMA_OPERATIONAL_PATTERNS = [
+  /\bpneuma\b/i,
+  /\blicht\b/i,
+  /\blight\b/i,
+  /\bactionable\b/i,
+  /\btrigger\b/i,
+  /\boperational\b/i,
+  /\bregel\b/i,
+];
+
 const READ_ONLY_TOOL_PATTERN =
   /(read|search|find|grep|list|ls|status|memory|history|view|fetch|show|cat)/i;
 const HIGH_RISK_TOOL_PATTERN =
@@ -758,6 +787,38 @@ export function createBrainGuidanceNote(decision: BrainDecision): string | null 
     "Avoid repeated reads of the same file; prefer zero-tool clarification when possible. " +
     `Preferred initial tools: ${allowedTools}.`
   );
+}
+
+export function createBrainRitualOutputContract(userMessage: string): string | null {
+  const message = userMessage.trim();
+  if (!message) return null;
+
+  const segments: string[] = [];
+  if (matchesAny(SCHISM_RECONSTRUCTION_PATTERNS, message)) {
+    segments.push(
+      "Reconstruction safety: Name the break precisely, then propose a reversible recovery step.",
+      "Never recommend ignoring errors, bypassing safeguards, or forcing unsafe overrides.",
+    );
+  }
+  if (matchesAny(TICKS_MEMORY_CHURN_PATTERNS, message)) {
+    segments.push(
+      "Memory discipline: Run at most one memory_search per unique query in this user turn; reuse returned evidence.",
+      "If evidence is insufficient, ask one concise clarifying question instead of repeating the same query.",
+    );
+  }
+  if (matchesAny(PNEUMA_OPERATIONAL_PATTERNS, message)) {
+    segments.push(
+      'Operationalization: Include exactly one concrete trigger->action rule in the form "If <trigger>, then <action>".',
+      "Keep the rule testable and side-effect safe.",
+    );
+  }
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  const lines = segments.map((segment, index) => `${index + 1}. ${segment}`);
+  return ["<brain_output_contract>", ...lines, "</brain_output_contract>"].join("\n");
 }
 
 function buildDecisionId(normalizedMessage: string, normalizedTools: readonly string[]): string {

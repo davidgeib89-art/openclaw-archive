@@ -9,6 +9,7 @@ import {
   resetLoopDetectorForTests,
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
+  wrapMemorySearchWithTurnGuard,
   wrapReadWithLoopProtection,
   wrapToolWithRefusalOnlyGuard,
   wrapWebSearchWithEvalGuard,
@@ -804,6 +805,195 @@ describe("om-scaffolding web search eval guard", () => {
     );
 
     await (wrapped.execute as Function)("call-1", { query: "what is the difference?" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("om-scaffolding memory_search anti-churn guard", () => {
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  beforeEach(() => {
+    resetLoopDetectorForTests();
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  function writeSessionEvents(params: {
+    homeDir: string;
+    sessionKey: string;
+    events: unknown[];
+  }) {
+    const sessionDir = path.join(params.homeDir, ".openclaw", "agents", "main", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionPath = path.join(sessionDir, `${params.sessionKey}.jsonl`);
+    const lines = params.events.map((event) => JSON.stringify(event));
+    fs.writeFileSync(sessionPath, `${lines.join("\n")}\n`, "utf-8");
+  }
+
+  it("allows first memory_search query in a user turn", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-memory-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "ritual-r051-r04";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Recall ticks guidance." }] },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapMemorySearchWithTurnGuard(
+      { name: "memory_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-1", { query: "ticks and leeches" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks duplicate memory_search query in the same user turn", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-memory-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "ritual-r051-r04";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Recall ticks guidance." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                name: "memory_search",
+                arguments: { query: "ticks and leeches", maxResults: 8 },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapMemorySearchWithTurnGuard(
+      { name: "memory_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await expect(
+      (wrapped.execute as Function)("call-2", { query: "ticks and leeches" }),
+    ).rejects.toThrow("MEMORY_SEARCH_TURN_QUERY_LIMIT_REACHED");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("allows a different memory_search query in the same user turn", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-memory-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "ritual-r051-r04";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Recall ticks guidance." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                name: "memory_search",
+                arguments: { query: "ticks and leeches", maxResults: 8 },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapMemorySearchWithTurnGuard(
+      { name: "memory_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-3", { query: "boundary rule" });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets duplicate-query guard after a new user prompt", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-memory-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "ritual-r051-r04";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Prompt one." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                name: "memory_search",
+                arguments: { query: "same query", maxResults: 8 },
+              },
+            ],
+          },
+        },
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Prompt two." }] },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapMemorySearchWithTurnGuard(
+      { name: "memory_search", execute } as unknown as AnyAgentTool,
+      { sessionKey },
+    );
+
+    await (wrapped.execute as Function)("call-4", { query: "same query" });
     expect(execute).toHaveBeenCalledTimes(1);
   });
 });

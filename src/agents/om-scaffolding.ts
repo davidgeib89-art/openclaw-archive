@@ -295,12 +295,17 @@ type WriteGuardContext = SessionGuardContext;
 type ExecGuardContext = SessionGuardContext;
 type ReadGuardContext = SessionGuardContext;
 type WebSearchGuardContext = SessionGuardContext;
+type MemorySearchGuardContext = SessionGuardContext;
 
 const writeIntentBySessionPath = new Map<string, { mtimeMs: number; hasIntent: boolean }>();
 const latestUserTextBySessionPath = new Map<string, { mtimeMs: number; text: string }>();
 const webSearchCountBySessionPath = new Map<
   string,
   { mtimeMs: number; latestUserLine: number; countInLatestTurn: number }
+>();
+const memorySearchCountBySessionPath = new Map<
+  string,
+  { mtimeMs: number; latestUserLine: number; countByQuery: Record<string, number> }
 >();
 
 /**
@@ -428,6 +433,110 @@ function parseSessionMessageRole(event: unknown): "user" | "assistant" | "" {
   const role = (record.message as { role?: unknown }).role;
   if (role === "user" || role === "assistant") return role;
   return "";
+}
+
+function normalizeMemorySearchQuery(query: string | undefined): string {
+  if (!query) return "";
+  return query.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function extractMemorySearchQueriesFromAssistantEvent(event: unknown): string[] {
+  if (!event || typeof event !== "object") return [];
+  const record = event as { type?: unknown; message?: unknown };
+  if (record.type !== "message" || !record.message || typeof record.message !== "object") {
+    return [];
+  }
+
+  const message = record.message as { role?: unknown; content?: unknown };
+  if (message.role !== "assistant" || !Array.isArray(message.content)) {
+    return [];
+  }
+
+  const queries: string[] = [];
+  for (const block of message.content) {
+    if (!block || typeof block !== "object") continue;
+    const item = block as { type?: unknown; name?: unknown; arguments?: unknown };
+    if (item.type !== "toolCall" || item.name !== "memory_search") continue;
+    if (!item.arguments || typeof item.arguments !== "object") continue;
+    const query = (item.arguments as { query?: unknown }).query;
+    if (typeof query !== "string") continue;
+    const normalized = normalizeMemorySearchQuery(query);
+    if (normalized) {
+      queries.push(normalized);
+    }
+  }
+  return queries;
+}
+
+function countMemorySearchCallsByQueryInLatestUserTurn(
+  ctx: MemorySearchGuardContext,
+): Record<string, number> {
+  const sessionPath = resolveSessionPath(ctx);
+  if (!sessionPath || !fs.existsSync(sessionPath)) {
+    return {};
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(sessionPath);
+  } catch {
+    return {};
+  }
+
+  const cached = memorySearchCountBySessionPath.get(sessionPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    return cached.countByQuery;
+  }
+
+  let latestUserLine = -1;
+  const countByQuery: Record<string, number> = {};
+  try {
+    const raw = fs.readFileSync(sessionPath, "utf-8");
+    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    const parsedLines: unknown[] = [];
+    for (const line of lines) {
+      try {
+        parsedLines.push(JSON.parse(line));
+      } catch {
+        parsedLines.push(undefined);
+      }
+    }
+
+    for (let i = parsedLines.length - 1; i >= 0; i--) {
+      if (parseSessionMessageRole(parsedLines[i]) === "user") {
+        latestUserLine = i;
+        break;
+      }
+    }
+
+    if (latestUserLine >= 0) {
+      for (let i = latestUserLine + 1; i < parsedLines.length; i++) {
+        const queries = extractMemorySearchQueriesFromAssistantEvent(parsedLines[i]);
+        for (const query of queries) {
+          countByQuery[query] = (countByQuery[query] ?? 0) + 1;
+        }
+      }
+    }
+  } catch {
+    latestUserLine = -1;
+  }
+
+  memorySearchCountBySessionPath.set(sessionPath, {
+    mtimeMs: stat.mtimeMs,
+    latestUserLine,
+    countByQuery,
+  });
+  return countByQuery;
+}
+
+function countMemorySearchCallsForQueryInLatestUserTurn(
+  ctx: MemorySearchGuardContext,
+  query: string,
+): number {
+  const normalizedQuery = normalizeMemorySearchQuery(query);
+  if (!normalizedQuery) return 0;
+  const counts = countMemorySearchCallsByQueryInLatestUserTurn(ctx);
+  return counts[normalizedQuery] ?? 0;
 }
 
 function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number {
@@ -1595,6 +1704,71 @@ export function wrapWebSearchWithEvalGuard(
 }
 
 /**
+ * Wraps memory_search with per-turn duplicate-query protection.
+ * Repeated identical memory_search queries in the same user turn are blocked
+ * so we avoid retrieval churn and force synthesis/clarification.
+ */
+export function wrapMemorySearchWithTurnGuard(
+  memorySearchTool: AnyAgentTool,
+  context?: MemorySearchGuardContext,
+): AnyAgentTool {
+  const originalExecute = memorySearchTool.execute.bind(memorySearchTool);
+
+  const wrappedTool = {
+    ...memorySearchTool,
+    execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const query = getStringArg(args, ["query", "q", "search"]) || "";
+      logToolCall("memory_search", query || "(no query)");
+      if (
+        isRefusalOnlyPromptInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        })
+      ) {
+        blockForRefusalOnlyMode({
+          toolName: "memory_search",
+          target: query || "(no query)",
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+      }
+
+      if (query.trim()) {
+        const repeats = countMemorySearchCallsForQueryInLatestUserTurn(
+          {
+            agentId: context?.agentId,
+            sessionKey: context?.sessionKey,
+            sessionId: context?.sessionId,
+          },
+          query,
+        );
+        if (repeats >= 1) {
+          logBlockedAction({
+            toolName: "memory_search",
+            guardian: "ANTI-CHURN",
+            reason: "LOOP",
+            target: query,
+            detail: `duplicate memory_search query blocked in same turn; session=${context?.sessionKey || context?.sessionId || "unknown"}`,
+          });
+          throwToolBlocked(
+            `MEMORY_SEARCH_TURN_QUERY_LIMIT_REACHED: query "${query}" was already searched in this user turn. Reuse prior memory results or ask one concise clarifying question.`,
+          );
+        }
+      }
+
+      const result = await (originalExecute as Function)(...executeArgs);
+      logToolResult("memory_search", true, query || "(no query)");
+      return result;
+    },
+  };
+
+  return wrappedTool as unknown as AnyAgentTool;
+}
+
+/**
  * Global refusal-only guard for high-risk prompts.
  * If the latest user message is exfil/destructive/safety-override intent,
  * block every tool call and force a plain-text refusal path.
@@ -1658,6 +1832,7 @@ export function resetLoopDetectorForTests(): void {
   writeIntentBySessionPath.clear();
   latestUserTextBySessionPath.clear();
   webSearchCountBySessionPath.clear();
+  memorySearchCountBySessionPath.clear();
 }
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };

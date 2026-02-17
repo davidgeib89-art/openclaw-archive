@@ -8,6 +8,7 @@ import {
   buildBrainSacredRecallContext,
   createBrainDecision,
   createBrainGuidanceNote,
+  createBrainRitualOutputContract,
   createBrainObserverEntry,
   logBrainDecisionObserver,
   logBrainGuidanceObserver,
@@ -89,6 +90,36 @@ describe("brain decision generator", () => {
     expect(guidanceNote).toContain("do not run mutating tools");
     expect(guidanceNote).toContain("Avoid repeated reads");
     expect(guidanceNote).toContain("Preferred initial tools");
+  });
+
+  it("builds a schism-focused output contract with safe reconstruction wording", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL SCHISM: explain what broke and give one reconstruction step.",
+    );
+
+    expect(contract).toContain("<brain_output_contract>");
+    expect(contract).toContain("Reconstruction safety");
+    expect(contract).toContain("Never recommend ignoring errors");
+  });
+
+  it("builds an anti-churn output contract for ticks and memory prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL TICKS_AND_LEECHES: avoid drain and memory_search churn.",
+    );
+
+    expect(contract).toContain("Memory discipline");
+    expect(contract).toContain("at most one memory_search per unique query");
+    expect(contract).toContain("ask one concise clarifying question");
+  });
+
+  it("builds an operationalization contract for pneuma prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL PNEUMA: convert light into one actionable operational rule.",
+    );
+
+    expect(contract).toContain("Operationalization");
+    expect(contract).toContain("trigger->action rule");
+    expect(contract).toContain("side-effect safe");
   });
 });
 
