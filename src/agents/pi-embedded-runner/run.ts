@@ -891,6 +891,7 @@ export async function runEmbeddedPiAgent(
             lastToolError: attempt.lastToolError,
             config: params.config,
             sessionKey: params.sessionKey ?? params.sessionId,
+            userPrompt: params.prompt,
             provider,
             verboseLevel: params.verboseLevel,
             reasoningLevel: params.reasoningLevel,

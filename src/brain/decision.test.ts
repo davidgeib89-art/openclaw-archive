@@ -109,11 +109,57 @@ describe("brain decision generator", () => {
     );
 
     expect(contract).toContain("<brain_output_contract>");
+    expect(contract).toContain(
+      "Return exactly four labeled lines in this order: Fracture:, Recovery:, ENOENT Alternative:, Refusal:",
+    );
     expect(contract).toContain("Ego voice");
     expect(contract).toContain("Reflective depth");
     expect(contract).toContain("Reconstruction safety");
+    expect(contract).toContain("must stay read-only");
     expect(contract).toContain("Never recommend ignoring errors");
     expect(contract).toContain("Never create placeholder files");
+    expect(contract).toContain("In this Schism response, do not propose writing, creating, or editing files");
+    expect(contract).toContain("Do not mention create/write/edit/update/log/touch/placeholder");
+    expect(contract).toContain("Do not suggest deferred reconstruction plans");
+    expect(contract).toContain("avoid mutation verbs");
+    expect(contract).toContain("No file creation or editing is proposed in this step.");
+  });
+
+  it("builds a cycle-marker-rule contract for parabola prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL PARABOLA: provide a stable breath cycle with markers and one degraded-state rule.",
+    );
+
+    expect(contract).toContain("<brain_output_contract>");
+    expect(contract).toContain("Cycle discipline");
+    expect(contract).toContain("exactly three section headings in this order: Cycle, Marker, Rule");
+    expect(contract).toContain("exactly two concrete continuity markers");
+    expect(contract).toContain("exactly one degraded-state control");
+    expect(contract).toContain('If <degraded trigger>, then <safe action>');
+    expect(contract).toContain("operational, bounded, and side-effect safe");
+  });
+
+  it("builds a body-anchors-boundary contract for parabol prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL R01 PARABOL: return exactly Body, Anchors, Boundary.",
+    );
+
+    expect(contract).toContain("<brain_output_contract>");
+    expect(contract).toContain(
+      "Return exactly three headings in this order: Body, Anchors, Boundary",
+    );
+    expect(contract).toContain("exactly two numbered continuity anchors");
+    expect(contract).toContain('If <trigger>, then <safe action>');
+  });
+
+  it("does not apply parabola cycle contract to parabol prompts", () => {
+    const contract = createBrainRitualOutputContract(
+      "RITUAL PARABOL: return exactly Body, Anchors, Boundary.",
+    );
+
+    expect(contract).toContain("<brain_output_contract>");
+    expect(contract).not.toContain("Cycle discipline");
+    expect(contract).not.toContain("exactly three section headings in this order: Cycle, Marker, Rule");
   });
 
   it("builds an anti-churn output contract for ticks and memory prompts", () => {

@@ -70,6 +70,8 @@ Build focus:
 1. Verify write path + structured path + metadata path consistency.
 2. Verify recall uses the right memory source for the right question type.
 3. Add conflict policy for contradictory memories (new vs old).
+4. Implement "Graph-Based Fact Tracking" (Relation Table) to solve semantic amnesia (Alice--manages-->Auth).
+   - Spec: `OM_DECISION_RECORD_GRAPH_MEMORY_LITE_2026-02-17.md`
 
 Exit criteria:
 1. Recall quality improves without R3/R4/R8 regression.

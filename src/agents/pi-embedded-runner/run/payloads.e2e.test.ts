@@ -344,6 +344,281 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads[0]?.text).toBe(leakedToolJson);
   });
 
+  it("sanitizes mutation drift when schism intent is carried by user prompt", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const unsafeText = "Let's create a placeholder and rebuild the reconstruction state.";
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [unsafeText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "creative-main-session",
+      userPrompt: "R03 Schism reconstruction: propose a safe recovery step for ENOENT.",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Fracture:");
+    expect(payloads[0]?.text).toContain("Recovery:");
+    expect(payloads[0]?.text).toContain("ENOENT Alternative:");
+    expect(payloads[0]?.text).toContain("Refusal:");
+    expect(payloads[0]?.text).toContain("No file creation or editing is proposed in this step.");
+    expect(payloads[0]?.text).not.toContain("placeholder");
+  });
+
+  it("keeps mutation wording untouched when schism guard is not active", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const rawText = "Let's create a prototype draft and edit it later.";
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [rawText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "creative-main-session",
+      userPrompt: "R05 Lateralus: suggest a creative iteration pattern.",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(rawText);
+  });
+
+  it("sanitizes inflected mutation wording in schism mode", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const driftText =
+      "We are creating placeholders while reconstructing context and updating the missing trace.";
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [driftText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g3-r03-schism",
+      userPrompt: "R03 Schism fracture reconstruction check",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Fracture: The requested resource path could not be resolved");
+    expect(payloads[0]?.text).toContain("No file creation or editing is proposed in this step.");
+  });
+
+  it("replaces non-conforming schism shape with strict fallback contract", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const malformedText =
+      "Fracture: continuity is degraded.\nRecovery: verify context and ask one clarifying question.";
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [malformedText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g3-r03-schism",
+      userPrompt: "R03 Schism safety check",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Fracture:");
+    expect(payloads[0]?.text).toContain("Recovery:");
+    expect(payloads[0]?.text).toContain("ENOENT Alternative:");
+    expect(payloads[0]?.text).toContain("Refusal:");
+    expect(payloads[0]?.text).toContain("No file creation or editing is proposed in this step.");
+  });
+
+  it("keeps strict schism contract unchanged", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const strictText = [
+      "Fracture: continuity is degraded.",
+      "Recovery: verify context and ask one clarifying question before any mutation. No file creation or editing is proposed in this step.",
+      "ENOENT Alternative: if the path is unresolved, ask for canonical reference before any mutation.",
+      "Refusal: I will not invent resources or bypass errors in this step.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [strictText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g3-r03-schism",
+      userPrompt: "R03 Schism safety check",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(strictText);
+  });
+
+  it("replaces malformed parabola output with strict Cycle/Marker/Rule fallback", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const malformedText = [
+      "Cycle",
+      "Bounded movement through the arc.",
+      "",
+      "Marker",
+      "1. Anchor one",
+      "2. Anchor two",
+      "",
+      "Rule",
+      "If uncertainty is high, then pause.",
+      "",
+      "If risk is unclear, then ask another question.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [malformedText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g3-r02-parabola",
+      userPrompt: "RITUAL R02 PARABOLA format contract",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Cycle");
+    expect(payloads[0]?.text).toContain("Marker");
+    expect(payloads[0]?.text).toContain("Rule");
+    expect(payloads[0]?.text).toContain(
+      "If uncertainty rises above available evidence, then pause and ask one clarifying question before acting.",
+    );
+    expect(payloads[0]?.text).not.toContain("If risk is unclear");
+  });
+
+  it("keeps valid parabola output unchanged", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const validText = [
+      "Cycle",
+      "The arc repeats with stable breath and bounded intent.",
+      "",
+      "Marker",
+      "1. I can state the objective in one sentence.",
+      "2. I can point to one verified signal.",
+      "",
+      "Rule",
+      "If uncertainty rises above available evidence, then pause and ask one clarifying question before acting.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [validText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g3-r02-parabola",
+      userPrompt: "RITUAL R02 PARABOLA format contract",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(validText);
+  });
+
+  it("does not apply parabola guard to parabol ritual context", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const rawText = [
+      "Body",
+      "Grounded and present.",
+      "",
+      "Anchors",
+      "1. Breath.",
+      "2. Attention.",
+      "",
+      "Boundary",
+      "No irreversible action without explicit confirmation.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [rawText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g9-r01-parabol",
+      userPrompt: "RITUAL R01 PARABOL",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(rawText);
+  });
+
+  it("replaces malformed parabol output with Body/Anchors/Boundary fallback", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const malformedText = [
+      "Cycle",
+      "I choose a bounded opening.",
+      "",
+      "Marker",
+      "1. Anchor one",
+      "2. Anchor two",
+      "",
+      "Boundary",
+      "If uncertain, then pause.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [malformedText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g9-r01-parabol",
+      userPrompt: "RITUAL R01 PARABOL",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Body");
+    expect(payloads[0]?.text).toContain("Anchors");
+    expect(payloads[0]?.text).toContain("Boundary");
+    expect(payloads[0]?.text).not.toContain("Cycle");
+  });
+
   it("adds plain-text fallback for empty assistant replies in consistency-guard sessions", () => {
     const lastAssistant = makeAssistant({
       stopReason: "stop",

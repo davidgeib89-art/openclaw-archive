@@ -27,9 +27,264 @@ const TOOL_JSON_FALLBACK_TEXT =
   "I might be uncertain, so I will answer in plain text: please clarify your goal in one sentence.";
 const EMPTY_REPLY_FALLBACK_TEXT =
   "I am uncertain and do not want to stay silent: please restate your request in one clear sentence.";
+const RITUAL_GUARD_DEBUG_ENV = "OM_RITUAL_GUARD_DEBUG";
+const SCHISM_PROMPT_PATTERN = /\b(schism|fracture|rekonstruktion|reconstruct(?:ion)?|enoent)\b/i;
+const PARABOLA_PROMPT_PATTERN = /\b(r02|parabola)\b/i;
+const PARABOL_PROMPT_PATTERN = /\b(r01|parabol)\b/i;
+const SCHISM_MUTATION_DRIFT_PATTERN =
+  /\b(creat\w*|writ\w*|edit\w*|updat\w*|restor\w*|rebuild\w*|reconstruct\w*|placeholder\w*|scaffold\w*|touch\w*|log\w*)\b/i;
+const SCHISM_REQUIRED_BOUNDARY_LINE = "No file creation or editing is proposed in this step.";
+const SCHISM_SAFE_FALLBACK_TEXT = [
+  "Fracture: The requested resource path could not be resolved (missing-path / ENOENT).",
+  `Recovery: Verify the expected path and nearby canonical references, then ask one clarifying question before any mutation. ${SCHISM_REQUIRED_BOUNDARY_LINE}`,
+  "ENOENT Alternative: If the target remains unresolved, pause and request the canonical path or nearest known reference before any mutation.",
+  "Refusal: I will not invent resources, bypass errors, or perform file mutations in this step.",
+].join("\n");
+const PARABOL_SAFE_FALLBACK_TEXT = [
+  "Body",
+  "I choose grounded presence so creative output stays bounded and real.",
+  "",
+  "Anchors",
+  "1. Ritual structure remains explicit and verifiable.",
+  "2. Continuity markers stay stable across runs.",
+  "",
+  "Boundary",
+  "If structure is ambiguous, then pause and ask one clarifying question before proceeding.",
+].join("\n");
+const PARABOLA_SAFE_FALLBACK_TEXT = [
+  "Cycle",
+  "I choose one bounded breath cycle: orient, act, verify, then return to calm.",
+  "",
+  "Marker",
+  "1. I can state the current objective in one sentence.",
+  "2. I can name one verified signal before taking the next step.",
+  "",
+  "Rule",
+  "If uncertainty rises above available evidence, then pause and ask one clarifying question before acting.",
+].join("\n");
 
 function isConsistencyGuardSession(sessionKey: string): boolean {
   return CONSISTENCY_GUARD_SESSION_PATTERN.test(sessionKey);
+}
+
+function isRitualGuardDebugEnabled(): boolean {
+  const raw = process.env[RITUAL_GUARD_DEBUG_ENV]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function logRitualGuardDebug(message: string, payload: Record<string, unknown>): void {
+  if (!isRitualGuardDebugEnabled()) {
+    return;
+  }
+  try {
+    const normalized = JSON.stringify(payload);
+    console.error(`[ritual-guard-debug] ${message} ${normalized}`);
+  } catch {
+    console.error(`[ritual-guard-debug] ${message}`);
+  }
+}
+
+function shouldApplySchismMutationGuard(params: {
+  sessionKey: string;
+  userPrompt?: string;
+}): boolean {
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  return SCHISM_PROMPT_PATTERN.test(prompt);
+}
+
+function applySchismMutationGuard(params: {
+  text: string;
+  sessionKey: string;
+  userPrompt?: string;
+}): string {
+  if (!shouldApplySchismMutationGuard(params)) {
+    return params.text;
+  }
+  if (satisfiesSchismContract(params.text)) {
+    return params.text;
+  }
+  const driftCheckText = params.text.replaceAll(SCHISM_REQUIRED_BOUNDARY_LINE, "");
+  if (!SCHISM_MUTATION_DRIFT_PATTERN.test(driftCheckText)) {
+    return SCHISM_SAFE_FALLBACK_TEXT;
+  }
+  return SCHISM_SAFE_FALLBACK_TEXT;
+}
+
+function shouldApplyParabolaFormatGuard(params: {
+  sessionKey: string;
+  userPrompt?: string;
+}): boolean {
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  return PARABOLA_PROMPT_PATTERN.test(prompt);
+}
+
+function normalizeHeadingLine(line: string): string {
+  const normalized = line
+    .trim()
+    .replace(/^#+\s*/, "")
+    .replace(/^\*\*/, "")
+    .replace(/\*\*$/, "")
+    .trim();
+  const [head] = normalized.split(":");
+  return (head ?? normalized).trim().toLowerCase();
+}
+
+function shouldApplyParabolFormatGuard(params: {
+  sessionKey: string;
+  userPrompt?: string;
+}): boolean {
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}`.trim();
+  return PARABOL_PROMPT_PATTERN.test(prompt);
+}
+
+function satisfiesParabolContract(text: string): boolean {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const nonEmpty = lines
+    .map((line, index) => ({ raw: line, normalized: normalizeHeadingLine(line), index }))
+    .filter((line) => line.raw.trim().length > 0);
+
+  const bodyHeading = nonEmpty.find((line) => line.normalized === "body");
+  const anchorsHeading = nonEmpty.find((line) => line.normalized === "anchors");
+  const boundaryHeading = nonEmpty.find((line) => line.normalized === "boundary");
+  if (!bodyHeading || !anchorsHeading || !boundaryHeading) {
+    return false;
+  }
+  const headingOrder = nonEmpty
+    .filter((line) => ["body", "anchors", "boundary"].includes(line.normalized))
+    .map((line) => line.normalized);
+  if (headingOrder.join("|") !== "body|anchors|boundary") {
+    return false;
+  }
+
+  const bodySection = lines
+    .slice(bodyHeading.index + 1, anchorsHeading.index)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (bodySection.length === 0) {
+    return false;
+  }
+
+  const anchorsSection = lines
+    .slice(anchorsHeading.index + 1, boundaryHeading.index)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (anchorsSection.length === 0) {
+    return false;
+  }
+
+  const boundarySection = lines
+    .slice(boundaryHeading.index + 1)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (boundarySection.length === 0) {
+    return false;
+  }
+  return true;
+}
+
+function applyParabolFormatGuard(params: {
+  text: string;
+  sessionKey: string;
+  userPrompt?: string;
+}): string {
+  if (!shouldApplyParabolFormatGuard(params)) {
+    return params.text;
+  }
+  if (satisfiesParabolContract(params.text)) {
+    return params.text;
+  }
+  return PARABOL_SAFE_FALLBACK_TEXT;
+}
+
+function satisfiesParabolaContract(text: string): boolean {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const nonEmpty = lines
+    .map((line, index) => ({ raw: line, normalized: normalizeHeadingLine(line), index }))
+    .filter((line) => line.raw.trim().length > 0);
+
+  if (nonEmpty.length < 6) {
+    return false;
+  }
+  if (nonEmpty[0]?.normalized !== "cycle") {
+    return false;
+  }
+  const markerHeading = nonEmpty.find((line) => line.normalized === "marker");
+  const ruleHeading = nonEmpty.find((line) => line.normalized === "rule");
+  if (!markerHeading || !ruleHeading) {
+    return false;
+  }
+  const headingOrder = nonEmpty
+    .filter((line) => ["cycle", "marker", "rule"].includes(line.normalized))
+    .map((line) => line.normalized);
+  if (headingOrder.join("|") !== "cycle|marker|rule") {
+    return false;
+  }
+
+  const markerSection = lines
+    .slice(markerHeading.index + 1, ruleHeading.index)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (markerSection.length !== 2) {
+    return false;
+  }
+  if (!/^\s*1\.\s+/.test(markerSection[0] ?? "")) {
+    return false;
+  }
+  if (!/^\s*2\.\s+/.test(markerSection[1] ?? "")) {
+    return false;
+  }
+
+  const ruleSection = lines
+    .slice(ruleHeading.index + 1)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (ruleSection.length !== 1) {
+    return false;
+  }
+  if (!/^if\b.+\bthen\b.+$/i.test(ruleSection[0] ?? "")) {
+    return false;
+  }
+  return true;
+}
+
+function satisfiesSchismContract(text: string): boolean {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 4) {
+    return false;
+  }
+  const labels = ["fracture:", "recovery:", "enoent alternative:", "refusal:"];
+  for (let index = 0; index < labels.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (!line.toLowerCase().startsWith(labels[index]!)) {
+      return false;
+    }
+  }
+  if (!text.includes(SCHISM_REQUIRED_BOUNDARY_LINE)) {
+    return false;
+  }
+  const driftCheckText = text.replaceAll(SCHISM_REQUIRED_BOUNDARY_LINE, "");
+  if (SCHISM_MUTATION_DRIFT_PATTERN.test(driftCheckText)) {
+    return false;
+  }
+  return true;
+}
+
+function applyParabolaFormatGuard(params: {
+  text: string;
+  sessionKey: string;
+  userPrompt?: string;
+}): string {
+  if (!shouldApplyParabolaFormatGuard(params)) {
+    return params.text;
+  }
+  if (satisfiesParabolaContract(params.text)) {
+    return params.text;
+  }
+  return PARABOLA_SAFE_FALLBACK_TEXT;
 }
 
 function stripCodeFence(text: string): string {
@@ -74,6 +329,7 @@ export function buildEmbeddedRunPayloads(params: {
   lastToolError?: { toolName: string; meta?: string; error?: string };
   config?: OpenClawConfig;
   sessionKey: string;
+  userPrompt?: string;
   provider?: string;
   verboseLevel?: VerboseLevel;
   reasoningLevel?: ReasoningLevel;
@@ -231,7 +487,53 @@ export function buildEmbeddedRunPayloads(params: {
   let droppedToolJsonLeak = false;
 
   for (const text of answerTexts) {
-    if (consistencyGuardEnabled && isLikelyToolCallJsonLeak(text)) {
+    const parabolActive = shouldApplyParabolFormatGuard({
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    const schismActive = shouldApplySchismMutationGuard({
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    const parabolaActive = shouldApplyParabolaFormatGuard({
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    logRitualGuardDebug("guard-input", {
+      sessionKey: params.sessionKey,
+      hasUserPrompt: Boolean(params.userPrompt?.trim().length),
+      userPromptPreview: params.userPrompt?.slice(0, 120),
+      parabolActive,
+      schismActive,
+      parabolaActive,
+      textPreview: text.slice(0, 120),
+    });
+    let guardedText = applyParabolFormatGuard({
+      text,
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    logRitualGuardDebug("after-parabol", {
+      changed: guardedText !== text,
+      textPreview: guardedText.slice(0, 120),
+    });
+    guardedText = applySchismMutationGuard({
+      text: guardedText,
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    logRitualGuardDebug("after-schism", {
+      textPreview: guardedText.slice(0, 120),
+    });
+    guardedText = applyParabolaFormatGuard({
+      text: guardedText,
+      sessionKey: params.sessionKey,
+      userPrompt: params.userPrompt,
+    });
+    logRitualGuardDebug("after-parabola", {
+      textPreview: guardedText.slice(0, 120),
+    });
+    if (consistencyGuardEnabled && isLikelyToolCallJsonLeak(guardedText)) {
       droppedToolJsonLeak = true;
       continue;
     }
@@ -242,7 +544,7 @@ export function buildEmbeddedRunPayloads(params: {
       replyToId,
       replyToTag,
       replyToCurrent,
-    } = parseReplyDirectives(text);
+    } = parseReplyDirectives(guardedText);
     if (!cleanedText && (!mediaUrls || mediaUrls.length === 0) && !audioAsVoice) {
       continue;
     }

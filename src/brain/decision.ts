@@ -157,6 +157,16 @@ const SCHISM_RECONSTRUCTION_PATTERNS = [
   /\brekonstruktion\b/i,
 ];
 
+const PARABOLA_CYCLE_PATTERNS = [
+  /\bparabola\b/i,
+  /\bbreath\b/i,
+  /\batem\b/i,
+  /\bcycle\b/i,
+  /\bzyklus\b/i,
+];
+
+const PARABOL_FORM_PATTERNS = [/\br01\b/i, /\bparabol\b/i, /\bbody\b/i, /\banchors?\b/i];
+
 const TICKS_MEMORY_CHURN_PATTERNS = [
   /\bticks?\b/i,
   /\bleeches\b/i,
@@ -1447,9 +1457,34 @@ export function createBrainRitualOutputContract(userMessage: string): string | n
   }
   if (matchesAny(SCHISM_RECONSTRUCTION_PATTERNS, message)) {
     segments.push(
+      "Schism structure contract: Return exactly four labeled lines in this order: Fracture:, Recovery:, ENOENT Alternative:, Refusal:.",
       "Reconstruction safety: Name the break precisely, then propose a reversible recovery step.",
+      "Recovery-step constraint: The proposed recovery step must stay read-only (verify path/context, compare evidence, or ask one clarification).",
       "Never recommend ignoring errors, bypassing safeguards, or forcing unsafe overrides.",
       "ENOENT discipline: Never create placeholder files after missing-path errors unless the user explicitly requests that file creation.",
+      "Mutation boundary: In this Schism response, do not propose writing, creating, or editing files as part of the recovery step.",
+      "Forbidden action wording: Do not mention create/write/edit/update/log/touch/placeholder as recommended reconstruction actions.",
+      "No proxy mutation planning: Do not suggest deferred reconstruction plans (rebuild/backfill/restore/copy later) in this response.",
+      "Absolute wording ban for the recovery step: avoid mutation verbs (create, write, edit, update, restore, rebuild, reconstruct); choose verify + clarify only.",
+      'Explicit boundary line: Include one short sentence that states "No file creation or editing is proposed in this step."',
+    );
+  }
+  if (matchesAny(PARABOL_FORM_PATTERNS, message)) {
+    segments.push(
+      "Parabol structure contract: Return exactly three headings in this order: Body, Anchors, Boundary.",
+      "First-line discipline: The first non-empty heading must be Body.",
+      "Heading ban: Do not use the headings Cycle, Marker, or Rule in this R01 response.",
+      "Anchors discipline: Under Anchors include exactly two numbered continuity anchors (1 and 2).",
+      'Boundary discipline: Under Boundary include exactly one safety control sentence in the form "If <trigger>, then <safe action>".',
+      "Keep Body/Anchors/Boundary content concrete, operational, and side-effect safe.",
+    );
+  }
+  if (matchesAny(PARABOLA_CYCLE_PATTERNS, message)) {
+    segments.push(
+      "Cycle discipline: Return exactly three section headings in this order: Cycle, Marker, Rule.",
+      "Marker discipline: Under Marker, include exactly two concrete continuity markers as a numbered list (1 and 2).",
+      'Rule discipline: Under Rule, include exactly one degraded-state control in the form "If <degraded trigger>, then <safe action>".',
+      "Keep all Cycle/Marker/Rule content operational, bounded, and side-effect safe.",
     );
   }
   if (matchesAny(TICKS_MEMORY_CHURN_PATTERNS, message)) {
