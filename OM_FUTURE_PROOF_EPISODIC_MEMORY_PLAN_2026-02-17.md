@@ -201,8 +201,19 @@ Completed:
    - Added rollout toggles for A/B safety:
      - `OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED`
      - `OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED`
+10. Step 10 (staged A/B rollout) executed:
+   - Artifacts:
+     - `OM_PROTO33_R061A_R3_R4_R8_RUNS_2026-02-17.json`
+     - `OM_PROTO33_R061A_R3_R4_R8_RESCORE_2026-02-17.json`
+     - `OM_PROTO33_R061B_R3_R4_R8_RUNS_2026-02-17.json`
+     - `OM_PROTO33_R061B_R3_R4_R8_RESCORE_2026-02-17.json`
+     - `OM_PROTO33_PROGRESS_LEDGER_2026-02-17_R061_STEP10_AB_GATE.md`
+   - Gate outcome:
+     - keep `R060` lock
+     - reject `R061B` promotion (R03/R04 regression)
+     - retain `R061A` as control profile reference only
 
 Immediate next:
-1. Step 10 staged rollout with R3/R4/R8 delta checks against latest baseline.
-2. Tune creative/ritual boost coefficients based on first live recall metrics deltas.
-3. Optional: add structured journal archival index for long-range replay tooling.
+1. Run targeted `R03` instability diagnosis for B-profile conditions (single-variable).
+2. Keep route/session shaping behind feature toggles during HOLD.
+3. Re-run mini-gate after diagnosis and compare strictly against `R060` lock.
