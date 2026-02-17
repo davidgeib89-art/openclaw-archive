@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import { appendBrainEpisodicJournal } from "./episodic-memory.js";
@@ -44,6 +45,18 @@ function makeCfgWithAgentOverride(): OpenClawConfig {
 describe("brain episodic memory write path", () => {
   const previousWriteEnv = process.env.OM_EPISODIC_WRITE_ENABLED;
   const previousJournalPathEnv = process.env.OM_EPISODIC_JOURNAL_PATH;
+  const previousStructuredPathEnv = process.env.OM_EPISODIC_STRUCTURED_PATH;
+  const previousMetadataPathEnv = process.env.OM_EPISODIC_METADATA_DB_PATH;
+  const previousCompactionEnabledEnv = process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED;
+  const previousCompactionMaxRowsEnv = process.env.OM_EPISODIC_METADATA_MAX_ROWS;
+  const previousCompactionRetentionEnv = process.env.OM_EPISODIC_METADATA_RETENTION_DAYS;
+  const previousCompactionLowScoreRetentionEnv =
+    process.env.OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS;
+  const previousCompactionLowScoreThresholdEnv =
+    process.env.OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD;
+  const previousStructuredRotateEnabledEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED;
+  const previousStructuredRotateMaxBytesEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES;
+  const previousStructuredRotateMaxFilesEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES;
   let tmpDir: string | undefined;
 
   afterEach(async () => {
@@ -60,6 +73,57 @@ describe("brain episodic memory write path", () => {
       delete process.env.OM_EPISODIC_JOURNAL_PATH;
     } else {
       process.env.OM_EPISODIC_JOURNAL_PATH = previousJournalPathEnv;
+    }
+    if (previousStructuredPathEnv === undefined) {
+      delete process.env.OM_EPISODIC_STRUCTURED_PATH;
+    } else {
+      process.env.OM_EPISODIC_STRUCTURED_PATH = previousStructuredPathEnv;
+    }
+    if (previousMetadataPathEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_DB_PATH;
+    } else {
+      process.env.OM_EPISODIC_METADATA_DB_PATH = previousMetadataPathEnv;
+    }
+    if (previousCompactionEnabledEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED;
+    } else {
+      process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED = previousCompactionEnabledEnv;
+    }
+    if (previousCompactionMaxRowsEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_MAX_ROWS;
+    } else {
+      process.env.OM_EPISODIC_METADATA_MAX_ROWS = previousCompactionMaxRowsEnv;
+    }
+    if (previousCompactionRetentionEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_RETENTION_DAYS;
+    } else {
+      process.env.OM_EPISODIC_METADATA_RETENTION_DAYS = previousCompactionRetentionEnv;
+    }
+    if (previousCompactionLowScoreRetentionEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS;
+    } else {
+      process.env.OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS =
+        previousCompactionLowScoreRetentionEnv;
+    }
+    if (previousCompactionLowScoreThresholdEnv === undefined) {
+      delete process.env.OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD;
+    } else {
+      process.env.OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD = previousCompactionLowScoreThresholdEnv;
+    }
+    if (previousStructuredRotateEnabledEnv === undefined) {
+      delete process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED;
+    } else {
+      process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED = previousStructuredRotateEnabledEnv;
+    }
+    if (previousStructuredRotateMaxBytesEnv === undefined) {
+      delete process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES;
+    } else {
+      process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES = previousStructuredRotateMaxBytesEnv;
+    }
+    if (previousStructuredRotateMaxFilesEnv === undefined) {
+      delete process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES;
+    } else {
+      process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES = previousStructuredRotateMaxFilesEnv;
     }
   });
 
@@ -82,14 +146,51 @@ describe("brain episodic memory write path", () => {
     expect(result.persisted).toBe(true);
     expect(result.reason).toBe("persisted");
     expect(result.score).toBeGreaterThanOrEqual(2);
+    expect(result.primaryKind).toBe("preference");
+    expect(result.kinds).toContain("preference");
     expect(result.path.endsWith(path.join("memory", "EPISODIC_JOURNAL.md"))).toBe(true);
+    expect(result.structuredPersisted).toBe(true);
+    expect(result.metadataPersisted).toBe(true);
+    expect(result.structuredPath).toContain("EPISODIC_JOURNAL.jsonl");
+    expect(result.metadataDbPath).toContain(path.join("logs", "brain", "episodic-memory.sqlite"));
+    expect(result.entryId).toBeTruthy();
 
     const journal = await fs.readFile(result.path, "utf-8");
     expect(journal).toContain("# EPISODIC JOURNAL");
     expect(journal).toContain("run=run-ep-1");
     expect(journal).toContain("signals:");
     expect(journal).toContain("user: I prefer ambient music while coding.");
-    expect(journal).toContain("assistant: I choose to honor that preference because it supports focus.");
+    expect(journal).toContain(
+      "assistant: I choose to honor that preference because it supports focus.",
+    );
+
+    const structuredRaw = await fs.readFile(result.structuredPath!, "utf-8");
+    const structuredLines = structuredRaw.trim().split(/\r?\n/);
+    expect(structuredLines.length).toBe(1);
+    const structured = JSON.parse(structuredLines[0] ?? "{}") as {
+      entryId: string;
+      primaryKind: string;
+      kinds: string[];
+      score: number;
+    };
+    expect(structured.entryId).toBe(result.entryId);
+    expect(structured.primaryKind).toBe("preference");
+    expect(structured.kinds).toContain("preference");
+    expect(structured.score).toBe(result.score);
+
+    const db = new DatabaseSync(result.metadataDbPath!);
+    const row = db
+      .prepare(
+        "SELECT entry_id, primary_kind, score, kinds FROM episodic_entries WHERE entry_id = ?",
+      )
+      .get(result.entryId) as
+      | { entry_id: string; primary_kind: string; score: number; kinds: string }
+      | undefined;
+    db.close();
+    expect(row?.entry_id).toBe(result.entryId);
+    expect(row?.primary_kind).toBe("preference");
+    expect(row?.score).toBe(result.score);
+    expect(row?.kinds).toContain("preference");
   });
 
   it("skips low-signal turns below significance threshold", async () => {
@@ -109,6 +210,8 @@ describe("brain episodic memory write path", () => {
 
     expect(result.persisted).toBe(false);
     expect(result.reason).toBe("below-threshold");
+    expect(result.structuredPersisted).toBe(false);
+    expect(result.metadataPersisted).toBe(false);
     await expect(fs.access(result.path)).rejects.toThrow();
   });
 
@@ -165,5 +268,122 @@ describe("brain episodic memory write path", () => {
 
     expect(result.persisted).toBe(true);
     expect(result.reason).toBe("persisted");
+  });
+
+  it("applies metadata compaction policy when enabled", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED = "true";
+    process.env.OM_EPISODIC_METADATA_MAX_ROWS = "2";
+    process.env.OM_EPISODIC_METADATA_RETENTION_DAYS = "3650";
+    process.env.OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS = "3650";
+
+    const first = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-6-a",
+      sessionKey: "agent:main:main",
+      userMessage: "I prefer ambient while coding.",
+      assistantMessage: "I choose ambient as default during coding sessions.",
+      now: () => new Date("2026-02-17T09:00:00.000Z"),
+    });
+    const second = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-6-b",
+      sessionKey: "agent:main:main",
+      userMessage: "My next step is to improve recall quality.",
+      assistantMessage: "I choose to prioritize recall quality this week.",
+      now: () => new Date("2026-02-17T09:01:00.000Z"),
+    });
+    const third = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-6-c",
+      sessionKey: "agent:main:main",
+      userMessage: "I decide to keep one rule and one safeguard.",
+      assistantMessage: "I choose the same policy because it stays testable.",
+      now: () => new Date("2026-02-17T09:02:00.000Z"),
+    });
+
+    expect(first.persisted).toBe(true);
+    expect(second.persisted).toBe(true);
+    expect(third.persisted).toBe(true);
+    expect(third.compactionApplied).toBe(true);
+    expect(third.compactionDeletedRows).toBeGreaterThanOrEqual(1);
+
+    const db = new DatabaseSync(third.metadataDbPath!);
+    const count = db.prepare("SELECT COUNT(*) AS count FROM episodic_entries").get() as {
+      count: number;
+    };
+    const ids = db
+      .prepare("SELECT entry_id FROM episodic_entries ORDER BY created_at DESC")
+      .all() as Array<{ entry_id: string }>;
+    db.close();
+
+    expect(count.count).toBeLessThanOrEqual(2);
+    expect(ids.map((row) => row.entry_id)).toContain(third.entryId);
+    expect(ids.map((row) => row.entry_id)).toContain(second.entryId);
+    expect(ids.map((row) => row.entry_id)).not.toContain(first.entryId);
+  });
+
+  it("rotates structured episodic journal when size threshold is exceeded", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED = "true";
+    process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES = "220";
+    process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES = "1";
+
+    const longUser =
+      "I prefer a very specific creative style with ambient textures, reflective language, and continuity across future sessions.";
+    const longAssistant =
+      "I choose this style because it supports identity continuity, creative coherence, and safe operational clarity in our next steps.";
+
+    const first = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-7-a",
+      sessionKey: "agent:main:main",
+      userMessage: longUser,
+      assistantMessage: longAssistant,
+      now: () => new Date("2026-02-17T10:00:00.000Z"),
+    });
+    const second = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-7-b",
+      sessionKey: "agent:main:main",
+      userMessage: `${longUser} Next step stays the same.`,
+      assistantMessage: `${longAssistant} I will keep it stable.`,
+      now: () => new Date("2026-02-17T10:01:00.000Z"),
+    });
+    const third = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-7-c",
+      sessionKey: "agent:main:main",
+      userMessage: `${longUser} We continue this tomorrow.`,
+      assistantMessage: `${longAssistant} This remains my operating stance.`,
+      now: () => new Date("2026-02-17T10:02:00.000Z"),
+    });
+
+    expect(first.persisted).toBe(true);
+    expect(second.persisted).toBe(true);
+    expect(third.persisted).toBe(true);
+    expect(second.structuredRotated).toBe(true);
+    expect(third.structuredRotated).toBe(true);
+    expect(third.structuredRotationPrunedFiles).toBeGreaterThanOrEqual(1);
+
+    const structuredRaw = await fs.readFile(third.structuredPath!, "utf-8");
+    const lines = structuredRaw.trim().split(/\r?\n/);
+    expect(lines.length).toBe(1);
+    const row = JSON.parse(lines[0] ?? "{}") as { runId: string };
+    expect(row.runId).toBe("run-ep-7-c");
+
+    const memoryDir = path.dirname(third.structuredPath!);
+    const baseName = path.basename(third.structuredPath!);
+    const files = await fs.readdir(memoryDir);
+    const rotatedFiles = files.filter(
+      (name) => name.startsWith(`${baseName}.`) && name.toLowerCase().endsWith(".jsonl"),
+    );
+    expect(rotatedFiles.length).toBe(1);
   });
 });

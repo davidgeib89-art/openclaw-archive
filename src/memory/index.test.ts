@@ -337,4 +337,167 @@ describe("memory index", () => {
       );
     }
   });
+
+  it("reads session transcript evidence safely when session source is enabled", async () => {
+    const stateDir = path.join(workspaceDir, ".state");
+    const sessionsDir = path.join(stateDir, "agents", "main", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(sessionsDir, "ego-memory.jsonl"),
+      [
+        JSON.stringify({ type: "custom", customType: "meta", data: {} }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "user", content: "I prefer ambient music while coding." },
+        }),
+        JSON.stringify({ type: "custom", customType: "tool", data: {} }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "assistant", content: "Noted. I will remember this preference." },
+        }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "user", content: "Next step is build episodic memory quality." },
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    try {
+      const cfg = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+            memorySearch: {
+              provider: "openai",
+              model: "mock-embed",
+              store: { path: indexPath },
+              sync: { watch: false, onSessionStart: false, onSearch: false },
+              sources: ["memory", "sessions"],
+              experimental: { sessionMemory: true },
+            },
+          },
+          list: [{ id: "main", default: true }],
+        },
+      };
+
+      const result = await getMemorySearchManager({ cfg, agentId: "main" });
+      expect(result.manager).not.toBeNull();
+      if (!result.manager) {
+        throw new Error("manager missing");
+      }
+      manager = result.manager;
+
+      await expect(
+        result.manager.readFile({ relPath: "sessions/ego-memory.jsonl" }),
+      ).resolves.toEqual({
+        path: "sessions/ego-memory.jsonl",
+        text: [
+          "User: I prefer ambient music while coding.",
+          "Assistant: Noted. I will remember this preference.",
+          "User: Next step is build episodic memory quality.",
+        ].join("\n"),
+      });
+
+      await expect(
+        result.manager.readFile({
+          relPath: "sessions/ego-memory.jsonl",
+          from: 2,
+          lines: 3,
+        }),
+      ).resolves.toEqual({
+        path: "sessions/ego-memory.jsonl",
+        text: [
+          "User: I prefer ambient music while coding.",
+          "Assistant: Noted. I will remember this preference.",
+        ].join("\n"),
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      }
+    }
+  });
+
+  it("rejects invalid session transcript paths and disabled session source reads", async () => {
+    const stateDir = path.join(workspaceDir, ".state");
+    const sessionsDir = path.join(stateDir, "agents", "main", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(sessionsDir, "safe-session.jsonl"),
+      JSON.stringify({
+        type: "message",
+        message: { role: "user", content: "safe" },
+      }),
+      "utf-8",
+    );
+
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    try {
+      const enabledCfg = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+            memorySearch: {
+              provider: "openai",
+              model: "mock-embed",
+              store: { path: indexPath },
+              sync: { watch: false, onSessionStart: false, onSearch: false },
+              sources: ["memory", "sessions"],
+              experimental: { sessionMemory: true },
+            },
+          },
+          list: [{ id: "main", default: true }],
+        },
+      };
+      const enabledResult = await getMemorySearchManager({ cfg: enabledCfg, agentId: "main" });
+      expect(enabledResult.manager).not.toBeNull();
+      if (!enabledResult.manager) {
+        throw new Error("manager missing");
+      }
+      manager = enabledResult.manager;
+      await expect(
+        enabledResult.manager.readFile({ relPath: "sessions/../safe-session.jsonl" }),
+      ).rejects.toThrow("path required");
+      await manager.close();
+      manager = null;
+
+      const disabledCfg = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+            memorySearch: {
+              provider: "openai",
+              model: "mock-embed",
+              store: { path: indexPath },
+              sync: { watch: false, onSessionStart: false, onSearch: false },
+              sources: ["memory"],
+              experimental: { sessionMemory: false },
+            },
+          },
+          list: [{ id: "main", default: true }],
+        },
+      };
+      const disabledResult = await getMemorySearchManager({ cfg: disabledCfg, agentId: "main" });
+      expect(disabledResult.manager).not.toBeNull();
+      if (!disabledResult.manager) {
+        throw new Error("manager missing");
+      }
+      manager = disabledResult.manager;
+      await expect(
+        disabledResult.manager.readFile({ relPath: "sessions/safe-session.jsonl" }),
+      ).rejects.toThrow("path required");
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      }
+    }
+  });
 });

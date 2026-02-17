@@ -181,3 +181,34 @@ Read in this order:
 
 Operator rule:
 If uncertain, choose the option that preserves safety evidence and reversibility first, then re-open creativity in the next controlled round.
+
+## 11) Episodic Memory Status Update (2026-02-17, latest)
+
+Implemented:
+1. Session recall is active (`memory` + `sessions` source path).
+2. Session-safe drilldown reads are available via `memory_get` for `sessions/*.jsonl`.
+3. Brain recall enriches selected session hits via bounded drilldown previews (fail-open).
+4. Structured episodic write-path is active:
+- `memory/EPISODIC_JOURNAL.md`
+- `memory/EPISODIC_JOURNAL.jsonl`
+- `logs/brain/episodic-memory.sqlite`
+5. Metadata lifecycle compaction is optional and env-gated.
+6. Structured journal rotation is optional and env-gated.
+7. Creative/ritual recall shaping is active with rollback toggles.
+
+Key toggles:
+1. `OM_EPISODIC_METADATA_COMPACTION_ENABLED`
+2. `OM_EPISODIC_METADATA_MAX_ROWS`
+3. `OM_EPISODIC_METADATA_RETENTION_DAYS`
+4. `OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS`
+5. `OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD`
+6. `OM_EPISODIC_STRUCTURED_ROTATE_ENABLED`
+7. `OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES`
+8. `OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES`
+9. `OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED`
+10. `OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED`
+
+Current intent:
+1. Keep safety defaults stable.
+2. Use feature flags for staged A/B memory-quality rollout.
+3. Validate changes via R3/R4/R8 delta checks before promotion.

@@ -183,6 +183,10 @@ const HIGH_RISK_TOOL_PATTERN =
 const SACRED_PATH_MARKER = "knowledge/sacred/";
 const SESSION_PATH_MARKER = "sessions/";
 const SACRED_RECALL_SESSIONS_ENV = "OM_SACRED_RECALL_INCLUDE_SESSIONS";
+const SACRED_RECALL_METRICS_ENV = "OM_SACRED_RECALL_METRICS_ENABLED";
+const SACRED_RECALL_METRICS_DIR_ENV = "OM_SACRED_RECALL_METRICS_DIR";
+const SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENV = "OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED";
+const SACRED_RECALL_ROUTE_MODE_LINES_ENV = "OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED";
 const DEFAULT_SACRED_RECALL_RESULTS = 3;
 const SACRED_RECALL_SCAN_MULTIPLIER = 12;
 const SACRED_RECALL_PREVIEW_LIMIT = 180;
@@ -209,6 +213,76 @@ const RECALL_STOP_TOKENS = new Set([
   "from",
   "about",
 ]);
+const RECALL_IDENTITY_PATTERNS = [
+  /\bwho am i\b/i,
+  /\bwho are we\b/i,
+  /\bwer bin ich\b/i,
+  /\bwer sind wir\b/i,
+  /\bmy name\b/i,
+  /\bmein name\b/i,
+  /\bidentity\b/i,
+  /\bremember me\b/i,
+  /\berinnerst du dich an mich\b/i,
+];
+const RECALL_PREFERENCE_PATTERNS = [
+  /\bi (like|love|prefer|hate)\b/i,
+  /\bmy favorite\b/i,
+  /\bpreferences?\b/i,
+  /\bich (mag|liebe|bevorzuge)\b/i,
+  /\blieblings/i,
+  /\bvorlieben\b/i,
+];
+const RECALL_PROJECT_PATTERNS = [
+  /\broadmap\b/i,
+  /\bnext step\b/i,
+  /\bmilestone\b/i,
+  /\bdecision\b/i,
+  /\bactive tasks?\b/i,
+  /\btask(s)?\b/i,
+  /\bprojekt\b/i,
+  /\bnaechster schritt\b/i,
+  /\bnachster schritt\b/i,
+  /\bplan\b/i,
+];
+const RECALL_RITUAL_PATTERNS = [
+  /\britual\b/i,
+  /\bpneuma\b/i,
+  /\bschism\b/i,
+  /\bticks?\b/i,
+  /\bleeches\b/i,
+  /\b3[-\s]?breath[-\s]?rule\b/i,
+  /\bbreath[-\s]?rule\b/i,
+  /\bsacred\b/i,
+];
+const RECALL_CREATIVE_PATTERNS = [
+  /\bcreative\b/i,
+  /\bpoem\b/i,
+  /\bstory\b/i,
+  /\bsong\b/i,
+  /\bmanifest\b/i,
+  /\bdream\b/i,
+  /\bego\b/i,
+];
+const CREATIVE_ROUTE_SIGNAL_PATTERNS = [
+  /\bcreative\b/i,
+  /\bpoem\b/i,
+  /\bstory\b/i,
+  /\bsong\b/i,
+  /\bego\b/i,
+  /\bdream\b/i,
+  /\bmanifest\b/i,
+  /\breflective\b/i,
+  /\bvoice\b/i,
+];
+const RITUAL_ROUTE_SIGNAL_PATTERNS = [
+  /\britual\b/i,
+  /\bsacred\b/i,
+  /\bprotocol\b/i,
+  /\bbreath\b/i,
+  /\bpneuma\b/i,
+  /\brule\b/i,
+  /\bcanon\b/i,
+];
 const OM_ACTIVITY_LOG_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE || ".",
   ".openclaw",
@@ -238,6 +312,57 @@ export type BrainSacredRecallInput = {
   maxResults?: number;
   managerResolver?: typeof getMemorySearchManager;
   activityLogger?: (event: string, details: string) => void;
+};
+
+type BrainRecallRoute = "identity" | "preference" | "project" | "ritual" | "creative" | "general";
+
+type BrainRecallRoutePlan = {
+  route: BrainRecallRoute;
+  sourcePrior: {
+    memory: number;
+    sessions: number;
+  };
+  recency: {
+    enabled: boolean;
+    sessionOnly: boolean;
+    halfLifeHours: number;
+    maxBoost: number;
+    minBoost: number;
+  };
+  scanMultiplier: number;
+  variantHints: string[];
+};
+
+type BrainRecallMetricsOutcome = "ok" | "none" | "fail_open" | "skip";
+
+type BrainRecallMetricsEntry = {
+  ts: string;
+  event: "brain.recall.metrics";
+  mode: "observer";
+  source: string;
+  sessionKey?: string;
+  outcome: BrainRecallMetricsOutcome;
+  route: BrainRecallRoute;
+  includeSessions: boolean;
+  routeSignalBoostEnabled: boolean;
+  routeModeLinesEnabled: boolean;
+  queryHash: string;
+  queryPreview: string;
+  variants: string[];
+  maxResults: number;
+  searchLimit: number;
+  rawHits: number;
+  sourceCounts: {
+    memory: number;
+    sessions: number;
+    other: number;
+  };
+  selected: Array<{
+    path: string;
+    score: number;
+    source: "memory" | "sessions" | "other";
+  }>;
+  error?: string;
 };
 
 function normalizeMessage(input: string): string {
@@ -450,7 +575,116 @@ function extractRecallQueryTokens(query: string): string[] {
   return deduped;
 }
 
-function buildRecallQueryVariants(query: string): string[] {
+function detectRecallRoute(query: string): BrainRecallRoute {
+  if (matchesAny(RECALL_RITUAL_PATTERNS, query)) {
+    return "ritual";
+  }
+  if (matchesAny(RECALL_IDENTITY_PATTERNS, query)) {
+    return "identity";
+  }
+  if (matchesAny(RECALL_PREFERENCE_PATTERNS, query)) {
+    return "preference";
+  }
+  if (matchesAny(RECALL_PROJECT_PATTERNS, query)) {
+    return "project";
+  }
+  if (matchesAny(RECALL_CREATIVE_PATTERNS, query)) {
+    return "creative";
+  }
+  return "general";
+}
+
+function createRecallRoutePlan(query: string, includeSessions: boolean): BrainRecallRoutePlan {
+  const route = detectRecallRoute(query);
+  switch (route) {
+    case "identity":
+      return {
+        route,
+        sourcePrior: { memory: 0.95, sessions: includeSessions ? 1.22 : 0.95 },
+        recency: {
+          enabled: true,
+          sessionOnly: true,
+          halfLifeHours: 72,
+          maxBoost: includeSessions ? 1.22 : 1,
+          minBoost: 0.9,
+        },
+        scanMultiplier: 14,
+        variantHints: ["identity memory", "who am i"],
+      };
+    case "preference":
+      return {
+        route,
+        sourcePrior: { memory: 1, sessions: includeSessions ? 1.18 : 1 },
+        recency: {
+          enabled: true,
+          sessionOnly: true,
+          halfLifeHours: 96,
+          maxBoost: includeSessions ? 1.2 : 1,
+          minBoost: 0.92,
+        },
+        scanMultiplier: 13,
+        variantHints: ["user preferences", "favorite choices"],
+      };
+    case "project":
+      return {
+        route,
+        sourcePrior: { memory: 1.02, sessions: includeSessions ? 1.14 : 1.02 },
+        recency: {
+          enabled: true,
+          sessionOnly: true,
+          halfLifeHours: 48,
+          maxBoost: includeSessions ? 1.24 : 1,
+          minBoost: 0.9,
+        },
+        scanMultiplier: 13,
+        variantHints: ["project decisions", "next steps roadmap"],
+      };
+    case "ritual":
+      return {
+        route,
+        sourcePrior: { memory: 1.24, sessions: includeSessions ? 0.92 : 0.92 },
+        recency: {
+          enabled: true,
+          sessionOnly: false,
+          halfLifeHours: 168,
+          maxBoost: 1.06,
+          minBoost: 0.96,
+        },
+        scanMultiplier: 16,
+        variantHints: ["ritual protocol", "sacred rule"],
+      };
+    case "creative":
+      return {
+        route,
+        sourcePrior: { memory: 1.1, sessions: includeSessions ? 1.08 : 1.1 },
+        recency: {
+          enabled: true,
+          sessionOnly: false,
+          halfLifeHours: 120,
+          maxBoost: 1.08,
+          minBoost: 0.95,
+        },
+        scanMultiplier: 12,
+        variantHints: ["creative ego voice", "reflective continuity"],
+      };
+    default:
+      return {
+        route: "general",
+        sourcePrior: { memory: 1, sessions: includeSessions ? 1 : 1 },
+        recency: {
+          enabled: false,
+          sessionOnly: false,
+          halfLifeHours: 72,
+          maxBoost: 1,
+          minBoost: 1,
+        },
+        scanMultiplier: SACRED_RECALL_SCAN_MULTIPLIER,
+        variantHints: ["relevant memory"],
+      };
+  }
+}
+
+function buildRecallQueryVariants(query: string, routePlan: BrainRecallRoutePlan): string[] {
   const variants: string[] = [];
   const seen = new Set<string>();
   const pushVariant = (value: string): void => {
@@ -465,7 +699,14 @@ function buildRecallQueryVariants(query: string): string[] {
   pushVariant(query);
   const tokens = extractRecallQueryTokens(query);
   if (tokens.length > 0) {
-    pushVariant(tokens.join(" "));
+    const compactTokens = tokens.join(" ");
+    pushVariant(compactTokens);
+    for (const hint of routePlan.variantHints) {
+      pushVariant(`${compactTokens} ${hint}`);
+    }
+  }
+  for (const hint of routePlan.variantHints) {
+    pushVariant(hint);
   }
   if (tokens.includes("3") && tokens.includes("breath") && tokens.includes("rule")) {
     pushVariant("3 breath rule");
@@ -536,6 +777,7 @@ function computeSacredRecallScore(
   item: BrainSacredRecallItem,
   normalizedQuery: string,
   queryTokens: readonly string[],
+  routePlan: BrainRecallRoutePlan,
 ): number {
   const haystack = normalizeRecallSearchText(`${item.title} ${item.path} ${result.snippet}`);
   if (!haystack) return result.score;
@@ -559,8 +801,80 @@ function computeSacredRecallScore(
         ? 1
         : 0
       : 0;
+  const lexicalScore =
+    result.score + tokenHits * 0.25 + exactPhraseBoost + loosePhraseBoost + breathRuleBoost;
+  const sourcePrior = resolveRecallSourcePrior(result, routePlan);
+  const recencyBoost = resolveRecallRecencyBoost(result, routePlan);
+  const routeSignalBoost = isRecallRouteSignalBoostEnabled()
+    ? resolveRecallRouteSignalBoost(`${item.title} ${item.path} ${result.snippet}`, routePlan)
+    : 1;
+  return lexicalScore * sourcePrior * recencyBoost * routeSignalBoost;
+}
 
-  return result.score + tokenHits * 0.25 + exactPhraseBoost + loosePhraseBoost + breathRuleBoost;
+function isSessionRecallResult(result: MemorySearchResult): boolean {
+  const normalizedPath = normalizeMemoryPath(result.path);
+  return result.source === "sessions" || normalizedPath.startsWith(SESSION_PATH_MARKER);
+}
+
+function resolveRecallSourcePrior(
+  result: MemorySearchResult,
+  routePlan: BrainRecallRoutePlan,
+): number {
+  const normalizedPath = normalizeMemoryPath(result.path);
+  const isSessionSource = isSessionRecallResult(result);
+  const isSacredPath = normalizedPath.includes(SACRED_PATH_MARKER);
+  let prior = isSessionSource ? routePlan.sourcePrior.sessions : routePlan.sourcePrior.memory;
+
+  if (routePlan.route === "ritual" && isSacredPath) {
+    prior += 0.1;
+  }
+  if (
+    (routePlan.route === "identity" ||
+      routePlan.route === "preference" ||
+      routePlan.route === "project") &&
+    isSessionSource
+  ) {
+    prior += 0.08;
+  }
+  return Math.max(0.5, Math.min(1.6, prior));
+}
+
+function resolveRecallRecencyBoost(
+  result: MemorySearchResult,
+  routePlan: BrainRecallRoutePlan,
+): number {
+  const config = routePlan.recency;
+  if (!config.enabled) {
+    return 1;
+  }
+  if (config.sessionOnly && !isSessionRecallResult(result)) {
+    return 1;
+  }
+  if (typeof result.updatedAt !== "number" || !Number.isFinite(result.updatedAt)) {
+    return 1;
+  }
+
+  const now = Date.now();
+  const ageMs = Math.max(0, now - result.updatedAt);
+  const ageHours = ageMs / (1000 * 60 * 60);
+  const halfLife = Math.max(1, config.halfLifeHours);
+  const decay = Math.exp((-Math.log(2) * ageHours) / halfLife);
+  const boost = config.minBoost + (config.maxBoost - config.minBoost) * decay;
+  return Math.max(config.minBoost, Math.min(config.maxBoost, boost));
+}
+
+function resolveRecallRouteSignalBoost(rawText: string, routePlan: BrainRecallRoutePlan): number {
+  const text = normalizeRecallSearchText(rawText);
+  if (!text) {
+    return 1;
+  }
+  if (routePlan.route === "creative" && matchesAny(CREATIVE_ROUTE_SIGNAL_PATTERNS, text)) {
+    return 1.14;
+  }
+  if (routePlan.route === "ritual" && matchesAny(RITUAL_ROUTE_SIGNAL_PATTERNS, text)) {
+    return 1.12;
+  }
+  return 1;
 }
 
 function countTokenHits(haystack: string, tokens: readonly string[]): number {
@@ -578,6 +892,7 @@ function rankSacredRecallItems(
   results: readonly MemorySearchResult[],
   query: string,
   maxResults: number,
+  routePlan: BrainRecallRoutePlan,
   options?: {
     includeSessions?: boolean;
   },
@@ -593,7 +908,7 @@ function rankSacredRecallItems(
       return {
         index,
         baseScore: result.score,
-        score: computeSacredRecallScore(result, item, normalizedQuery, queryTokens),
+        score: computeSacredRecallScore(result, item, normalizedQuery, queryTokens, routePlan),
         item,
       };
     });
@@ -657,14 +972,92 @@ async function refineSacredRecallTitlesFromFiles(params: {
   return refined;
 }
 
-function buildSacredRecallContextText(items: readonly BrainSacredRecallItem[]): string {
+function buildSessionDrilldownPreview(text: string): string | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return truncateText(lines.slice(0, 2).join(" / "), SACRED_RECALL_PREVIEW_LIMIT);
+}
+
+async function refineSessionRecallPreviews(params: {
+  items: readonly BrainSacredRecallItem[];
+  rawResults: readonly MemorySearchResult[];
+  readFile: MemorySearchManager["readFile"];
+}): Promise<BrainSacredRecallItem[]> {
+  if (params.items.length === 0) {
+    return [];
+  }
+
+  const bestSessionHitByPath = new Map<string, MemorySearchResult>();
+  for (const result of params.rawResults) {
+    if (!isSessionRecallResult(result)) {
+      continue;
+    }
+    const key = normalizeMemoryPath(result.path);
+    const existing = bestSessionHitByPath.get(key);
+    if (!existing || result.score > existing.score) {
+      bestSessionHitByPath.set(key, result);
+    }
+  }
+  if (bestSessionHitByPath.size === 0) {
+    return [...params.items];
+  }
+
+  const refined: BrainSacredRecallItem[] = [];
+  for (const item of params.items) {
+    let next = item;
+    const key = normalizeMemoryPath(item.path);
+    const sessionHit = bestSessionHitByPath.get(key);
+    if (!sessionHit) {
+      refined.push(next);
+      continue;
+    }
+    try {
+      const from = Math.max(1, sessionHit.startLine - 1);
+      const lines = Math.max(3, Math.min(10, sessionHit.endLine - sessionHit.startLine + 3));
+      const file = await params.readFile({
+        relPath: sessionHit.path,
+        from,
+        lines,
+      });
+      const preview = buildSessionDrilldownPreview(file.text);
+      if (preview) {
+        next = {
+          ...item,
+          preview,
+        };
+      }
+    } catch {
+      // Fail-open: session drilldown is optional enrichment only.
+    }
+    refined.push(next);
+  }
+  return refined;
+}
+
+function buildSacredRecallContextText(
+  items: readonly BrainSacredRecallItem[],
+  routePlan: BrainRecallRoutePlan,
+): string {
   const lines = items.map((item, index) => {
     const preview = item.preview.length > 0 ? ` | ${item.preview}` : "";
     return `${index + 1}. [${item.tag}] ${item.title} (${item.path})${preview}`;
   });
+  const modeLine = isRecallRouteModeLinesEnabled()
+    ? routePlan.route === "creative"
+      ? "Creative continuity mode: preserve motif + stance from recalled memory while staying concrete."
+      : routePlan.route === "ritual"
+        ? "Ritual continuity mode: keep canonical wording and one explicit operational rule."
+        : null
+    : null;
   return [
     "Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):",
     ...lines,
+    ...(modeLine ? [modeLine] : []),
     "Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.",
   ].join("\n");
 }
@@ -710,6 +1103,154 @@ function isSessionRecallEnabled(): boolean {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
+function isRecallMetricsEnabled(): boolean {
+  const raw = process.env[SACRED_RECALL_METRICS_ENV]?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function isRecallRouteSignalBoostEnabled(): boolean {
+  const raw = process.env[SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENV]?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function isRecallRouteModeLinesEnabled(): boolean {
+  const raw = process.env[SACRED_RECALL_ROUTE_MODE_LINES_ENV]?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function normalizeRecallSource(value: string): "memory" | "sessions" | "other" {
+  if (value === "memory" || value === "sessions") {
+    return value;
+  }
+  return "other";
+}
+
+function countRecallSources(results: readonly MemorySearchResult[]): {
+  memory: number;
+  sessions: number;
+  other: number;
+} {
+  let memory = 0;
+  let sessions = 0;
+  let other = 0;
+  for (const result of results) {
+    const source = normalizeRecallSource(result.source);
+    if (source === "memory") memory += 1;
+    else if (source === "sessions") sessions += 1;
+    else other += 1;
+  }
+  return { memory, sessions, other };
+}
+
+function recallQueryHash(query: string): string {
+  return createHash("sha256").update(query).digest("hex").slice(0, 16);
+}
+
+function resolveRecallMetricsDir(): string {
+  const raw = process.env[SACRED_RECALL_METRICS_DIR_ENV]?.trim();
+  if (raw && raw.length > 0) {
+    return path.resolve(raw);
+  }
+  return getDefaultBrainObserverDir();
+}
+
+function createBrainRecallMetricsEntry(params: {
+  sessionKey?: string;
+  query: string;
+  routePlan: BrainRecallRoutePlan;
+  outcome: BrainRecallMetricsOutcome;
+  includeSessions: boolean;
+  variants: readonly string[];
+  maxResults: number;
+  searchLimit: number;
+  rawResults: readonly MemorySearchResult[];
+  selectedItems: readonly BrainSacredRecallItem[];
+  error?: string;
+  now?: Date;
+}): BrainRecallMetricsEntry {
+  const now = params.now ?? new Date();
+  return {
+    ts: now.toISOString(),
+    event: "brain.recall.metrics",
+    mode: "observer",
+    source: "proto33-r061.recall-router",
+    sessionKey: params.sessionKey,
+    outcome: params.outcome,
+    route: params.routePlan.route,
+    includeSessions: params.includeSessions,
+    routeSignalBoostEnabled: isRecallRouteSignalBoostEnabled(),
+    routeModeLinesEnabled: isRecallRouteModeLinesEnabled(),
+    queryHash: recallQueryHash(params.query),
+    queryPreview: truncateText(params.query, 180),
+    variants: [...params.variants],
+    maxResults: params.maxResults,
+    searchLimit: params.searchLimit,
+    rawHits: params.rawResults.length,
+    sourceCounts: countRecallSources(params.rawResults),
+    selected: params.selectedItems.map((item) => ({
+      path: item.path,
+      score: item.score,
+      source: normalizeRecallSource(
+        normalizeMemoryPath(item.path).startsWith(SESSION_PATH_MARKER) ? "sessions" : "memory",
+      ),
+    })),
+    error: params.error,
+  };
+}
+
+function appendBrainRecallMetricsEntry(entry: BrainRecallMetricsEntry): string | null {
+  try {
+    const targetDir = resolveRecallMetricsDir();
+    fs.mkdirSync(targetDir, { recursive: true });
+    const filePath = path.join(targetDir, `recall-metrics-${dateStamp(new Date(entry.ts))}.jsonl`);
+    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, "utf-8");
+    return filePath;
+  } catch {
+    return null;
+  }
+}
+
+function logBrainRecallMetrics(params: {
+  sessionKey?: string;
+  query: string;
+  routePlan: BrainRecallRoutePlan;
+  outcome: BrainRecallMetricsOutcome;
+  includeSessions: boolean;
+  variants: readonly string[];
+  maxResults: number;
+  searchLimit: number;
+  rawResults: readonly MemorySearchResult[];
+  selectedItems?: readonly BrainSacredRecallItem[];
+  error?: string;
+}): void {
+  if (!isRecallMetricsEnabled()) {
+    return;
+  }
+  const entry = createBrainRecallMetricsEntry({
+    sessionKey: params.sessionKey,
+    query: params.query,
+    routePlan: params.routePlan,
+    outcome: params.outcome,
+    includeSessions: params.includeSessions,
+    variants: params.variants,
+    maxResults: params.maxResults,
+    searchLimit: params.searchLimit,
+    rawResults: params.rawResults,
+    selectedItems: params.selectedItems ?? [],
+    error: params.error,
+  });
+  appendBrainRecallMetricsEntry(entry);
+}
+
 export async function buildBrainSacredRecallContext(
   input: BrainSacredRecallInput,
 ): Promise<BrainSacredRecallContext> {
@@ -718,12 +1259,41 @@ export async function buildBrainSacredRecallContext(
   if (!query) {
     return { contextText: null, items: [] };
   }
+  const includeSessions = isSessionRecallEnabled();
+  const routePlan = createRecallRoutePlan(query, includeSessions);
+  const maxResults = Math.max(1, input.maxResults ?? DEFAULT_SACRED_RECALL_RESULTS);
+  const searchLimit = Math.max(maxResults, maxResults * routePlan.scanMultiplier);
+
   if (!isSacredRecallEnabled()) {
     logger("SACRED_RECALL_SKIP", "disabled-by-env");
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "skip",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      error: "disabled-by-env",
+    });
     return { contextText: null, items: [] };
   }
   if (!input.cfg) {
     logger("SACRED_RECALL_SKIP", "cfg-missing");
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "skip",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      error: "cfg-missing",
+    });
     return { contextText: null, items: [] };
   }
 
@@ -733,9 +1303,6 @@ export async function buildBrainSacredRecallContext(
       sessionKey: input.sessionKey,
       config: input.cfg,
     });
-  const maxResults = Math.max(1, input.maxResults ?? DEFAULT_SACRED_RECALL_RESULTS);
-  const searchLimit = Math.max(maxResults, maxResults * SACRED_RECALL_SCAN_MULTIPLIER);
-  const includeSessions = isSessionRecallEnabled();
   const managerResolver = input.managerResolver ?? getMemorySearchManager;
   const cfgWithSacred = withSacredMemorySearchConfig({
     cfg: input.cfg,
@@ -750,11 +1317,22 @@ export async function buildBrainSacredRecallContext(
     if (!manager) {
       const reason = error?.trim() || "memory-manager-unavailable";
       logger("SACRED_RECALL_FAIL_OPEN", reason);
+      logBrainRecallMetrics({
+        sessionKey: input.sessionKey,
+        query,
+        routePlan,
+        outcome: "fail_open",
+        includeSessions,
+        variants: [],
+        maxResults,
+        searchLimit,
+        rawResults: [],
+        error: reason,
+      });
       return { contextText: null, items: [], error: reason };
     }
 
-    // Query variants improve recall precision for symbolic phrases such as "3-Breath-Rule".
-    const variants = buildRecallQueryVariants(query);
+    const variants = buildRecallQueryVariants(query, routePlan);
     const deduped = new Map<string, MemorySearchResult>();
     for (const variant of variants) {
       const hits = await manager.search(variant, {
@@ -769,20 +1347,52 @@ export async function buildBrainSacredRecallContext(
       }
     }
     const raw = Array.from(deduped.values());
-    const rankedItems = rankSacredRecallItems(raw, query, maxResults, { includeSessions });
+    const rankedItems = rankSacredRecallItems(raw, query, maxResults, routePlan, {
+      includeSessions,
+    });
     if (rankedItems.length === 0) {
       logger("SACRED_RECALL_NONE", "hits=0");
+      logBrainRecallMetrics({
+        sessionKey: input.sessionKey,
+        query,
+        routePlan,
+        outcome: "none",
+        includeSessions,
+        variants,
+        maxResults,
+        searchLimit,
+        rawResults: raw,
+        selectedItems: [],
+      });
       return { contextText: null, items: [] };
     }
 
-    const items = await refineSacredRecallTitlesFromFiles({
+    const titledItems = await refineSacredRecallTitlesFromFiles({
       items: rankedItems,
       query,
       readFile: manager.readFile.bind(manager),
     });
-    const contextText = buildSacredRecallContextText(items);
+    const items = await refineSessionRecallPreviews({
+      items: titledItems,
+      rawResults: raw,
+      readFile: manager.readFile.bind(manager),
+    });
+    const contextText = buildSacredRecallContextText(items, routePlan);
     const summary = items.map((item) => `tag=${item.tag};title=${item.title}`).join(" || ");
-    logger("SACRED_RECALL", summary);
+    const summaryWithRoute = `route=${routePlan.route}; ${summary}`;
+    logger("SACRED_RECALL", summaryWithRoute);
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "ok",
+      includeSessions,
+      variants,
+      maxResults,
+      searchLimit,
+      rawResults: raw,
+      selectedItems: items,
+    });
     return {
       contextText,
       items,
@@ -790,6 +1400,18 @@ export async function buildBrainSacredRecallContext(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger("SACRED_RECALL_FAIL_OPEN", message);
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "fail_open",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      error: message,
+    });
     return {
       contextText: null,
       items: [],

@@ -14,6 +14,7 @@ import type {
 } from "./types.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   createEmbeddingProvider,
@@ -28,6 +29,7 @@ import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
+import { buildSessionEntry } from "./session-files.js";
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
@@ -293,7 +295,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.fts.enabled || !this.fts.available) {
       return [];
     }
-    const sourceFilter = this.buildSourceFilter();
+    const sourceFilter = this.buildSourceFilter("f");
     const results = await searchKeyword({
       db: this.db,
       ftsTable: FTS_TABLE,
@@ -362,6 +364,16 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!rawPath) {
       throw new Error("path required");
     }
+
+    const sessionFile = await this.tryReadSessionFile({
+      relPath: rawPath,
+      from: params.from,
+      lines: params.lines,
+    });
+    if (sessionFile) {
+      return sessionFile;
+    }
+
     const absPath = path.isAbsolute(rawPath)
       ? path.resolve(rawPath)
       : path.resolve(this.workspaceDir, rawPath);
@@ -416,6 +428,79 @@ export class MemoryIndexManager implements MemorySearchManager {
     const count = Math.max(1, params.lines ?? lines.length);
     const slice = lines.slice(start - 1, start - 1 + count);
     return { text: slice.join("\n"), path: relPath };
+  }
+
+  private normalizeSessionRelPath(rawPath: string): string | null {
+    if (!this.sources.has("sessions")) {
+      return null;
+    }
+    const normalized = rawPath.replace(/\\/g, "/");
+    if (path.posix.isAbsolute(normalized)) {
+      return null;
+    }
+    if (!normalized.startsWith("sessions/") || !normalized.toLowerCase().endsWith(".jsonl")) {
+      return null;
+    }
+    const fileName = path.posix.basename(normalized);
+    const withoutPrefix = normalized.slice("sessions/".length);
+    if (!fileName || fileName !== withoutPrefix) {
+      return null;
+    }
+    if (fileName.includes("..")) {
+      return null;
+    }
+    return `sessions/${fileName}`;
+  }
+
+  private async tryReadSessionFile(params: {
+    relPath: string;
+    from?: number;
+    lines?: number;
+  }): Promise<{ text: string; path: string } | null> {
+    const normalizedPath = this.normalizeSessionRelPath(params.relPath);
+    if (!normalizedPath) {
+      return null;
+    }
+
+    const sessionsDir = path.resolve(resolveSessionTranscriptsDirForAgent(this.agentId));
+    const fileName = path.posix.basename(normalizedPath);
+    const absPath = path.resolve(sessionsDir, fileName);
+    const expectedPath = path.join(sessionsDir, fileName);
+    if (absPath !== expectedPath) {
+      throw new Error("path required");
+    }
+    const stat = await fs.lstat(absPath);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error("path required");
+    }
+
+    const sessionEntry = await buildSessionEntry(absPath);
+    if (!sessionEntry) {
+      throw new Error("path required");
+    }
+    const contentLines = sessionEntry.content.length > 0 ? sessionEntry.content.split("\n") : [];
+
+    if (!params.from && !params.lines) {
+      return { text: sessionEntry.content, path: normalizedPath };
+    }
+
+    const startLine = Math.max(1, params.from ?? 1);
+    const lineCount = Math.max(1, params.lines ?? contentLines.length);
+    const endLine = startLine + lineCount - 1;
+    const selected: string[] = [];
+    for (let idx = 0; idx < contentLines.length; idx += 1) {
+      const line = contentLines[idx];
+      if (line === undefined) {
+        continue;
+      }
+      const sourceLine = sessionEntry.lineMap[idx] ?? idx + 1;
+      if (sourceLine < startLine || sourceLine > endLine) {
+        continue;
+      }
+      selected.push(line);
+    }
+
+    return { text: selected.join("\n"), path: normalizedPath };
   }
 
   status(): MemoryProviderStatus {

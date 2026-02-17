@@ -6,13 +6,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
-import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import {
   buildBrainSacredRecallContext,
   createBrainDecision,
   createBrainRitualOutputContract,
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
+import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import {
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
@@ -1334,7 +1334,7 @@ export async function runEmbeddedAttempt(
               assistantMessage: assistantText,
             });
             log.debug(
-              `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} path=${episodicResult.path}`,
+              `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} kind=${episodicResult.primaryKind} path=${episodicResult.path} structured=${episodicResult.structuredPersisted ? "yes" : "no"} rotated=${episodicResult.structuredRotated ? "yes" : "no"} rotatedPruned=${episodicResult.structuredRotationPrunedFiles ?? 0} metadata=${episodicResult.metadataPersisted ? "yes" : "no"} compact=${episodicResult.compactionApplied ? "yes" : "no"} compactDeleted=${episodicResult.compactionDeletedRows ?? 0}`,
             );
           } catch (episodicErr) {
             log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);

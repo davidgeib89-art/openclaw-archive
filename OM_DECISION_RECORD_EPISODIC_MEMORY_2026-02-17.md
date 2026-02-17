@@ -180,3 +180,64 @@ Choose one:
 2. Skip E0 and execute `R051` exactly as currently specified.
 
 This memo now recommends: keep E0 active and execute `R051` with strict single-variable discipline.
+
+## 11) Implementation Update (Step 7 + Step 8 Baseline)
+
+As of 2026-02-17, the following additional memory hardening work is now in place:
+
+1. Session-safe drilldown read path:
+   - `memory_get` now supports safe reads for `sessions/*.jsonl` evidence slices.
+   - Path traversal and non-allowlisted access remain blocked.
+   - This enables targeted evidence retrieval from episodic session transcripts.
+
+2. Recall-flow session drilldown enrichment:
+   - Brain sacred recall keeps fail-open behavior.
+   - For selected session hits, it now attempts a bounded drilldown read and upgrades preview quality when successful.
+   - If drilldown fails, baseline recall behavior remains unchanged.
+
+3. Episodic metadata lifecycle baseline (gated):
+   - Added optional metadata compaction policy for `logs/brain/episodic-memory.sqlite` table `episodic_entries`.
+   - Policy is env-gated and reversible:
+     - `OM_EPISODIC_METADATA_COMPACTION_ENABLED`
+     - `OM_EPISODIC_METADATA_MAX_ROWS`
+     - `OM_EPISODIC_METADATA_RETENTION_DAYS`
+     - `OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS`
+     - `OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD`
+   - Compaction currently targets metadata tier only; append-only markdown/jsonl journals remain untouched.
+
+4. Validation:
+   - Focused tests pass for:
+     - `src/brain/episodic-memory.test.ts`
+     - `src/brain/decision.test.ts`
+     - `src/memory/index.test.ts`
+   - Type checks pass (`pnpm tsgo`).
+
+## 12) Implementation Update (Step 8b + Step 9)
+
+As of 2026-02-17, additional future-proofing is now implemented:
+
+1. Structured episodic journal rotation (gated, fail-open):
+   - Added optional rotation policy for `memory/EPISODIC_JOURNAL.jsonl` before append.
+   - Env toggles:
+     - `OM_EPISODIC_STRUCTURED_ROTATE_ENABLED`
+     - `OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES`
+     - `OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES`
+   - Rotation preserves latest writes in active file and caps retained rotated files.
+
+2. Creative/ritual recall shaping:
+   - Added route-aware signal boosts in recall ranking:
+     - creative route favors creative-memory signal terms
+     - ritual route favors canonical ritual/protocol signal terms
+   - Added route-aware context mode lines in injected recall block:
+     - "Creative continuity mode ..."
+     - "Ritual continuity mode ..."
+   - Added rollback-friendly toggles:
+     - `OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED`
+     - `OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED`
+
+3. Validation:
+   - Focused tests pass:
+     - `src/brain/episodic-memory.test.ts`
+     - `src/brain/decision.test.ts`
+     - `src/memory/index.test.ts`
+   - Type checks pass (`pnpm tsgo`).

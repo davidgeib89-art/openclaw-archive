@@ -478,6 +478,358 @@ describe("brain sacred recall hook", () => {
     expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
   });
 
+  it("prefers session continuity for preference-oriented recall", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-preferences",
+      userMessage: "Which music do I prefer while coding?",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "knowledge/sacred/MOOD.md",
+              startLine: 1,
+              endLine: 4,
+              score: 0.92,
+              snippet: "# MOOD\nfocused and steady",
+              source: "memory",
+            },
+            {
+              path: "sessions/r060-user-profile.jsonl",
+              startLine: 12,
+              endLine: 16,
+              score: 0.86,
+              snippet: "User: I prefer ambient music while coding.",
+              source: "sessions",
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.path).toBe("sessions/r060-user-profile.jsonl");
+  });
+
+  it("enriches session recall previews via session-safe drilldown reads", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-drilldown",
+      userMessage: "What music do I prefer while coding?",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "sessions/r061-user-profile.jsonl",
+              startLine: 22,
+              endLine: 24,
+              score: 0.9,
+              snippet: "User: I prefer ambient music while coding.",
+              source: "sessions",
+            },
+          ],
+          readFile: async ({ relPath }) => ({
+            path: relPath,
+            text: [
+              "User: I prefer ambient music while coding.",
+              "Assistant: Noted. I will keep this in mind for future sessions.",
+            ].join("\n"),
+          }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.path).toBe("sessions/r061-user-profile.jsonl");
+    expect(result.items[0]?.preview).toContain("ambient music while coding");
+    expect(result.contextText).toContain("ambient music while coding");
+  });
+
+  it("prefers sacred memory for ritual-oriented recall", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-ritual-prior",
+      userMessage: "What is the 3-Breath Rule ritual?",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "sessions/r058-ritual-chat.jsonl",
+              startLine: 4,
+              endLine: 8,
+              score: 0.97,
+              snippet: "Assistant: We used the 3 breath rule yesterday.",
+              source: "sessions",
+            },
+            {
+              path: "knowledge/sacred/THINKING_PROTOCOL.md",
+              startLine: 1,
+              endLine: 8,
+              score: 0.88,
+              snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+              source: "memory",
+            },
+          ],
+          readFile: async () => ({
+            path: "knowledge/sacred/THINKING_PROTOCOL.md",
+            text: "## THE 3-BREATH RULE\nBefore writing ANY file",
+          }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.path).toBe("knowledge/sacred/THINKING_PROTOCOL.md");
+  });
+
+  it("adds ritual continuity mode line for ritual recall context", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-ritual-mode-line",
+      userMessage: "What is our ritual protocol?",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "knowledge/sacred/THINKING_PROTOCOL.md",
+              startLine: 1,
+              endLine: 6,
+              score: 0.82,
+              snippet: "## THE 3-BREATH RULE\nBefore writing ANY file",
+              source: "memory",
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.contextText).toContain("Ritual continuity mode:");
+  });
+
+  it("adds creative continuity mode line for creative recall context", async () => {
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-creative-mode-line",
+      userMessage: "Give me a creative memory reflection in ego voice",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "sessions/r061-creative.jsonl",
+              startLine: 11,
+              endLine: 15,
+              score: 0.88,
+              snippet:
+                "Assistant: I choose this creative stance because it keeps continuity alive.",
+              source: "sessions",
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.contextText).toContain("Creative continuity mode:");
+  });
+
+  it("can disable route mode lines via env toggle", async () => {
+    const previous = process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED;
+    process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED = "false";
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        sessionKey: "session-recall-creative-mode-off",
+        userMessage: "Give me a creative memory reflection in ego voice",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "sessions/r061-creative.jsonl",
+                startLine: 11,
+                endLine: 15,
+                score: 0.88,
+                snippet:
+                  "Assistant: I choose this creative stance because it keeps continuity alive.",
+                source: "sessions",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.contextText).not.toContain("Creative continuity mode:");
+      expect(result.contextText).not.toContain("Ritual continuity mode:");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED;
+      } else {
+        process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED = previous;
+      }
+    }
+  });
+
+  it("writes structured recall metrics for baseline freeze", async () => {
+    const metricsDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-metrics-"));
+    const previousEnabled = process.env.OM_SACRED_RECALL_METRICS_ENABLED;
+    const previousDir = process.env.OM_SACRED_RECALL_METRICS_DIR;
+    process.env.OM_SACRED_RECALL_METRICS_ENABLED = "true";
+    process.env.OM_SACRED_RECALL_METRICS_DIR = metricsDir;
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        sessionKey: "session-recall-metrics",
+        userMessage: "What did I decide for the roadmap next step?",
+        maxResults: 2,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "sessions/r060-roadmap.jsonl",
+                startLine: 10,
+                endLine: 14,
+                score: 0.83,
+                snippet: "User: I decide to prioritize memory quality first.",
+                source: "sessions",
+              },
+              {
+                path: "knowledge/sacred/ACTIVE_TASKS.md",
+                startLine: 1,
+                endLine: 5,
+                score: 0.78,
+                snippet: "# ACTIVE TASKS\n- continue roadmap checkpoint",
+                source: "memory",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.items.length).toBeGreaterThan(0);
+      const files = fs
+        .readdirSync(metricsDir)
+        .filter((entry) => entry.startsWith("recall-metrics-"));
+      expect(files.length).toBe(1);
+
+      const content = fs
+        .readFileSync(path.join(metricsDir, files[0]!), "utf-8")
+        .trim()
+        .split(/\r?\n/);
+      expect(content.length).toBe(1);
+      const entry = JSON.parse(content[0]) as {
+        event: string;
+        route: string;
+        outcome: string;
+        routeSignalBoostEnabled: boolean;
+        routeModeLinesEnabled: boolean;
+        sourceCounts: { memory: number; sessions: number };
+      };
+      expect(entry.event).toBe("brain.recall.metrics");
+      expect(entry.route).toBe("project");
+      expect(entry.outcome).toBe("ok");
+      expect(entry.routeSignalBoostEnabled).toBe(true);
+      expect(entry.routeModeLinesEnabled).toBe(true);
+      expect(entry.sourceCounts.sessions).toBeGreaterThan(0);
+      expect(entry.sourceCounts.memory).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(metricsDir, { recursive: true, force: true });
+      if (previousEnabled === undefined) {
+        delete process.env.OM_SACRED_RECALL_METRICS_ENABLED;
+      } else {
+        process.env.OM_SACRED_RECALL_METRICS_ENABLED = previousEnabled;
+      }
+      if (previousDir === undefined) {
+        delete process.env.OM_SACRED_RECALL_METRICS_DIR;
+      } else {
+        process.env.OM_SACRED_RECALL_METRICS_DIR = previousDir;
+      }
+    }
+  });
+
+  it("prefers fresher session memory for project continuity", async () => {
+    const now = Date.now();
+    const newer = now - 60 * 60 * 1000;
+    const older = now - 14 * 24 * 60 * 60 * 1000;
+
+    const result = await buildBrainSacredRecallContext({
+      cfg: {} as OpenClawConfig,
+      agentId: "main",
+      sessionKey: "session-recall-project-recency",
+      userMessage: "What was my latest roadmap decision?",
+      maxResults: 1,
+      managerResolver: async () => ({
+        manager: {
+          search: async () => [
+            {
+              path: "sessions/r040-project-old.jsonl",
+              startLine: 11,
+              endLine: 13,
+              score: 0.95,
+              snippet: "User: I decide to postpone memory tuning.",
+              source: "sessions",
+              updatedAt: older,
+            },
+            {
+              path: "sessions/r060-project-new.jsonl",
+              startLine: 20,
+              endLine: 24,
+              score: 0.9,
+              snippet: "User: I decide to prioritize episodic memory quality now.",
+              source: "sessions",
+              updatedAt: newer,
+            },
+          ],
+          readFile: async () => ({ text: "", path: "" }),
+          status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+          probeEmbeddingAvailability: async () => ({ ok: true }),
+          probeVectorAvailability: async () => true,
+        },
+      }),
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.path).toBe("sessions/r060-project-new.jsonl");
+  });
+
   it("uses query variants to recover symbolic sacred memories", async () => {
     const seenQueries: string[] = [];
     const activity: Array<{ event: string; details: string }> = [];

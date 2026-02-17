@@ -7,6 +7,7 @@ export type MemorySearchResult = {
   score: number;
   snippet: string;
   source: MemorySource;
+  updatedAt?: number;
   citation?: string;
 };
 
