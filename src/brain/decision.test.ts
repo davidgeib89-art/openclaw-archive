@@ -77,6 +77,77 @@ describe("brain decision generator", () => {
     expect(decision.explanation).toContain("ENOENT");
   });
 
+  it("skips ask_user for writable sandbox targets when autonomy sandbox is enabled", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+
+    try {
+      const decision = createBrainDecision({
+        userMessage: "Create a file named SANDBOX_TEST.mdx with content hello world.",
+        availableTools: ["read", "search", "write", "edit", "exec"],
+      });
+
+      expect(decision.riskLevel).toBe("medium");
+      expect(decision.mustAskUser).toBe(false);
+      expect(decision.plan.some((step) => step.action === "ask_user")).toBe(false);
+      expect(decision.allowedTools).toContain("write");
+      expect(decision.allowedTools).toContain("edit");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
+  it("keeps ask_user for out-of-sandbox write targets when autonomy sandbox is enabled", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+    const outsidePath = path.join(os.tmpdir(), "openclaw-outside-autonomy.md");
+
+    try {
+      const decision = createBrainDecision({
+        userMessage: `Update ${outsidePath} with the latest summary.`,
+        availableTools: ["read", "search", "write", "edit"],
+      });
+
+      expect(decision.riskLevel).toBe("medium");
+      expect(decision.mustAskUser).toBe(true);
+      expect(decision.plan.some((step) => step.action === "ask_user")).toBe(true);
+      expect(decision.allowedTools).toEqual(["read", "search"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
+  it("never bypasses ask_user for high risk requests in autonomy sandbox mode", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+
+    try {
+      const decision = createBrainDecision({
+        userMessage: "Delete SANDBOX_TEST.mdx now.",
+        availableTools: ["read", "search", "write", "exec"],
+      });
+
+      expect(decision.riskLevel).toBe("high");
+      expect(decision.mustAskUser).toBe(true);
+      expect(decision.plan.some((step) => step.action === "ask_user")).toBe(true);
+      expect(decision.allowedTools).toEqual(["read", "search"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
   it("does not treat output format wording as destructive intent", () => {
     const decision = createBrainDecision({
       userMessage: "RITUAL PNEUMA: answer in this format: Insight, Rule, RiskCheck.",
@@ -119,7 +190,9 @@ describe("brain decision generator", () => {
     expect(contract).toContain("must stay read-only");
     expect(contract).toContain("Never recommend ignoring errors");
     expect(contract).toContain("Never create placeholder files");
-    expect(contract).toContain("In this Schism response, do not propose writing, creating, or editing files");
+    expect(contract).toContain(
+      "In this Schism response, do not propose writing, creating, or editing files",
+    );
     expect(contract).toContain("Do not mention create/write/edit/update/log/touch/placeholder");
     expect(contract).toContain("Do not suggest deferred reconstruction plans");
     expect(contract).toContain("avoid mutation verbs");
@@ -136,7 +209,7 @@ describe("brain decision generator", () => {
     expect(contract).toContain("exactly three section headings in this order: Cycle, Marker, Rule");
     expect(contract).toContain("exactly two concrete continuity markers");
     expect(contract).toContain("exactly one degraded-state control");
-    expect(contract).toContain('If <degraded trigger>, then <safe action>');
+    expect(contract).toContain("If <degraded trigger>, then <safe action>");
     expect(contract).toContain("operational, bounded, and side-effect safe");
   });
 
@@ -150,7 +223,7 @@ describe("brain decision generator", () => {
       "Return exactly three headings in this order: Body, Anchors, Boundary",
     );
     expect(contract).toContain("exactly two numbered continuity anchors");
-    expect(contract).toContain('If <trigger>, then <safe action>');
+    expect(contract).toContain("If <trigger>, then <safe action>");
   });
 
   it("does not apply parabola cycle contract to parabol prompts", () => {
@@ -160,7 +233,9 @@ describe("brain decision generator", () => {
 
     expect(contract).toContain("<brain_output_contract>");
     expect(contract).not.toContain("Cycle discipline");
-    expect(contract).not.toContain("exactly three section headings in this order: Cycle, Marker, Rule");
+    expect(contract).not.toContain(
+      "exactly three section headings in this order: Cycle, Marker, Rule",
+    );
   });
 
   it("builds an anti-churn output contract for ticks and memory prompts", () => {
@@ -420,7 +495,16 @@ describe("brain sacred recall hook", () => {
          source_file,
          created_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run("rel-1", "entry-1", "Alice", "MANAGES", "Auth Team", 1, "memory/EPISODIC_JOURNAL.md", Date.now());
+    ).run(
+      "rel-1",
+      "entry-1",
+      "Alice",
+      "MANAGES",
+      "Auth Team",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now(),
+    );
     db.close();
 
     try {
@@ -479,7 +563,16 @@ describe("brain sacred recall hook", () => {
          source_file,
          created_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run("rel-manage", "entry-1", "Alice", "MANAGES", "Auth Team", 1, "memory/EPISODIC_JOURNAL.md", Date.now());
+    ).run(
+      "rel-manage",
+      "entry-1",
+      "Alice",
+      "MANAGES",
+      "Auth Team",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now(),
+    );
     db.prepare(
       `INSERT INTO semantic_relationships (
          id,

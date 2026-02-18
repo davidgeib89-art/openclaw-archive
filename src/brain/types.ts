@@ -31,6 +31,7 @@ export type BrainDecisionInput = {
   userMessage: string;
   availableTools?: readonly string[];
   sessionKey?: string;
+  workspaceDir?: string;
 };
 
 export type BrainSubconsciousMode = "answer_direct" | "ask_clarify" | "plan_then_answer";

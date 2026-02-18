@@ -968,6 +968,7 @@ export async function runEmbeddedAttempt(
             userMessage: params.prompt,
             availableTools,
             sessionKey: params.sessionKey ?? params.sessionId,
+            workspaceDir: effectiveWorkspace,
           };
           const brainDecision = createBrainDecision(brainInput);
           emitBrainReasoningEvent(params, {

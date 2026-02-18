@@ -17,6 +17,7 @@ import type {
 } from "./types.js";
 import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../agents/agent-scope.js";
 import { getMemorySearchManager } from "../memory/index.js";
+import { isPathWritableInSandbox, isSandboxModeEnabled } from "./autonomy.js";
 import { withSacredMemorySearchConfig } from "./memory-ingestion.js";
 
 const DESTRUCTIVE_MESSAGE_PATTERNS = [
@@ -113,6 +114,13 @@ const EDIT_MESSAGE_PATTERNS = [
   /\bcreate\b/i,
   /\breplace\b/i,
 ];
+
+const AUTONOMY_MUTATION_TARGET_HINT_PATTERN =
+  /\b(?:file|path|target)\b[\s:=-]*(?:named|called)?[\s:=-]*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|`([^`\r\n]+)`|([^\s"'`]+))/i;
+const AUTONOMY_MUTATION_TARGET_TOKEN_PATTERN =
+  /([A-Za-z]:[\\/][^\s"'`]+|(?:\.{1,2}[\\/])?[A-Za-z0-9._-]+(?:[\\/][A-Za-z0-9._-]+)+|[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,16})/g;
+const AUTONOMY_MUTATION_FILE_EXT_PATTERN =
+  /\.(?:md|mdx|txt|json|ts|tsx|js|jsx|yaml|yml|py|ps1|sh|sql|sqlite|toml|ini|cfg|conf|csv|log|xml|html|css|scss|env|lock|mjs|cjs)$/i;
 
 const RESEARCH_MESSAGE_PATTERNS = [
   /\bresearch\b/i,
@@ -524,6 +532,56 @@ function shouldAskUser(message: string, riskLevel: BrainRiskLevel): boolean {
   return /\b(all files|everything|entire|whole)\b/i.test(message);
 }
 
+function normalizeAutonomyTargetPath(raw: string): string | null {
+  const trimmed = raw
+    .trim()
+    .replace(/^["'`]+/, "")
+    .replace(/["'`]+$/, "")
+    .replace(/[.,;:!?]+$/, "");
+  if (!trimmed) return null;
+  if (trimmed.includes("://")) return null;
+  if (
+    !trimmed.includes("/") &&
+    !trimmed.includes("\\") &&
+    !AUTONOMY_MUTATION_FILE_EXT_PATTERN.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+function extractMutationTargetPath(message: string): string | null {
+  const hinted = message.match(AUTONOMY_MUTATION_TARGET_HINT_PATTERN);
+  const hintedTarget = normalizeAutonomyTargetPath(
+    hinted?.[1] ?? hinted?.[2] ?? hinted?.[3] ?? hinted?.[4] ?? "",
+  );
+  if (hintedTarget) return hintedTarget;
+
+  for (const match of message.matchAll(AUTONOMY_MUTATION_TARGET_TOKEN_PATTERN)) {
+    const candidate = normalizeAutonomyTargetPath(match[1] ?? "");
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function shouldAskUserWithAutonomy(
+  message: string,
+  riskLevel: BrainRiskLevel,
+  workspaceDir?: string,
+): boolean {
+  const baseMustAskUser = shouldAskUser(message, riskLevel);
+  if (!isSandboxModeEnabled() || riskLevel === "high") return baseMustAskUser;
+  if (!matchesAny(EDIT_MESSAGE_PATTERNS, message)) return baseMustAskUser;
+
+  const mutationTarget = extractMutationTargetPath(message);
+  if (!mutationTarget) return baseMustAskUser;
+
+  if (isPathWritableInSandbox(mutationTarget, { workspaceDir })) {
+    return false;
+  }
+  return true;
+}
+
 function filterAllowedTools(
   tools: readonly string[],
   riskLevel: BrainRiskLevel,
@@ -695,7 +753,10 @@ type GraphPredicateRoutePlan = {
   priorityPredicates: string[];
 };
 
-function createGraphPredicateRoutePlan(query: string, route: BrainRecallRoute): GraphPredicateRoutePlan {
+function createGraphPredicateRoutePlan(
+  query: string,
+  route: BrainRecallRoute,
+): GraphPredicateRoutePlan {
   const normalized = normalizeRecallSearchText(query);
   const asksManage = matchesAny(GRAPH_MANAGES_HINT_PATTERNS, normalized);
   const asksDecision = matchesAny(GRAPH_DECIDES_HINT_PATTERNS, normalized);
@@ -706,14 +767,16 @@ function createGraphPredicateRoutePlan(query: string, route: BrainRecallRoute): 
   if (route === "identity") {
     return {
       allowedPredicates: ["IDENTITY", "PREFERS"],
-      priorityPredicates: asksPreference && !asksIdentity ? ["PREFERS", "IDENTITY"] : ["IDENTITY", "PREFERS"],
+      priorityPredicates:
+        asksPreference && !asksIdentity ? ["PREFERS", "IDENTITY"] : ["IDENTITY", "PREFERS"],
     };
   }
 
   if (route === "preference") {
     return {
       allowedPredicates: ["PREFERS", "DECIDES"],
-      priorityPredicates: asksDecision && !asksPreference ? ["DECIDES", "PREFERS"] : ["PREFERS", "DECIDES"],
+      priorityPredicates:
+        asksDecision && !asksPreference ? ["DECIDES", "PREFERS"] : ["PREFERS", "DECIDES"],
     };
   }
 
@@ -732,7 +795,9 @@ function createGraphPredicateRoutePlan(query: string, route: BrainRecallRoute): 
     }
     return {
       allowedPredicates: ["DECIDES", "GOAL", "MANAGES"],
-      priorityPredicates: asksDecision ? ["DECIDES", "GOAL", "MANAGES"] : ["DECIDES", "GOAL", "MANAGES"],
+      priorityPredicates: asksDecision
+        ? ["DECIDES", "GOAL", "MANAGES"]
+        : ["DECIDES", "GOAL", "MANAGES"],
     };
   }
 
@@ -848,10 +913,7 @@ function loadGraphFactsForRecall(params: {
         );
         const specificTermHits =
           specificQueryTerms.length > 0
-            ? specificQueryTerms.reduce(
-                (hits, term) => hits + (haystack.includes(term) ? 1 : 0),
-                0,
-              )
+            ? specificQueryTerms.reduce((hits, term) => hits + (haystack.includes(term) ? 1 : 0), 0)
             : termHits;
         const allowRouteFallback =
           params.routePlan.route === "identity" && predicate === "IDENTITY";
@@ -1374,11 +1436,9 @@ function buildSacredRecallContextText(
         ? "Ritual continuity mode: keep canonical wording and one explicit operational rule."
         : routePlan.route === "identity" && graphLines.length > 0
           ? "Identity continuity mode: if asked about who/codename/alias, answer with the exact graph fact first, then optional reflection."
-        : null
+          : null
     : null;
-  const sections = [
-    "Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):",
-  ];
+  const sections = ["Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):"];
   if (lines.length > 0) {
     sections.push(...lines);
   }
@@ -1390,9 +1450,7 @@ function buildSacredRecallContextText(
     sections.push(modeLine);
   }
   sections.push("Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.");
-  return [
-    ...sections,
-  ].join("\n");
+  return [...sections].join("\n");
 }
 
 function formatOmTimestamp(now: Date): string {
@@ -1876,7 +1934,7 @@ export function createBrainDecision(input: BrainDecisionInput): BrainDecision {
   const normalizedTools = normalizeToolNames(input.availableTools);
   const intent = inferIntent(normalizedMessage);
   const riskLevel = inferRisk(normalizedMessage);
-  const mustAskUser = shouldAskUser(normalizedMessage, riskLevel);
+  const mustAskUser = shouldAskUserWithAutonomy(normalizedMessage, riskLevel, input.workspaceDir);
   const allowedTools = filterAllowedTools(normalizedTools, riskLevel, mustAskUser);
   const plan = makePlan(intent, mustAskUser);
 
