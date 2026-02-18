@@ -11,6 +11,12 @@ const AUTONOMY_SANDBOX_ENV = "OM_AUTONOMY_SANDBOX";
 const AUTONOMY_SANDBOX_ROOT_ENV = "OM_AUTONOMY_SANDBOX_ROOT";
 const DEFAULT_BLOCKED_RELATIVE_PREFIXES = ["knowledge/sacred/"] as const;
 const SANDBOX_TRUE_VALUES = new Set(["1", "true", "yes", "on", "enabled"]);
+export const L1_IDENTITY_PATHS = [
+  "knowledge/sacred/SOUL.md",
+  "knowledge/sacred/IDENTITY.md",
+  "knowledge/sacred/MOOD.md",
+] as const;
+const READ_ONLY_SACRED_PATHS = ["knowledge/sacred/David_Akasha.md"] as const;
 
 function resolveSandboxWorkspaceDir(config: AutonomyConfig): string {
   const env = config.env ?? process.env;
@@ -31,6 +37,13 @@ function normalizeRelativePath(value: string): string {
     .replace(/^\.\/+/, "")
     .replace(/\/{2,}/g, "/");
 }
+
+const L1_IDENTITY_PATH_SET = new Set(
+  L1_IDENTITY_PATHS.map((entry) => normalizeRelativePath(entry).toLowerCase()),
+);
+const READ_ONLY_SACRED_PATH_SET = new Set(
+  READ_ONLY_SACRED_PATHS.map((entry) => normalizeRelativePath(entry).toLowerCase()),
+);
 
 export function isSandboxModeEnabled(config: AutonomyConfig = {}): boolean {
   const env = config.env ?? process.env;
@@ -54,6 +67,14 @@ export function isPathWritableInSandbox(targetPath: string, config: AutonomyConf
   if (!insideWorkspace) return false;
 
   const normalizedRelative = normalizeRelativePath(relative).toLowerCase();
+  if (READ_ONLY_SACRED_PATH_SET.has(normalizedRelative)) {
+    return false;
+  }
+
+  if (L1_IDENTITY_PATH_SET.has(normalizedRelative)) {
+    return true;
+  }
+
   const blockedPrefixes =
     config.blockedRelativePrefixes?.length && config.blockedRelativePrefixes.length > 0
       ? config.blockedRelativePrefixes

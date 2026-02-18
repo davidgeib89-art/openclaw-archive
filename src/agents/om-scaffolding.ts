@@ -355,6 +355,7 @@ const SNAPSHOT_LEVEL_L2_PATH_HINTS = [
 const SNAPSHOT_LEVEL_L1_PATH_HINTS = [
   "knowledge/sacred/soul.md",
   "knowledge/sacred/identity.md",
+  "knowledge/sacred/mood.md",
   "knowledge/sacred/user.md",
   "knowledge/sacred/chronicle.md",
   "knowledge/sacred/manifest_rituals.md",
