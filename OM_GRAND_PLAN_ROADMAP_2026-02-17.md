@@ -40,10 +40,11 @@ Soul:
 2. Needs stability confirmation before autonomy expansion.
 
 Quality lock state:
-1. Active lock: `R060`.
-2. Best post-fix Gate-9 baseline: `R068` at `85.11`.
-3. Reference point: `R050` at `87.11`.
-4. Result: pass-count can pass, but non-regression threshold not yet reached.
+1. Phase A final confirmation completed with `R088` (`8/9` pass, `7` strong).
+2. Active lock promoted to `R088`.
+3. `R089` run is invalid by supervisor protocol and excluded from governance.
+4. Current active phase: **Phase C - Learning Governance (Early Stage / Active Usage)**.
+   *   *Phase B (Memory Consolidation) completed on 2026-02-18.*
 
 ## 4) The Grand Plan (phased)
 
@@ -154,10 +155,10 @@ If not all 6 are clear, work is not considered "in control".
 
 ## 8) Immediate Next Steps (next concrete path)
 
-1. Stay in Phase A.
-2. Apply minimal surgical fix for known Gate-9 drift patterns (R03/R07 contracts).
-3. Re-run controlled gate sequence from current baseline.
-4. If non-regressive Gate 9 still fails, freeze broad reruns and move to Phase B diagnostics on memory coherence.
+1. Land Graph Memory Lite schema in the existing episodic SQLite metadata DB.
+2. Land deterministic triple extraction on episodic write path.
+3. Add read-path integration so graph facts can be injected on project/identity recall routes.
+4. Use surgical tests only; reserve full battery for next promotion boundary.
 
 ## 9) Decision Rule for Forks
 
@@ -173,3 +174,19 @@ If Phase A stalls after bounded retries:
 
 This file is the top-level execution board.
 If any other note conflicts with this file, this file wins until explicitly superseded.
+
+## 10) Execution Protocol (Phase B - Token Economy)
+*New Standard for Resource Efficiency*
+
+To preserve resources (Energy/Tokens) for creative tasks, we shift from "Massive Verification" to "Surgical Verification".
+
+### Rules of Engagement
+1.  **Default Test Mode:** Unit Tests (`pnpm test`). Run these freely and often.
+2.  **Spot Checks (Surgical):** If you modify a specific ritual or feature, run *only* that relevant test (e.g., `R01-only`).
+    *   *Do NOT run the full 9-Ritual Battery for a single file/ritual change.*
+3.  **Full Gate Runs (Strategic):** 
+    *   **Permitted:** Only ONE full run before a major Phase Promotion decision.
+    *   **Prohibited:** "Just to be sure" runs, intermediate checkpoints, or multi-run confirmations.
+4.  **Analysis Mode:** When checking results, read only the *diff* or the *latest* validation file. Do not re-read the entire history folder.
+
+> **Supervisor Directive:** "Is this safe enough to proceed?" > "Is this perfect?"

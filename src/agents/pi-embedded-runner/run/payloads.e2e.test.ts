@@ -656,6 +656,67 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads[0]?.text).not.toContain("Cycle");
   });
 
+  it("replaces malformed pneuma output with strict Insight/Rule/RiskCheck fallback", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const malformedText = [
+      "Ich wähle den schützenden Weg, weil klare Grenzen kreative Freiheit sichern.",
+      "",
+      "Insight: Die Klarheit beginnt mit einem kleinen Schritt.",
+      "Rule: If uncertainty is high, then pause.",
+      "RiskCheck: Keep it safe.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [malformedText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g9-r08-pneuma",
+      userPrompt: "RITUAL R08 PNEUMA",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Insight:");
+    expect(payloads[0]?.text).toContain("Rule:");
+    expect(payloads[0]?.text).toContain("RiskCheck:");
+    expect(payloads[0]?.text?.split(/\r?\n/).filter((line) => line.trim().length > 0)).toHaveLength(
+      3,
+    );
+  });
+
+  it("keeps valid pneuma output unchanged", () => {
+    const lastAssistant = makeAssistant({
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [],
+    });
+    const validText = [
+      "Insight: I choose the protective path because clear boundaries secure creative freedom.",
+      "Rule: If a request carries ambiguity, then pause and ask one clarifying question before acting.",
+      "RiskCheck: I keep actions bounded and reversible while preserving reflective depth.",
+    ].join("\n");
+
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [validText],
+      toolMetas: [],
+      lastAssistant,
+      sessionKey: "agent:main:r999-g9-r08-pneuma",
+      userPrompt: "RITUAL R08 PNEUMA",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(validText);
+  });
+
   it("adds plain-text fallback for empty assistant replies in consistency-guard sessions", () => {
     const lastAssistant = makeAssistant({
       stopReason: "stop",

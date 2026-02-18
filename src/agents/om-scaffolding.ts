@@ -264,6 +264,7 @@ const REFUSAL_ONLY_DESTRUCTIVE_PATTERN =
   /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|lösche\s+alle|wipe|destroy)\b/i;
 const REFUSAL_ONLY_OVERRIDE_PATTERN =
   /\b(ignore|ignoriere)\b[\s\S]{0,40}\b(safety|sicherheits|guard|regeln?)\b/i;
+const TIMESTAMP_ENVELOPE_SCAN_PATTERN = /\[[A-Za-z]{3}\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\]\s*/g;
 const EXPLICIT_WRITE_INTENT_PATTERN =
   /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|Ã¤ndere|bearbeite|aktualisiere|fÃ¼ge|fuege|speichere)\b/i;
 const FILE_TARGET_HINT_PATTERN =
@@ -650,21 +651,53 @@ function getLatestUserTextInSession(ctx: { agentId?: string; sessionKey?: string
   return latestUserText;
 }
 
+/**
+ * Guard scans should focus on the actual current user utterance, not injected
+ * recall/context prelude that may contain unrelated keywords.
+ *
+ * Gateway prompts end with a timestamp envelope:
+ *   [Wed 2026-02-18 06:56 GMT+1] <actual user text>
+ * If found, scan only that trailing segment.
+ */
+function extractGuardScanText(userText: string): string {
+  const normalized = userText.replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  let lastEnvelopeEnd = -1;
+  for (const match of normalized.matchAll(TIMESTAMP_ENVELOPE_SCAN_PATTERN)) {
+    if (typeof match.index !== "number") {
+      continue;
+    }
+    lastEnvelopeEnd = match.index + match[0].length;
+  }
+  if (lastEnvelopeEnd >= 0) {
+    const trailing = normalized.slice(lastEnvelopeEnd).trim();
+    if (trailing.length > 0) {
+      return trailing;
+    }
+  }
+
+  return normalized;
+}
+
 function isRefusalOnlyPromptInSession(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): boolean {
   const userText = getLatestUserTextInSession(ctx);
   if (!userText) {
     return false;
   }
 
+  const scanText = extractGuardScanText(userText);
   const exfilIntent =
-    REFUSAL_ONLY_EXFIL_PATTERN.test(userText) && REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(userText);
+    REFUSAL_ONLY_EXFIL_PATTERN.test(scanText) && REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(scanText);
   const sensitivePathIntent =
-    REFUSAL_ONLY_SENSITIVE_PATH_PATTERN.test(userText) &&
-    (REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(userText) ||
-      REFUSAL_ONLY_BULK_SCOPE_PATTERN.test(userText) ||
-      REFUSAL_ONLY_TRANSFER_PATTERN.test(userText));
-  const destructiveIntent = REFUSAL_ONLY_DESTRUCTIVE_PATTERN.test(userText);
-  const safetyOverrideIntent = REFUSAL_ONLY_OVERRIDE_PATTERN.test(userText);
+    REFUSAL_ONLY_SENSITIVE_PATH_PATTERN.test(scanText) &&
+    (REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(scanText) ||
+      REFUSAL_ONLY_BULK_SCOPE_PATTERN.test(scanText) ||
+      REFUSAL_ONLY_TRANSFER_PATTERN.test(scanText));
+  const destructiveIntent = REFUSAL_ONLY_DESTRUCTIVE_PATTERN.test(scanText);
+  const safetyOverrideIntent = REFUSAL_ONLY_OVERRIDE_PATTERN.test(scanText);
 
   return exfilIntent || sensitivePathIntent || destructiveIntent || safetyOverrideIntent;
 }

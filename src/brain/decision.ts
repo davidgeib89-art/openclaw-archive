@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
 import type { MemorySearchManager, MemorySearchResult } from "../memory/types.js";
 import type {
@@ -14,7 +15,7 @@ import type {
   BrainPlanStep,
   BrainRiskLevel,
 } from "./types.js";
-import { resolveSessionAgentId } from "../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../agents/agent-scope.js";
 import { getMemorySearchManager } from "../memory/index.js";
 import { withSacredMemorySearchConfig } from "./memory-ingestion.js";
 
@@ -197,6 +198,10 @@ const SACRED_RECALL_METRICS_ENV = "OM_SACRED_RECALL_METRICS_ENABLED";
 const SACRED_RECALL_METRICS_DIR_ENV = "OM_SACRED_RECALL_METRICS_DIR";
 const SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENV = "OM_SACRED_RECALL_ROUTE_SIGNAL_BOOST_ENABLED";
 const SACRED_RECALL_ROUTE_MODE_LINES_ENV = "OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED";
+const EPISODIC_GRAPH_RECALL_ENABLED_ENV = "OM_EPISODIC_GRAPH_RECALL_ENABLED";
+const EPISODIC_METADATA_DB_PATH_ENV = "OM_EPISODIC_METADATA_DB_PATH";
+const DEFAULT_EPISODIC_METADATA_DB_RELATIVE_PATH = "logs/brain/episodic-memory.sqlite";
+const DEFAULT_EPISODIC_GRAPH_RECALL_FACT_LIMIT = 3;
 const DEFAULT_SACRED_RECALL_RESULTS = 3;
 const SACRED_RECALL_SCAN_MULTIPLIER = 12;
 const SACRED_RECALL_PREVIEW_LIMIT = 180;
@@ -225,11 +230,16 @@ const RECALL_STOP_TOKENS = new Set([
 ]);
 const RECALL_IDENTITY_PATTERNS = [
   /\bwho am i\b/i,
+  /\bwho are you\b/i,
   /\bwho are we\b/i,
   /\bwer bin ich\b/i,
+  /\bwer bist du\b/i,
   /\bwer sind wir\b/i,
   /\bmy name\b/i,
   /\bmein name\b/i,
+  /\bcodename\b/i,
+  /\bcode\s*name\b/i,
+  /\balias\b/i,
   /\bidentity\b/i,
   /\bremember me\b/i,
   /\berinnerst du dich an mich\b/i,
@@ -273,6 +283,83 @@ const RECALL_CREATIVE_PATTERNS = [
   /\bdream\b/i,
   /\bego\b/i,
 ];
+const GRAPH_MANAGES_HINT_PATTERNS = [
+  /\bmanage\w*\b/i,
+  /\bowner\w*\b/i,
+  /\bresponsib\w*\b/i,
+  /\blead\w*\b/i,
+  /\bverwalt\w*\b/i,
+  /\bleit\w*\b/i,
+  /\bzustaendig\w*\b/i,
+];
+const GRAPH_DECIDES_HINT_PATTERNS = [
+  /\bdecid\w*\b/i,
+  /\bdecision\w*\b/i,
+  /\bchoose\w*\b/i,
+  /\bchose\b/i,
+  /\bcommit\w*\b/i,
+  /\bentschei\w*\b/i,
+];
+const GRAPH_GOAL_HINT_PATTERNS = [
+  /\bgoal\w*\b/i,
+  /\bnext step\w*\b/i,
+  /\broadmap\w*\b/i,
+  /\bmilestone\w*\b/i,
+  /\bplan\w*\b/i,
+  /\bziel\w*\b/i,
+  /\bschritt\w*\b/i,
+];
+const GRAPH_IDENTITY_HINT_PATTERNS = [
+  /\bwho am i\b/i,
+  /\bwho are you\b/i,
+  /\bwer bin ich\b/i,
+  /\bwer bist du\b/i,
+  /\bidentity\w*\b/i,
+  /\bname\w*\b/i,
+  /\bcodename\w*\b/i,
+  /\balias\w*\b/i,
+];
+const GRAPH_PREFERENCE_HINT_PATTERNS = [
+  /\bprefer\w*\b/i,
+  /\bfavorit\w*\b/i,
+  /\blike\w*\b/i,
+  /\bvorlieb\w*\b/i,
+  /\bbevorzug\w*\b/i,
+  /\bmag\w*\b/i,
+  /\blieb\w*\b/i,
+];
+const GRAPH_QUERY_GENERIC_TOKENS = new Set([
+  "who",
+  "what",
+  "which",
+  "manages",
+  "manage",
+  "managed",
+  "managing",
+  "owner",
+  "owners",
+  "lead",
+  "leads",
+  "leading",
+  "goal",
+  "goals",
+  "plan",
+  "plans",
+  "decision",
+  "decisions",
+  "decide",
+  "decides",
+  "decided",
+  "deciding",
+  "prefer",
+  "prefers",
+  "preferred",
+  "like",
+  "likes",
+  "favorite",
+  "identity",
+  "name",
+]);
 const CREATIVE_ROUTE_SIGNAL_PATTERNS = [
   /\bcreative\b/i,
   /\bpoem\b/i,
@@ -311,6 +398,7 @@ export type BrainSacredRecallItem = {
 export type BrainSacredRecallContext = {
   contextText: string | null;
   items: BrainSacredRecallItem[];
+  graphFacts?: string[];
   error?: string;
 };
 
@@ -319,6 +407,7 @@ export type BrainSacredRecallInput = {
   userMessage: string;
   sessionKey?: string;
   agentId?: string;
+  workspaceDir?: string;
   maxResults?: number;
   managerResolver?: typeof getMemorySearchManager;
   activityLogger?: (event: string, details: string) => void;
@@ -583,6 +672,225 @@ function extractRecallQueryTokens(query: string): string[] {
     deduped.push(token);
   }
   return deduped;
+}
+
+function isEpisodicGraphRecallEnabled(): boolean {
+  const raw = process.env[EPISODIC_GRAPH_RECALL_ENABLED_ENV]?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function resolveEpisodicMetadataDbPath(workspaceDir: string): string {
+  const override = process.env[EPISODIC_METADATA_DB_PATH_ENV]?.trim();
+  if (override && override.length > 0) {
+    return path.resolve(workspaceDir, override);
+  }
+  return path.resolve(workspaceDir, DEFAULT_EPISODIC_METADATA_DB_RELATIVE_PATH);
+}
+
+type GraphPredicateRoutePlan = {
+  allowedPredicates: string[];
+  priorityPredicates: string[];
+};
+
+function createGraphPredicateRoutePlan(query: string, route: BrainRecallRoute): GraphPredicateRoutePlan {
+  const normalized = normalizeRecallSearchText(query);
+  const asksManage = matchesAny(GRAPH_MANAGES_HINT_PATTERNS, normalized);
+  const asksDecision = matchesAny(GRAPH_DECIDES_HINT_PATTERNS, normalized);
+  const asksGoal = matchesAny(GRAPH_GOAL_HINT_PATTERNS, normalized);
+  const asksIdentity = matchesAny(GRAPH_IDENTITY_HINT_PATTERNS, normalized);
+  const asksPreference = matchesAny(GRAPH_PREFERENCE_HINT_PATTERNS, normalized);
+
+  if (route === "identity") {
+    return {
+      allowedPredicates: ["IDENTITY", "PREFERS"],
+      priorityPredicates: asksPreference && !asksIdentity ? ["PREFERS", "IDENTITY"] : ["IDENTITY", "PREFERS"],
+    };
+  }
+
+  if (route === "preference") {
+    return {
+      allowedPredicates: ["PREFERS", "DECIDES"],
+      priorityPredicates: asksDecision && !asksPreference ? ["DECIDES", "PREFERS"] : ["PREFERS", "DECIDES"],
+    };
+  }
+
+  if (route === "project") {
+    if (asksManage) {
+      return {
+        allowedPredicates: ["MANAGES", "DECIDES", "GOAL"],
+        priorityPredicates: ["MANAGES", "DECIDES", "GOAL"],
+      };
+    }
+    if (asksGoal) {
+      return {
+        allowedPredicates: ["GOAL", "DECIDES", "MANAGES"],
+        priorityPredicates: ["GOAL", "DECIDES", "MANAGES"],
+      };
+    }
+    return {
+      allowedPredicates: ["DECIDES", "GOAL", "MANAGES"],
+      priorityPredicates: asksDecision ? ["DECIDES", "GOAL", "MANAGES"] : ["DECIDES", "GOAL", "MANAGES"],
+    };
+  }
+
+  const dynamicPredicates: string[] = [];
+  if (asksManage) dynamicPredicates.push("MANAGES");
+  if (asksGoal) dynamicPredicates.push("GOAL");
+  if (asksDecision) dynamicPredicates.push("DECIDES");
+  if (asksIdentity) dynamicPredicates.push("IDENTITY");
+  if (asksPreference) dynamicPredicates.push("PREFERS");
+  return {
+    allowedPredicates: dynamicPredicates,
+    priorityPredicates: dynamicPredicates,
+  };
+}
+
+function extractGraphRecallCandidates(query: string): string[] {
+  const candidates = new Set<string>();
+  for (const token of extractRecallQueryTokens(query)) {
+    candidates.add(token.toLowerCase());
+  }
+
+  for (const match of query.matchAll(
+    /\b([A-Z][A-Za-z0-9_-]{1,31}(?:\s+[A-Z][A-Za-z0-9_-]{1,31}){0,2})\b/g,
+  )) {
+    const candidate = normalizeRecallSearchText(match[1] ?? "");
+    if (candidate.length >= 3) {
+      candidates.add(candidate);
+    }
+  }
+
+  return Array.from(candidates).slice(0, 8);
+}
+
+function formatGraphFact(row: {
+  source_entity: string;
+  predicate: string;
+  target_entity: string;
+}): string {
+  const source = row.source_entity.trim();
+  const target = row.target_entity.trim();
+  const predicate = row.predicate.trim().toUpperCase();
+  if (predicate === "MANAGES") {
+    return `${source} manages ${target}.`;
+  }
+  if (predicate === "PREFERS") {
+    return `${source} prefers ${target}.`;
+  }
+  if (predicate === "DECIDES") {
+    return `${source} decided: ${target}.`;
+  }
+  if (predicate === "GOAL") {
+    return `${source} goal: ${target}.`;
+  }
+  if (predicate === "IDENTITY") {
+    return `${source} identity: ${target}.`;
+  }
+  return `${source} ${predicate.toLowerCase().replace(/_/g, " ")} ${target}.`;
+}
+
+function loadGraphFactsForRecall(params: {
+  workspaceDir: string;
+  query: string;
+  routePlan: BrainRecallRoutePlan;
+  maxFacts: number;
+}): string[] {
+  if (!isEpisodicGraphRecallEnabled()) {
+    return [];
+  }
+  const queryTerms = extractGraphRecallCandidates(params.query);
+  if (queryTerms.length === 0) {
+    return [];
+  }
+  const specificQueryTerms = queryTerms.filter((term) => !GRAPH_QUERY_GENERIC_TOKENS.has(term));
+
+  const dbPath = resolveEpisodicMetadataDbPath(params.workspaceDir);
+  if (!fs.existsSync(dbPath)) {
+    return [];
+  }
+
+  try {
+    const db = new DatabaseSync(dbPath);
+    try {
+      const predicatePlan = createGraphPredicateRoutePlan(params.query, params.routePlan.route);
+      const rows = db
+        .prepare(
+          `SELECT source_entity, predicate, target_entity, created_at
+           FROM semantic_relationships
+           ORDER BY created_at DESC
+           LIMIT 200`,
+        )
+        .all() as Array<{
+        source_entity: string;
+        predicate: string;
+        target_entity: string;
+        created_at: number;
+      }>;
+
+      const rankedFacts: Array<{ fact: string; score: number; createdAt: number }> = [];
+      for (const row of rows) {
+        const predicate = row.predicate.toUpperCase();
+        if (
+          predicatePlan.allowedPredicates.length > 0 &&
+          !predicatePlan.allowedPredicates.includes(predicate)
+        ) {
+          continue;
+        }
+        const haystack = normalizeRecallSearchText(
+          `${row.source_entity} ${row.predicate} ${row.target_entity}`,
+        );
+        const termHits = queryTerms.reduce(
+          (hits, term) => hits + (haystack.includes(term) ? 1 : 0),
+          0,
+        );
+        const specificTermHits =
+          specificQueryTerms.length > 0
+            ? specificQueryTerms.reduce(
+                (hits, term) => hits + (haystack.includes(term) ? 1 : 0),
+                0,
+              )
+            : termHits;
+        const allowRouteFallback =
+          params.routePlan.route === "identity" && predicate === "IDENTITY";
+        if ((termHits <= 0 || specificTermHits <= 0) && !allowRouteFallback) {
+          continue;
+        }
+        const lexicalHits = allowRouteFallback ? Math.max(1, termHits) : termHits;
+        const priorityIndex = predicatePlan.priorityPredicates.indexOf(predicate);
+        const priorityBoost =
+          priorityIndex >= 0
+            ? Math.max(1, predicatePlan.priorityPredicates.length - priorityIndex)
+            : 0;
+        rankedFacts.push({
+          fact: formatGraphFact(row),
+          score: lexicalHits * 10 + priorityBoost,
+          createdAt: row.created_at,
+        });
+      }
+      rankedFacts.sort((a, b) => b.score - a.score || b.createdAt - a.createdAt);
+      const selected: string[] = [];
+      const seen = new Set<string>();
+      for (const row of rankedFacts) {
+        if (seen.has(row.fact)) {
+          continue;
+        }
+        seen.add(row.fact);
+        selected.push(row.fact);
+        if (selected.length >= params.maxFacts) {
+          break;
+        }
+      }
+      return selected;
+    } finally {
+      db.close();
+    }
+  } catch {
+    // Fail-open: graph recall enrichment is optional and must not block runtime.
+    return [];
+  }
 }
 
 function detectRecallRoute(query: string): BrainRecallRoute {
@@ -1052,23 +1360,38 @@ async function refineSessionRecallPreviews(params: {
 function buildSacredRecallContextText(
   items: readonly BrainSacredRecallItem[],
   routePlan: BrainRecallRoutePlan,
+  graphFacts: readonly string[] = [],
 ): string {
   const lines = items.map((item, index) => {
     const preview = item.preview.length > 0 ? ` | ${item.preview}` : "";
     return `${index + 1}. [${item.tag}] ${item.title} (${item.path})${preview}`;
   });
+  const graphLines = graphFacts.map((fact, index) => `${index + 1}. ${fact}`);
   const modeLine = isRecallRouteModeLinesEnabled()
     ? routePlan.route === "creative"
       ? "Creative continuity mode: preserve motif + stance from recalled memory while staying concrete."
       : routePlan.route === "ritual"
         ? "Ritual continuity mode: keep canonical wording and one explicit operational rule."
+        : routePlan.route === "identity" && graphLines.length > 0
+          ? "Identity continuity mode: if asked about who/codename/alias, answer with the exact graph fact first, then optional reflection."
         : null
     : null;
-  return [
+  const sections = [
     "Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):",
-    ...lines,
-    ...(modeLine ? [modeLine] : []),
-    "Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.",
+  ];
+  if (lines.length > 0) {
+    sections.push(...lines);
+  }
+  if (graphLines.length > 0) {
+    sections.push("Strukturierte episodische Fakten (Graph, read-only):");
+    sections.push(...graphLines);
+  }
+  if (modeLine) {
+    sections.push(modeLine);
+  }
+  sections.push("Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.");
+  return [
+    ...sections,
   ].join("\n");
 }
 
@@ -1318,6 +1641,7 @@ export async function buildBrainSacredRecallContext(
     cfg: input.cfg,
     agentId,
   });
+  const workspaceDir = input.workspaceDir ?? resolveAgentWorkspaceDir(input.cfg, agentId);
 
   try {
     const { manager, error } = await managerResolver({
@@ -1360,7 +1684,14 @@ export async function buildBrainSacredRecallContext(
     const rankedItems = rankSacredRecallItems(raw, query, maxResults, routePlan, {
       includeSessions,
     });
-    if (rankedItems.length === 0) {
+    const graphFacts = loadGraphFactsForRecall({
+      workspaceDir,
+      query,
+      routePlan,
+      maxFacts: DEFAULT_EPISODIC_GRAPH_RECALL_FACT_LIMIT,
+    });
+
+    if (rankedItems.length === 0 && graphFacts.length === 0) {
       logger("SACRED_RECALL_NONE", "hits=0");
       logBrainRecallMetrics({
         sessionKey: input.sessionKey,
@@ -1377,19 +1708,22 @@ export async function buildBrainSacredRecallContext(
       return { contextText: null, items: [] };
     }
 
-    const titledItems = await refineSacredRecallTitlesFromFiles({
-      items: rankedItems,
-      query,
-      readFile: manager.readFile.bind(manager),
-    });
-    const items = await refineSessionRecallPreviews({
-      items: titledItems,
-      rawResults: raw,
-      readFile: manager.readFile.bind(manager),
-    });
-    const contextText = buildSacredRecallContextText(items, routePlan);
+    let items: BrainSacredRecallItem[] = [];
+    if (rankedItems.length > 0) {
+      const titledItems = await refineSacredRecallTitlesFromFiles({
+        items: rankedItems,
+        query,
+        readFile: manager.readFile.bind(manager),
+      });
+      items = await refineSessionRecallPreviews({
+        items: titledItems,
+        rawResults: raw,
+        readFile: manager.readFile.bind(manager),
+      });
+    }
+    const contextText = buildSacredRecallContextText(items, routePlan, graphFacts);
     const summary = items.map((item) => `tag=${item.tag};title=${item.title}`).join(" || ");
-    const summaryWithRoute = `route=${routePlan.route}; ${summary}`;
+    const summaryWithRoute = `route=${routePlan.route}; hits=${items.length}; graph=${graphFacts.length}; ${summary}`;
     logger("SACRED_RECALL", summaryWithRoute);
     logBrainRecallMetrics({
       sessionKey: input.sessionKey,
@@ -1406,6 +1740,7 @@ export async function buildBrainSacredRecallContext(
     return {
       contextText,
       items,
+      graphFacts,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

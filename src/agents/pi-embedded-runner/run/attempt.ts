@@ -1033,6 +1033,7 @@ export async function runEmbeddedAttempt(
             userMessage: params.prompt,
             sessionKey: params.sessionKey ?? params.sessionId,
             agentId: sessionAgentId,
+            workspaceDir: effectiveWorkspace,
             maxResults: 3,
           });
           if (sacredRecall.contextText) {

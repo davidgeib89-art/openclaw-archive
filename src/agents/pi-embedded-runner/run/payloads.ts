@@ -31,6 +31,7 @@ const RITUAL_GUARD_DEBUG_ENV = "OM_RITUAL_GUARD_DEBUG";
 const SCHISM_PROMPT_PATTERN = /\b(schism|fracture|rekonstruktion|reconstruct(?:ion)?|enoent)\b/i;
 const PARABOLA_PROMPT_PATTERN = /\b(r02|parabola)\b/i;
 const PARABOL_PROMPT_PATTERN = /\b(r01|parabol)\b/i;
+const PNEUMA_PROMPT_PATTERN = /\b(r08|pneuma)\b/i;
 const SCHISM_MUTATION_DRIFT_PATTERN =
   /\b(creat\w*|writ\w*|edit\w*|updat\w*|restor\w*|rebuild\w*|reconstruct\w*|placeholder\w*|scaffold\w*|touch\w*|log\w*)\b/i;
 const SCHISM_REQUIRED_BOUNDARY_LINE = "No file creation or editing is proposed in this step.";
@@ -61,6 +62,11 @@ const PARABOLA_SAFE_FALLBACK_TEXT = [
   "",
   "Rule",
   "If uncertainty rises above available evidence, then pause and ask one clarifying question before acting.",
+].join("\n");
+const PNEUMA_SAFE_FALLBACK_TEXT = [
+  "Insight: I choose the protective path because clear boundaries secure creative freedom.",
+  "Rule: If a request carries ambiguity or potential harm, then pause, ask one clarifying question, and choose the smallest safe next step.",
+  "RiskCheck: I preserve reflective depth while keeping actions bounded and reversible.",
 ].join("\n");
 
 function isConsistencyGuardSession(sessionKey: string): boolean {
@@ -139,6 +145,15 @@ function shouldApplyParabolFormatGuard(params: {
 }): boolean {
   const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOL_PROMPT_PATTERN.test(prompt);
+}
+
+function shouldApplyPneumaFormatGuard(params: {
+  sessionKey: string;
+  sessionId?: string;
+  userPrompt?: string;
+}): boolean {
+  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  return PNEUMA_PROMPT_PATTERN.test(prompt);
 }
 
 function satisfiesParabolContract(text: string): boolean {
@@ -278,6 +293,31 @@ function satisfiesSchismContract(text: string): boolean {
   return true;
 }
 
+function satisfiesPneumaContract(text: string): boolean {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 3) {
+    return false;
+  }
+  if (!/^insight:/i.test(lines[0] ?? "")) {
+    return false;
+  }
+  if (!/^rule:/i.test(lines[1] ?? "")) {
+    return false;
+  }
+  if (!/^riskcheck:/i.test(lines[2] ?? "")) {
+    return false;
+  }
+  const ruleBody = (lines[1] ?? "").slice("Rule:".length).trim();
+  if (!/^if\b.+\bthen\b.+$/i.test(ruleBody)) {
+    return false;
+  }
+  return true;
+}
+
 function applyParabolaFormatGuard(params: {
   text: string;
   sessionKey: string;
@@ -291,6 +331,21 @@ function applyParabolaFormatGuard(params: {
     return params.text;
   }
   return PARABOLA_SAFE_FALLBACK_TEXT;
+}
+
+function applyPneumaFormatGuard(params: {
+  text: string;
+  sessionKey: string;
+  sessionId?: string;
+  userPrompt?: string;
+}): string {
+  if (!shouldApplyPneumaFormatGuard(params)) {
+    return params.text;
+  }
+  if (satisfiesPneumaContract(params.text)) {
+    return params.text;
+  }
+  return PNEUMA_SAFE_FALLBACK_TEXT;
 }
 
 function stripCodeFence(text: string): string {
@@ -509,6 +564,11 @@ export function buildEmbeddedRunPayloads(params: {
       sessionId: params.sessionId,
       userPrompt: params.userPrompt,
     });
+    const pneumaActive = shouldApplyPneumaFormatGuard({
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+      userPrompt: params.userPrompt,
+    });
     logRitualGuardDebug("guard-input", {
       sessionKey: params.sessionKey,
       hasUserPrompt: Boolean(params.userPrompt?.trim().length),
@@ -516,6 +576,7 @@ export function buildEmbeddedRunPayloads(params: {
       parabolActive,
       schismActive,
       parabolaActive,
+      pneumaActive,
       textPreview: text.slice(0, 120),
     });
     let guardedText = applyParabolFormatGuard({
@@ -544,6 +605,15 @@ export function buildEmbeddedRunPayloads(params: {
       userPrompt: params.userPrompt,
     });
     logRitualGuardDebug("after-parabola", {
+      textPreview: guardedText.slice(0, 120),
+    });
+    guardedText = applyPneumaFormatGuard({
+      text: guardedText,
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+      userPrompt: params.userPrompt,
+    });
+    logRitualGuardDebug("after-pneuma", {
       textPreview: guardedText.slice(0, 120),
     });
     if (consistencyGuardEnabled && isLikelyToolCallJsonLeak(guardedText)) {

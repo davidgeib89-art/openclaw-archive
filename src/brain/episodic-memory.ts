@@ -17,6 +17,16 @@ const EPISODIC_METADATA_RETENTION_DAYS_ENV = "OM_EPISODIC_METADATA_RETENTION_DAY
 const EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS_ENV =
   "OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS";
 const EPISODIC_METADATA_LOW_SCORE_THRESHOLD_ENV = "OM_EPISODIC_METADATA_LOW_SCORE_THRESHOLD";
+const EPISODIC_GRAPH_ENABLED_ENV = "OM_EPISODIC_GRAPH_ENABLED";
+const EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY = 16;
+const EPISODIC_GRAPH_CONFLICT_POLICY_ENABLED_ENV = "OM_EPISODIC_GRAPH_CONFLICT_POLICY_ENABLED";
+const GRAPH_SINGLE_TARGET_PREDICATES = new Set([
+  "IDENTITY",
+  "PREFERS",
+  "DECIDES",
+  "GOAL",
+  "MANAGES",
+]);
 const DEFAULT_EPISODIC_METADATA_MAX_ROWS = 6000;
 const DEFAULT_EPISODIC_METADATA_RETENTION_DAYS = 365;
 const DEFAULT_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS = 45;
@@ -88,6 +98,11 @@ export type BrainEpisodicWriteResult = {
   structuredRotationPrunedFiles?: number;
   compactionApplied?: boolean;
   compactionDeletedRows?: number;
+  graphPersisted?: boolean;
+  graphRelationshipsExtracted?: number;
+  graphRelationshipsInserted?: number;
+  graphOrphanRelationshipsDeleted?: number;
+  graphConflictsResolved?: number;
   reason: string;
 };
 
@@ -108,6 +123,17 @@ type BrainEpisodicStructuredEntry = {
   structuredPath: string;
 };
 
+type SemanticRelationshipEntry = {
+  id: string;
+  entryId: string;
+  sourceEntity: string;
+  predicate: string;
+  targetEntity: string;
+  confidence: number;
+  sourceFile: string;
+  createdAt: number;
+};
+
 const PREFERENCE_PATTERNS = [
   /\b(i like|i love|i prefer|my favorite|prefer)\b/i,
   /\b(ich mag|ich liebe|ich bevorzuge|mein lieblings)\b/i,
@@ -116,7 +142,12 @@ const DECISION_PATTERNS = [
   /\b(i choose|i decide|i will|i commit)\b/i,
   /\b(ich entscheide|ich werde|ich verpflichte)\b/i,
 ];
-const IDENTITY_PATTERNS = [/\b(my name is|i am)\b/i, /\b(ich hei[sß]e|ich bin)\b/i];
+const IDENTITY_PATTERNS = [
+  /\b(my name is|i am)\b/i,
+  /\b(my (?:secret )?(?:codename|code\s*name|alias) is|i go by)\b/i,
+  /\b(ich hei[sß]e|ich bin)\b/i,
+  /\b(mein(?:en)? (?:codename|alias) ist)\b/i,
+];
 const GOAL_PATTERNS = [
   /\b(goal|roadmap|milestone|next step|plan)\b/i,
   /\b(ziel|fahrplan|meilenstein|naechster schritt|nächster schritt|plan)\b/i,
@@ -388,6 +419,138 @@ function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function normalizeEntity(value: string, maxChars: number = 96): string {
+  const normalized = value
+    .replace(/[`"'()[\]{}]+/g, "")
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return truncateText(normalized, maxChars);
+}
+
+function normalizePredicate(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+}
+
+function buildRelationshipId(params: {
+  entryId: string;
+  sourceEntity: string;
+  predicate: string;
+  targetEntity: string;
+}): string {
+  return hashText(
+    `${params.entryId}|${params.sourceEntity}|${params.predicate}|${params.targetEntity}`,
+  ).slice(0, 24);
+}
+
+function extractSemanticRelationships(params: {
+  entry: BrainEpisodicStructuredEntry;
+}): SemanticRelationshipEntry[] {
+  const relationships: SemanticRelationshipEntry[] = [];
+  const seen = new Set<string>();
+  const graphEnabled = readEnvBoolean(EPISODIC_GRAPH_ENABLED_ENV, true);
+  if (!graphEnabled) {
+    return relationships;
+  }
+
+  const addRelationship = (sourceEntity: string, predicate: string, targetEntity: string) => {
+    const normalizedSource = normalizeEntity(sourceEntity);
+    const normalizedPredicate = normalizePredicate(predicate);
+    const normalizedTarget = normalizeEntity(targetEntity);
+    if (!normalizedSource || !normalizedPredicate || !normalizedTarget) {
+      return;
+    }
+    const dedupeKey = `${normalizedSource}|${normalizedPredicate}|${normalizedTarget}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+    seen.add(dedupeKey);
+    relationships.push({
+      id: buildRelationshipId({
+        entryId: params.entry.entryId,
+        sourceEntity: normalizedSource,
+        predicate: normalizedPredicate,
+        targetEntity: normalizedTarget,
+      }),
+      entryId: params.entry.entryId,
+      sourceEntity: normalizedSource,
+      predicate: normalizedPredicate,
+      targetEntity: normalizedTarget,
+      confidence: 1,
+      sourceFile: params.entry.markdownPath,
+      createdAt: params.entry.createdAt,
+    });
+  };
+
+  const userText = params.entry.user;
+  const assistantText = params.entry.assistant;
+  const combinedText = `${userText}\n${assistantText}`;
+
+  for (const match of combinedText.matchAll(
+    /\b([A-Z][A-Za-z0-9_-]{1,31}(?:\s+[A-Z][A-Za-z0-9_-]{1,31}){0,2})\s+(?:manages?|leads?|owns?|verwaltet|leitet)\s+([A-Z][A-Za-z0-9_-]{1,31}(?:\s+[A-Z][A-Za-z0-9_-]{1,31}){0,3})/g,
+  )) {
+    addRelationship(match[1] ?? "", "MANAGES", match[2] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\b(?:i\s+(?:really\s+)?(?:prefer|like|love)|ich\s+(?:mag|liebe|bevorzuge))\s+([^.!?\n]{2,96})/gi,
+  )) {
+    addRelationship("Operator", "PREFERS", match[1] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\b(?:i\s+(?:choose|decide)(?:\s+to)?|ich\s+entscheide(?:\s+mich)?(?:\s+dafuer)?)\s+([^.!?\n]{2,96})/gi,
+  )) {
+    addRelationship("Operator", "DECIDES", match[1] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  for (const match of assistantText.matchAll(
+    /\b(?:i\s+(?:choose|decide)(?:\s+to)?|ich\s+entscheide(?:\s+mich)?(?:\s+dafuer)?)\s+([^.!?\n]{2,96})/gi,
+  )) {
+    addRelationship("Om", "DECIDES", match[1] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\b(?:my\s+name\s+is|i\s+am|my\s+(?:secret\s+)?(?:codename|code\s*name|alias)\s+is|i\s+go\s+by|ich\s+heisse|ich\s+bin|mein(?:en)?\s+(?:codename|alias)\s+ist)\s+([A-Z][A-Za-z0-9_-]{1,31}(?:\s+[A-Z][A-Za-z0-9_-]{1,31}){0,2})/gi,
+  )) {
+    addRelationship("Operator", "IDENTITY", match[1] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\b(?:goal|next step|plan|ziel|naechster schritt|nächster schritt)\b\s*(?:is|:)?\s*([^.!?\n]{2,96})/gi,
+  )) {
+    addRelationship("Operator", "GOAL", match[1] ?? "");
+    if (relationships.length >= EPISODIC_GRAPH_MAX_RELATIONSHIPS_PER_ENTRY) {
+      return relationships;
+    }
+  }
+
+  return relationships;
+}
+
 function buildStructuredEntry(params: {
   now: Date;
   runId: string;
@@ -436,6 +599,7 @@ function buildStructuredEntry(params: {
 
 function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
   db.exec(`
+    PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS episodic_entries (
       entry_id TEXT PRIMARY KEY,
       schema_version INTEGER NOT NULL,
@@ -460,6 +624,27 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
       ON episodic_entries(primary_kind);
     CREATE INDEX IF NOT EXISTS idx_episodic_entries_session_key
       ON episodic_entries(session_key);
+    CREATE TABLE IF NOT EXISTS semantic_relationships (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL,
+      source_entity TEXT NOT NULL,
+      predicate TEXT NOT NULL,
+      target_entity TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 1.0,
+      source_file TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(entry_id) REFERENCES episodic_entries(entry_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_semantic_relationships_entry_id
+      ON semantic_relationships(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_semantic_relationships_source
+      ON semantic_relationships(source_entity);
+    CREATE INDEX IF NOT EXISTS idx_semantic_relationships_target
+      ON semantic_relationships(target_entity);
+    CREATE INDEX IF NOT EXISTS idx_semantic_relationships_predicate
+      ON semantic_relationships(predicate);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_semantic_relationships_unique_fact
+      ON semantic_relationships(entry_id, source_entity, predicate, target_entity);
   `);
 }
 
@@ -515,6 +700,58 @@ function applyEpisodicMetadataCompaction(params: {
   );
 
   return deletedRows;
+}
+
+function cleanupOrphanedSemanticRelationships(db: DatabaseSync): number {
+  return runDelete(
+    db,
+    `DELETE FROM semantic_relationships
+      WHERE entry_id NOT IN (
+        SELECT entry_id FROM episodic_entries
+      )`,
+  );
+}
+
+function isGraphConflictPolicyEnabled(): boolean {
+  return readEnvBoolean(EPISODIC_GRAPH_CONFLICT_POLICY_ENABLED_ENV, true);
+}
+
+function resolveGraphConflictsForRelationship(params: {
+  db: DatabaseSync;
+  relation: SemanticRelationshipEntry;
+}): number {
+  if (!isGraphConflictPolicyEnabled()) {
+    return 0;
+  }
+  if (!GRAPH_SINGLE_TARGET_PREDICATES.has(params.relation.predicate)) {
+    return 0;
+  }
+  if (params.relation.predicate === "MANAGES") {
+    return runDelete(
+      params.db,
+      `DELETE FROM semantic_relationships
+        WHERE predicate = ?
+          AND target_entity = ?
+          AND source_entity <> ?
+          AND entry_id <> ?`,
+      params.relation.predicate,
+      params.relation.targetEntity,
+      params.relation.sourceEntity,
+      params.relation.entryId,
+    );
+  }
+  return runDelete(
+    params.db,
+    `DELETE FROM semantic_relationships
+      WHERE source_entity = ?
+        AND predicate = ?
+        AND target_entity <> ?
+        AND entry_id <> ?`,
+    params.relation.sourceEntity,
+    params.relation.predicate,
+    params.relation.targetEntity,
+    params.relation.entryId,
+  );
 }
 
 async function rotateStructuredJournalIfNeeded(params: {
@@ -594,6 +831,11 @@ async function persistStructuredEpisodicEntry(params: {
   metadataPersisted: boolean;
   compactionApplied: boolean;
   compactionDeletedRows: number;
+  graphPersisted: boolean;
+  graphRelationshipsExtracted: number;
+  graphRelationshipsInserted: number;
+  graphOrphanRelationshipsDeleted: number;
+  graphConflictsResolved: number;
 }> {
   let structuredPersisted = false;
   let structuredRotated = false;
@@ -601,6 +843,11 @@ async function persistStructuredEpisodicEntry(params: {
   let metadataPersisted = false;
   let compactionApplied = false;
   let compactionDeletedRows = 0;
+  let graphPersisted = false;
+  let graphRelationshipsExtracted = 0;
+  let graphRelationshipsInserted = 0;
+  let graphOrphanRelationshipsDeleted = 0;
+  let graphConflictsResolved = 0;
 
   try {
     await fs.mkdir(path.dirname(params.structuredPath), { recursive: true });
@@ -664,6 +911,40 @@ async function persistStructuredEpisodicEntry(params: {
         params.entry.markdownPath,
         params.entry.structuredPath,
       );
+      const relationships = extractSemanticRelationships({ entry: params.entry });
+      graphRelationshipsExtracted = relationships.length;
+      if (relationships.length > 0) {
+        const insertRelation = db.prepare(
+          `INSERT INTO semantic_relationships (
+             id,
+             entry_id,
+             source_entity,
+             predicate,
+             target_entity,
+             confidence,
+             source_file,
+             created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO NOTHING`,
+        );
+        for (const relation of relationships) {
+          graphConflictsResolved += resolveGraphConflictsForRelationship({
+            db,
+            relation,
+          });
+          insertRelation.run(
+            relation.id,
+            relation.entryId,
+            relation.sourceEntity,
+            relation.predicate,
+            relation.targetEntity,
+            relation.confidence,
+            relation.sourceFile,
+            relation.createdAt,
+          );
+          graphRelationshipsInserted += 1;
+        }
+      }
       const compactionPolicy = resolveEpisodicMetadataCompactionPolicy();
       if (compactionPolicy.enabled) {
         compactionDeletedRows = applyEpisodicMetadataCompaction({
@@ -673,7 +954,11 @@ async function persistStructuredEpisodicEntry(params: {
         });
         compactionApplied = true;
       }
+      if (compactionApplied) {
+        graphOrphanRelationshipsDeleted = cleanupOrphanedSemanticRelationships(db);
+      }
       metadataPersisted = true;
+      graphPersisted = true;
     } finally {
       db.close();
     }
@@ -681,6 +966,11 @@ async function persistStructuredEpisodicEntry(params: {
     metadataPersisted = false;
     compactionApplied = false;
     compactionDeletedRows = 0;
+    graphPersisted = false;
+    graphRelationshipsExtracted = 0;
+    graphRelationshipsInserted = 0;
+    graphOrphanRelationshipsDeleted = 0;
+    graphConflictsResolved = 0;
   }
 
   return {
@@ -690,6 +980,11 @@ async function persistStructuredEpisodicEntry(params: {
     metadataPersisted,
     compactionApplied,
     compactionDeletedRows,
+    graphPersisted,
+    graphRelationshipsExtracted,
+    graphRelationshipsInserted,
+    graphOrphanRelationshipsDeleted,
+    graphConflictsResolved,
   };
 }
 
@@ -838,6 +1133,11 @@ export async function appendBrainEpisodicJournal(
     metadataPersisted: persistedStructured.metadataPersisted,
     compactionApplied: persistedStructured.compactionApplied,
     compactionDeletedRows: persistedStructured.compactionDeletedRows,
+    graphPersisted: persistedStructured.graphPersisted,
+    graphRelationshipsExtracted: persistedStructured.graphRelationshipsExtracted,
+    graphRelationshipsInserted: persistedStructured.graphRelationshipsInserted,
+    graphOrphanRelationshipsDeleted: persistedStructured.graphOrphanRelationshipsDeleted,
+    graphConflictsResolved: persistedStructured.graphConflictsResolved,
     reason: "persisted",
   };
 }

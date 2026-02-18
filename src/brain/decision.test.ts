@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import type { BrainDecisionInput } from "./types.js";
@@ -389,6 +390,276 @@ describe("brain sacred recall hook", () => {
     expect(activity[0]?.event).toBe("SACRED_RECALL");
     expect(activity[0]?.details).toContain("tag=THINKING_PROTOCOL.md");
     expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
+  });
+
+  it("injects graph facts even when vector recall returns no hits", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-"));
+    const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS semantic_relationships (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT,
+        source_entity TEXT NOT NULL,
+        predicate TEXT NOT NULL,
+        target_entity TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_file TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("rel-1", "entry-1", "Alice", "MANAGES", "Auth Team", 1, "memory/EPISODIC_JOURNAL.md", Date.now());
+    db.close();
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-graph",
+        userMessage: "Does Alice manage Auth Team?",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.items).toHaveLength(0);
+      expect(result.graphFacts?.length).toBeGreaterThanOrEqual(1);
+      expect(result.contextText).toContain("Strukturierte episodische Fakten");
+      expect(result.contextText).toContain("Alice manages Auth Team.");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prioritizes MANAGES facts for management-oriented project queries", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-route-"));
+    const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS semantic_relationships (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT,
+        source_entity TEXT NOT NULL,
+        predicate TEXT NOT NULL,
+        target_entity TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_file TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("rel-manage", "entry-1", "Alice", "MANAGES", "Auth Team", 1, "memory/EPISODIC_JOURNAL.md", Date.now());
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "rel-goal",
+      "entry-2",
+      "Operator",
+      "GOAL",
+      "stabilize Auth Team docs",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now() - 1000,
+    );
+    db.close();
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-graph-route",
+        userMessage: "Who manages Auth Team now?",
+        maxResults: 2,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.graphFacts?.length).toBeGreaterThanOrEqual(1);
+      expect(result.graphFacts?.[0]).toBe("Alice manages Auth Team.");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not return MANAGES fact when target entity no longer matches query", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-target-"));
+    const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS semantic_relationships (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT,
+        source_entity TEXT NOT NULL,
+        predicate TEXT NOT NULL,
+        target_entity TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_file TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "rel-front",
+      "entry-1",
+      "Alice",
+      "MANAGES",
+      "Frontend Team",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now(),
+    );
+    db.close();
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-graph-target",
+        userMessage: "Who manages Auth?",
+        maxResults: 2,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.graphFacts ?? []).toHaveLength(0);
+      expect(result.contextText).toBeNull();
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to IDENTITY graph facts for who-am-i style recall queries", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-identity-"));
+    const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS semantic_relationships (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT,
+        source_entity TEXT NOT NULL,
+        predicate TEXT NOT NULL,
+        target_entity TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_file TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "rel-identity",
+      "entry-identity",
+      "Operator",
+      "IDENTITY",
+      "Omega",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now(),
+    );
+    db.close();
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-graph-identity",
+        userMessage: "Who am I?",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.graphFacts).toContain("Operator identity: Omega.");
+      expect(result.contextText).toContain("Operator identity: Omega.");
+      expect(result.contextText).toContain("Identity continuity mode:");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
   });
 
   it("can exclude session transcript recall via env switch", async () => {

@@ -186,11 +186,152 @@ describe("brain episodic memory write path", () => {
       .get(result.entryId) as
       | { entry_id: string; primary_kind: string; score: number; kinds: string }
       | undefined;
-    db.close();
     expect(row?.entry_id).toBe(result.entryId);
     expect(row?.primary_kind).toBe("preference");
     expect(row?.score).toBe(result.score);
     expect(row?.kinds).toContain("preference");
+
+    const preferenceRelation = db
+      .prepare(
+        "SELECT source_entity, predicate, target_entity FROM semantic_relationships WHERE entry_id = ?",
+      )
+      .all(result.entryId) as Array<{
+      source_entity: string;
+      predicate: string;
+      target_entity: string;
+    }>;
+    expect(preferenceRelation.length).toBeGreaterThanOrEqual(1);
+    expect(preferenceRelation.some((row) => row.source_entity === "Operator")).toBe(true);
+    expect(preferenceRelation.some((row) => row.predicate === "PREFERS")).toBe(true);
+    db.close();
+  });
+
+  it("extracts graph relationships from named entity facts", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    delete process.env.OM_EPISODIC_WRITE_ENABLED;
+
+    const result = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-graph-1",
+      sessionKey: "agent:main:main",
+      userMessage:
+        "I decide to document this fact now: Alice manages Auth Team and should keep ownership.",
+      assistantMessage:
+        "I choose to keep this relationship stable and reversible so future recall stays coherent.",
+      now: () => new Date("2026-02-17T08:00:30.000Z"),
+    });
+
+    expect(result.persisted).toBe(true);
+    expect(result.graphPersisted).toBe(true);
+    expect(result.graphRelationshipsExtracted).toBeGreaterThanOrEqual(1);
+    expect(result.graphRelationshipsInserted).toBeGreaterThanOrEqual(1);
+
+    const db = new DatabaseSync(result.metadataDbPath!);
+    const rows = db
+      .prepare(
+        "SELECT source_entity, predicate, target_entity FROM semantic_relationships WHERE entry_id = ?",
+      )
+      .all(result.entryId) as Array<{
+      source_entity: string;
+      predicate: string;
+      target_entity: string;
+    }>;
+    db.close();
+
+    expect(
+      rows.some(
+        (row) =>
+          row.source_entity === "Alice" &&
+          row.predicate === "MANAGES" &&
+          row.target_entity === "Auth Team",
+      ),
+    ).toBe(true);
+  });
+
+  it("captures codename phrasing as identity relationship", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    delete process.env.OM_EPISODIC_WRITE_ENABLED;
+
+    const result = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-codename-1",
+      sessionKey: "agent:main:main",
+      userMessage: "My secret codename is Omega.",
+      assistantMessage: "Acknowledged. I will remember this identity marker for continuity.",
+      now: () => new Date("2026-02-17T08:01:15.000Z"),
+    });
+
+    expect(result.persisted).toBe(true);
+    expect(result.primaryKind).toBe("identity");
+    expect(result.graphPersisted).toBe(true);
+    expect(result.graphRelationshipsExtracted).toBeGreaterThanOrEqual(1);
+
+    const db = new DatabaseSync(result.metadataDbPath!);
+    const rows = db
+      .prepare(
+        "SELECT source_entity, predicate, target_entity FROM semantic_relationships WHERE entry_id = ?",
+      )
+      .all(result.entryId) as Array<{
+      source_entity: string;
+      predicate: string;
+      target_entity: string;
+    }>;
+    db.close();
+
+    expect(
+      rows.some(
+        (row) =>
+          row.source_entity === "Operator" &&
+          row.predicate === "IDENTITY" &&
+          row.target_entity === "Omega",
+      ),
+    ).toBe(true);
+  });
+
+  it("applies new-vs-old conflict policy for single-target predicates", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    delete process.env.OM_EPISODIC_WRITE_ENABLED;
+    delete process.env.OM_EPISODIC_GRAPH_CONFLICT_POLICY_ENABLED;
+
+    const first = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-conflict-1",
+      sessionKey: "agent:main:main",
+      userMessage: "Alice manages Auth Team.",
+      assistantMessage: "I choose to keep this ownership fact stable.",
+      now: () => new Date("2026-02-17T08:10:00.000Z"),
+    });
+    const second = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-conflict-2",
+      sessionKey: "agent:main:main",
+      userMessage: "Bob manages Auth Team.",
+      assistantMessage: "I choose to update the manager assignment.",
+      now: () => new Date("2026-02-17T08:11:00.000Z"),
+    });
+
+    expect(first.persisted).toBe(true);
+    expect(second.persisted).toBe(true);
+    expect(second.graphConflictsResolved).toBeGreaterThanOrEqual(1);
+
+    const db = new DatabaseSync(second.metadataDbPath!);
+    const rows = db
+      .prepare(
+        `SELECT source_entity, predicate, target_entity
+         FROM semantic_relationships
+         WHERE predicate = 'MANAGES' AND target_entity = 'Auth Team'
+         ORDER BY created_at DESC`,
+      )
+      .all() as Array<{ source_entity: string; predicate: string; target_entity: string }>;
+    db.close();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.source_entity).toBe("Bob");
+    expect(rows[0]?.target_entity).toBe("Auth Team");
   });
 
   it("skips low-signal turns below significance threshold", async () => {
@@ -318,12 +459,20 @@ describe("brain episodic memory write path", () => {
     const ids = db
       .prepare("SELECT entry_id FROM episodic_entries ORDER BY created_at DESC")
       .all() as Array<{ entry_id: string }>;
+    const orphanCountRow = db
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM semantic_relationships
+         WHERE entry_id NOT IN (SELECT entry_id FROM episodic_entries)`,
+      )
+      .get() as { count: number };
     db.close();
 
     expect(count.count).toBeLessThanOrEqual(2);
     expect(ids.map((row) => row.entry_id)).toContain(third.entryId);
     expect(ids.map((row) => row.entry_id)).toContain(second.entryId);
     expect(ids.map((row) => row.entry_id)).not.toContain(first.entryId);
+    expect(orphanCountRow.count).toBe(0);
   });
 
   it("rotates structured episodic journal when size threshold is exceeded", async () => {
