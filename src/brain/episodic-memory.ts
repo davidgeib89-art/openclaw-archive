@@ -153,7 +153,7 @@ const GOAL_PATTERNS = [
   /\b(ziel|fahrplan|meilenstein|naechster schritt|nächster schritt|plan)\b/i,
 ];
 const HEARTBEAT_PROMPT_PATTERNS = [
-  /read heartbeat\.md if it exists/i,
+  /read (?:agenda|heartbeat)\.md if it exists/i,
   /if nothing needs attention, reply heartbeat_ok/i,
 ];
 const CREATIVE_PATTERNS = [

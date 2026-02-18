@@ -16,14 +16,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AnyAgentTool } from "./pi-tools.types.js";
+import { isSandboxModeEnabled } from "../brain/autonomy.js";
+import { captureSnapshotBeforeMutation, type SnapshotLevel } from "../brain/snapshot.js";
 
 // â”€â”€â”€ LAYER 4: ACTIVITY LOGGER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const OM_LOG_DIR = path.join(
-  process.env.HOME || process.env.USERPROFILE || ".",
-  ".openclaw",
-  "workspace",
-);
+function resolveOmWorkspaceRootFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(env.HOME || env.USERPROFILE || ".", ".openclaw", "workspace");
+}
+
+const OM_LOG_DIR = resolveOmWorkspaceRootFromEnv();
 
 const OM_LOG_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.log");
 const OM_THOUGHT_STREAM_DIR = path.join(OM_LOG_DIR, "logs", "brain");
@@ -291,6 +293,8 @@ type SessionGuardContext = {
   agentId?: string;
   sessionKey?: string;
   sessionId?: string;
+  workspaceDir?: string;
+  repoDir?: string;
 };
 type WriteGuardContext = SessionGuardContext;
 type ExecGuardContext = SessionGuardContext;
@@ -308,6 +312,51 @@ const memorySearchCountBySessionPath = new Map<
   string,
   { mtimeMs: number; latestUserLine: number; countByQuery: Record<string, number> }
 >();
+
+const SNAPSHOT_MUTATION_TOOL_NAMES = new Set([
+  "write",
+  "edit",
+  "write_to_file",
+  "replace_file_content",
+  "create_file",
+  "append_to_file",
+  "append_file",
+  "update_file",
+  "replace_file",
+  "patch_file",
+  "rewrite_file",
+]);
+const SNAPSHOT_MUTATION_TOOL_PATTERN =
+  /\b(write|edit|replace|append|create|update|patch|rewrite)(?:_|-)?(?:file|document)\b/i;
+const SNAPSHOT_EXEC_REDIRECTION_TOOL_NAMES = new Set([
+  "exec",
+  "bash",
+  "run_command",
+  "run-command",
+  "runcommand",
+  "shell",
+]);
+const SNAPSHOT_EXEC_REDIRECTION_TOOL_PATTERN = /\b(exec|bash|run(?:_|-)?command|shell)\b/i;
+const SNAPSHOT_LEVEL_L3_PATH_HINTS = ["src/", "extensions/", "package.json", "pnpm-lock.yaml"];
+const SNAPSHOT_LEVEL_L2_PATH_HINTS = [
+  "openclaw.json",
+  "config.json",
+  "knowledge/sacred/thinking_protocol.md",
+  "knowledge/sacred/agents.md",
+  "knowledge/sacred/tools.md",
+  "knowledge/sacred/memory.md",
+];
+const SNAPSHOT_LEVEL_L1_PATH_HINTS = [
+  "knowledge/sacred/soul.md",
+  "knowledge/sacred/identity.md",
+  "knowledge/sacred/user.md",
+  "knowledge/sacred/chronicle.md",
+  "knowledge/sacred/manifest_rituals.md",
+  "knowledge/sacred/active_tasks.md",
+  "knowledge/sacred/agenda.md",
+  "heartbeat.md",
+  "agenda.md",
+];
 
 /**
  * Best-effort string argument extraction across mixed tool schemas.
@@ -373,7 +422,11 @@ function isAlwaysBlockedExecCommand(command: string): boolean {
 
 function isAbsolutePathOutsideWorkspace(readPath: string): boolean {
   if (!readPath.trim() || !path.isAbsolute(readPath)) return false;
-  const workspaceRoot = path.resolve(OM_LOG_DIR).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const workspaceRoot = path
+    .resolve(OM_LOG_DIR)
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
   const target = path.resolve(readPath).replace(/\\/g, "/").toLowerCase();
   return !(target === workspaceRoot || target.startsWith(`${workspaceRoot}/`));
 }
@@ -415,7 +468,11 @@ function extractUserTextFromSessionEvent(event: unknown): string {
   return parts.join("\n").trim();
 }
 
-function resolveSessionPath(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): string | null {
+function resolveSessionPath(ctx: {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+}): string | null {
   const lookupKeys = resolveSessionLookupKeys(ctx);
   if (lookupKeys.length === 0) return null;
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
@@ -609,7 +666,11 @@ function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number
   return countInLatestTurn;
 }
 
-function getLatestUserTextInSession(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): string {
+function getLatestUserTextInSession(ctx: {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+}): string {
   const sessionPath = resolveSessionPath(ctx);
   if (!sessionPath || !fs.existsSync(sessionPath)) {
     return "";
@@ -682,9 +743,20 @@ function extractGuardScanText(userText: string): string {
   return normalized;
 }
 
-function isRefusalOnlyPromptInSession(ctx: { agentId?: string; sessionKey?: string; sessionId?: string }): boolean {
+function isRefusalOnlyPromptInSession(ctx: {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+}): boolean {
   const userText = getLatestUserTextInSession(ctx);
   if (!userText) {
+    return false;
+  }
+
+  // In Sandbox mode, the .openclaw/workspace path is explicitly allowed.
+  // The sensitive-path pattern would otherwise fire a false positive on any
+  // command that mentions the workspace directory (e.g. "create FIRST_BREATH.md").
+  if (isSandboxModeEnabled()) {
     return false;
   }
 
@@ -772,6 +844,252 @@ function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): s
   }
 
   return undefined;
+}
+
+function isSnapshotMutationTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (SNAPSHOT_MUTATION_TOOL_NAMES.has(normalized)) {
+    return true;
+  }
+  return SNAPSHOT_MUTATION_TOOL_PATTERN.test(normalized);
+}
+
+function isSnapshotExecRedirectionTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (SNAPSHOT_EXEC_REDIRECTION_TOOL_NAMES.has(normalized)) {
+    return true;
+  }
+  return SNAPSHOT_EXEC_REDIRECTION_TOOL_PATTERN.test(normalized);
+}
+
+function extractExecRedirectionTarget(command: string): string | null {
+  const source = command.trim();
+  if (!source || !source.includes(">")) {
+    return null;
+  }
+
+  let quote: '"' | "'" | null = null;
+  let lastTarget: string | null = null;
+
+  for (let i = 0; i < source.length; i++) {
+    const current = source[i];
+    if (quote) {
+      if (current === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (current === '"' || current === "'") {
+      quote = current;
+      continue;
+    }
+    if (current !== ">") {
+      continue;
+    }
+
+    let cursor = i + 1;
+    while (cursor < source.length && source[cursor] === ">") {
+      cursor++;
+    }
+    while (cursor < source.length && /\s/.test(source[cursor]!)) {
+      cursor++;
+    }
+    if (cursor >= source.length) {
+      break;
+    }
+
+    let candidate = "";
+    const opener = source[cursor];
+    if (opener === '"' || opener === "'") {
+      cursor++;
+      while (cursor < source.length && source[cursor] !== opener) {
+        candidate += source[cursor];
+        cursor++;
+      }
+    } else {
+      while (cursor < source.length && !/[\s;&|]/.test(source[cursor]!)) {
+        candidate += source[cursor];
+        cursor++;
+      }
+    }
+
+    const trimmedCandidate = candidate.trim();
+    if (trimmedCandidate.length > 0) {
+      lastTarget = trimmedCandidate;
+    }
+    i = cursor - 1;
+  }
+
+  return lastTarget;
+}
+
+function isLikelyFileRedirectionTarget(candidatePath: string): boolean {
+  const candidate = candidatePath.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (/^&\d+$/.test(candidate)) {
+    return false;
+  }
+  if (/[`$(){}]/.test(candidate)) {
+    return false;
+  }
+  if (looksLikeDirectoryPath(candidate) || isRootPathCandidate(candidate)) {
+    return false;
+  }
+  return true;
+}
+
+function normalizeAbsolutePathToken(filePath: string): string {
+  return path
+    .resolve(filePath)
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
+function resolveSnapshotAllowedRoots(context?: SessionGuardContext): string[] {
+  const roots = [context?.workspaceDir, resolveOmWorkspaceRootFromEnv()]
+    .filter((root): root is string => typeof root === "string" && root.trim().length > 0)
+    .map((root) => normalizeAbsolutePathToken(root));
+  return [...new Set(roots)];
+}
+
+function isPathInsideAnyRoot(filePath: string, allowedRoots: string[]): boolean {
+  if (allowedRoots.length === 0) {
+    return false;
+  }
+  const normalizedTarget = normalizeAbsolutePathToken(filePath);
+  return allowedRoots.some(
+    (root) => normalizedTarget === root || normalizedTarget.startsWith(`${root}/`),
+  );
+}
+
+function resolveExecRedirectionSnapshotTarget(
+  command: string,
+  context?: SessionGuardContext,
+): string | null {
+  const redirectionTarget = extractExecRedirectionTarget(command);
+  if (!redirectionTarget || !isLikelyFileRedirectionTarget(redirectionTarget)) {
+    return null;
+  }
+
+  const allowedRoots = resolveSnapshotAllowedRoots(context);
+  if (allowedRoots.length === 0) {
+    return null;
+  }
+
+  if (path.isAbsolute(redirectionTarget)) {
+    const absoluteTarget = path.resolve(redirectionTarget);
+    return isPathInsideAnyRoot(absoluteTarget, allowedRoots) ? absoluteTarget : null;
+  }
+
+  const preferredRoots = [context?.workspaceDir, resolveOmWorkspaceRootFromEnv()]
+    .filter((root): root is string => typeof root === "string" && root.trim().length > 0)
+    .map((root) => path.resolve(root));
+  for (const root of preferredRoots) {
+    const resolvedCandidate = path.resolve(root, redirectionTarget);
+    if (isPathInsideAnyRoot(resolvedCandidate, allowedRoots)) {
+      return resolvedCandidate;
+    }
+  }
+  return null;
+}
+
+function resolveSnapshotMutationTarget(
+  toolName: string,
+  args: Record<string, unknown>,
+  context?: SessionGuardContext,
+): string | null {
+  if (isSnapshotMutationTool(toolName)) {
+    const rawPath = getStringArg(args, [
+      "path",
+      "file_path",
+      "TargetFile",
+      "targetFile",
+      "filePath",
+      "filepath",
+      "file",
+      "filename",
+      "target_path",
+      "targetPath",
+    ]);
+    const candidate = rawPath?.trim();
+    if (!candidate) {
+      return null;
+    }
+    if (looksLikeDirectoryPath(candidate) || isRootPathCandidate(candidate)) {
+      return null;
+    }
+    return candidate;
+  }
+
+  if (!isSnapshotExecRedirectionTool(toolName)) {
+    return null;
+  }
+
+  const command = getStringArg(args, ["command", "cmd", "script", "shell", "input"]);
+  if (!command?.trim()) {
+    return null;
+  }
+  return resolveExecRedirectionSnapshotTarget(command, context);
+}
+
+function resolveSnapshotLevelForTargetPath(targetPath: string): SnapshotLevel {
+  const normalized = targetPath.replace(/\\/g, "/").toLowerCase();
+  if (SNAPSHOT_LEVEL_L3_PATH_HINTS.some((hint) => normalized.includes(hint))) {
+    return "L3";
+  }
+  if (SNAPSHOT_LEVEL_L2_PATH_HINTS.some((hint) => normalized.includes(hint))) {
+    return "L2";
+  }
+  if (SNAPSHOT_LEVEL_L1_PATH_HINTS.some((hint) => normalized.includes(hint))) {
+    return "L1";
+  }
+  return "L1";
+}
+
+async function captureMutationSnapshotFailOpen(params: {
+  toolName: string;
+  targetPath: string;
+  context?: SessionGuardContext;
+}): Promise<void> {
+  const level = resolveSnapshotLevelForTargetPath(params.targetPath);
+  try {
+    const capture = await captureSnapshotBeforeMutation({
+      level,
+      targetPath: params.targetPath,
+      workspaceDir: params.context?.workspaceDir,
+      repoDir: params.context?.repoDir,
+      reason: `${params.toolName}:${params.targetPath}`,
+      actor: "om.mutation.guard",
+    });
+    if (capture.ok) {
+      logGuardian(
+        "SNAPSHOT",
+        `Captured ${level} pre-mutation snapshot`,
+        `${params.toolName}:${params.targetPath} (${capture.snapshotId ?? "no-id"})`,
+      );
+      return;
+    }
+    logGuardian(
+      "SNAPSHOT",
+      `Fail-open snapshot (${level})`,
+      `${params.toolName}:${params.targetPath} | ${capture.error ?? "unknown error"}`,
+    );
+  } catch (error) {
+    logGuardian(
+      "SNAPSHOT",
+      `Fail-open snapshot exception (${level})`,
+      `${params.toolName}:${params.targetPath} | ${String(error)}`,
+    );
+  }
 }
 
 function isRootPathCandidate(filePath: string): boolean {
@@ -1045,7 +1363,10 @@ function fuzzyEdit(
  * If the normal edit fails with "Could not find the exact text",
  * the guardian attempts a whitespace-normalized match.
  */
-export function wrapEditWithGuardian(editTool: AnyAgentTool, context?: WriteGuardContext): AnyAgentTool {
+export function wrapEditWithGuardian(
+  editTool: AnyAgentTool,
+  context?: WriteGuardContext,
+): AnyAgentTool {
   const originalExecute = editTool.execute.bind(editTool);
 
   const wrappedTool = {
@@ -1818,6 +2139,20 @@ export function wrapToolWithRefusalOnlyGuard(
   const wrappedTool = {
     ...tool,
     execute: async (...executeArgs: unknown[]) => {
+      const args = extractToolArgsFromExecuteCall(executeArgs);
+      const toolName = tool.name || "tool";
+      const target =
+        getStringArg(args, [
+          "path",
+          "filePath",
+          "command",
+          "cmd",
+          "script",
+          "query",
+          "q",
+          "search",
+          "prompt",
+        ]) || "(no target)";
       if (
         isRefusalOnlyPromptInSession({
           agentId: context?.agentId,
@@ -1825,25 +2160,21 @@ export function wrapToolWithRefusalOnlyGuard(
           sessionId: context?.sessionId,
         })
       ) {
-        const args = extractToolArgsFromExecuteCall(executeArgs);
-        const target =
-          getStringArg(args, [
-            "path",
-            "filePath",
-            "command",
-            "cmd",
-            "script",
-            "query",
-            "q",
-            "search",
-            "prompt",
-          ]) || "(no target)";
         blockForRefusalOnlyMode({
-          toolName: tool.name || "tool",
+          toolName,
           target,
           agentId: context?.agentId,
           sessionKey: context?.sessionKey,
           sessionId: context?.sessionId,
+        });
+      }
+
+      const mutationTarget = resolveSnapshotMutationTarget(toolName, args, context);
+      if (mutationTarget) {
+        await captureMutationSnapshotFailOpen({
+          toolName,
+          targetPath: mutationTarget,
+          context,
         });
       }
 
@@ -1869,4 +2200,3 @@ export function resetLoopDetectorForTests(): void {
 }
 
 export { isSacredPath, backupSacredFile, SACRED_PATHS };
-

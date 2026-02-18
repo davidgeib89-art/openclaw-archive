@@ -265,11 +265,17 @@ const RECALL_PROJECT_PATTERNS = [
   /\bnext step\b/i,
   /\bmilestone\b/i,
   /\bdecision\b/i,
+  /\bagenda\b/i,
+  /\bagenda\.md\b/i,
+  /\bpriority\b/i,
+  /\bpriorities\b/i,
   /\bactive tasks?\b/i,
   /\btask(s)?\b/i,
   /\bprojekt\b/i,
   /\bnaechster schritt\b/i,
   /\bnachster schritt\b/i,
+  /\bprioritaet\b/i,
+  /\bprioritaeten\b/i,
   /\bplan\b/i,
 ];
 const RECALL_RITUAL_PATTERNS = [
@@ -312,6 +318,7 @@ const GRAPH_GOAL_HINT_PATTERNS = [
   /\bgoal\w*\b/i,
   /\bnext step\w*\b/i,
   /\broadmap\w*\b/i,
+  /\bagenda\w*\b/i,
   /\bmilestone\w*\b/i,
   /\bplan\w*\b/i,
   /\bziel\w*\b/i,
@@ -1017,7 +1024,7 @@ function createRecallRoutePlan(query: string, includeSessions: boolean): BrainRe
           minBoost: 0.9,
         },
         scanMultiplier: 13,
-        variantHints: ["project decisions", "next steps roadmap"],
+        variantHints: ["project decisions", "next steps roadmap", "active agenda priorities"],
       };
     case "ritual":
       return {

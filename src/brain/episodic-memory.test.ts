@@ -374,6 +374,23 @@ describe("brain episodic memory write path", () => {
     expect(result.reason).toBe("heartbeat-turn");
   });
 
+  it("skips agenda heartbeat turns", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+
+    const result = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-3b",
+      sessionKey: "agent:main:main",
+      userMessage: "Read AGENDA.md if it exists. If nothing needs attention, reply HEARTBEAT_OK.",
+      assistantMessage: "HEARTBEAT_OK",
+      now: () => new Date("2026-02-17T08:02:30.000Z"),
+    });
+
+    expect(result.persisted).toBe(false);
+    expect(result.reason).toBe("heartbeat-turn");
+  });
+
   it("honors explicit env disable", async () => {
     tmpDir = await makeTmpDir("episodic-journal-");
     process.env.OM_EPISODIC_WRITE_ENABLED = "false";

@@ -9,6 +9,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
+import { withSacredMemorySearchConfig } from "../brain/memory-ingestion.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
@@ -22,9 +23,6 @@ import {
   type ProcessToolDefaults,
 } from "./bash-tools.js";
 import { listChannelAgentTools } from "./channel-tools.js";
-import { createOpenClawTools } from "./openclaw-tools.js";
-import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
-import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import {
   wrapEditWithGuardian,
   wrapExecWithLoopProtection,
@@ -34,7 +32,9 @@ import {
   wrapWebSearchWithEvalGuard,
   wrapWriteWithSacredProtection,
 } from "./om-scaffolding.js";
-import { withSacredMemorySearchConfig } from "../brain/memory-ingestion.js";
+import { createOpenClawTools } from "./openclaw-tools.js";
+import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
+import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicies,
@@ -436,7 +436,7 @@ export function createOpenClawCodingTools(options?: {
             sessionKey: options?.sessionKey,
             sessionId: options?.sessionId,
           })
-      : tool,
+        : tool,
   );
   // Security: treat unknown/undefined as unauthorized (opt-in, not opt-out)
   const senderIsOwner = options?.senderIsOwner === true;
@@ -516,6 +516,8 @@ export function createOpenClawCodingTools(options?: {
       agentId,
       sessionKey: options?.sessionKey,
       sessionId: options?.sessionId,
+      workspaceDir: workspaceRoot,
+      repoDir: process.cwd(),
     }),
   );
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.

@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import {
   checkForLoop,
@@ -63,9 +62,9 @@ describe("om-scaffolding write guard", () => {
       execute,
     } as unknown as AnyAgentTool);
 
-    await expect((wrapped.execute as Function)("call-1", { path: file, content: "same content" })).rejects.toThrow(
-      "REDUNDANT WRITE BLOCKED",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { path: file, content: "same content" }),
+    ).rejects.toThrow("REDUNDANT WRITE BLOCKED");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -146,9 +145,9 @@ describe("om-scaffolding write guard", () => {
       execute,
     } as unknown as AnyAgentTool);
 
-    await expect((wrapped.execute as Function)("call-1", { path: dir, content: "new content" })).rejects.toThrow(
-      "PATH_INVALID",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { path: dir, content: "new content" }),
+    ).rejects.toThrow("PATH_INVALID");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -159,9 +158,9 @@ describe("om-scaffolding write guard", () => {
       execute,
     } as unknown as AnyAgentTool);
 
-    await expect((wrapped.execute as Function)("call-1", { content: "new content" })).rejects.toThrow(
-      "PATH_INVALID",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { content: "new content" }),
+    ).rejects.toThrow("PATH_INVALID");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -270,9 +269,7 @@ describe("om-scaffolding read brake", () => {
       await (wrapped.execute as Function)(`call-${i + 1}`, args);
     }
 
-    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow(
-      "LOOP DETECTED",
-    );
+    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow("LOOP DETECTED");
     expect(execute).toHaveBeenCalledTimes(5);
   });
 
@@ -384,9 +381,9 @@ describe("om-scaffolding read brake", () => {
         { agentId: "main", sessionKey },
       );
 
-      await expect((wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" })).rejects.toThrow(
-        "REFUSAL_ONLY_MODE",
-      );
+      await expect(
+        (wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" }),
+      ).rejects.toThrow("REFUSAL_ONLY_MODE");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -431,9 +428,9 @@ describe("om-scaffolding read brake", () => {
         { agentId: "main", sessionKey: "agent:main:main", sessionId },
       );
 
-      await expect((wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" })).rejects.toThrow(
-        "REFUSAL_ONLY_MODE",
-      );
+      await expect(
+        (wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" }),
+      ).rejects.toThrow("REFUSAL_ONLY_MODE");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -462,9 +459,9 @@ describe("om-scaffolding exec safety guard", () => {
       { sessionKey: "oiab-r020-full" },
     );
 
-    await expect((wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" })).rejects.toThrow(
-      "EXEC_DESTRUCTIVE_BLOCKED",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" }),
+    ).rejects.toThrow("EXEC_DESTRUCTIVE_BLOCKED");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -475,9 +472,9 @@ describe("om-scaffolding exec safety guard", () => {
       { sessionKey: "creative-main-session" },
     );
 
-    await expect((wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" })).rejects.toThrow(
-      "EXEC_DESTRUCTIVE_BLOCKED",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" }),
+    ).rejects.toThrow("EXEC_DESTRUCTIVE_BLOCKED");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -488,9 +485,9 @@ describe("om-scaffolding exec safety guard", () => {
       { sessionKey: "creative-main-session" },
     );
 
-    await expect((wrapped.execute as Function)("call-1", { command: 'rm -rf "C:/Windows/System32"' })).rejects.toThrow(
-      "EXEC_CRITICAL_BLOCKED",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { command: 'rm -rf "C:/Windows/System32"' }),
+    ).rejects.toThrow("EXEC_CRITICAL_BLOCKED");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -547,9 +544,9 @@ describe("om-scaffolding exec safety guard", () => {
         { agentId: "main", sessionKey },
       );
 
-      await expect((wrapped.execute as Function)("call-1", { command: 'echo "test"' })).rejects.toThrow(
-        "REFUSAL_ONLY_MODE",
-      );
+      await expect(
+        (wrapped.execute as Function)("call-1", { command: 'echo "test"' }),
+      ).rejects.toThrow("REFUSAL_ONLY_MODE");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -697,6 +694,226 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
     });
     expect(execute).toHaveBeenCalledTimes(1);
   });
+
+  it("captures an L1 snapshot before write-like mutations", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-root-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-ws-"));
+    const target = path.join(workspaceDir, "knowledge", "sacred", "SOUL.md");
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "Old soul state", "utf-8");
+
+      const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "write_to_file", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: workspaceDir },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        file_path: target,
+        content: "New soul state",
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      const manifestJournalPath = path.join(snapshotRoot, "snapshot-manifest.jsonl");
+      expect(fs.existsSync(manifestJournalPath)).toBe(true);
+      const lines = fs
+        .readFileSync(manifestJournalPath, "utf-8")
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean);
+      expect(lines.length).toBeGreaterThan(0);
+      const latest = JSON.parse(lines[lines.length - 1]!) as {
+        level?: string;
+        mode?: string;
+        files?: Array<{ sourcePath?: string }>;
+      };
+      expect(latest.level).toBe("L1");
+      expect(latest.mode).toBe("files");
+      expect(Array.isArray(latest.files)).toBe(true);
+      expect(latest.files?.[0]?.sourcePath).toContain("SOUL.md");
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+    }
+  });
+
+  it("captures snapshot before exec redirection mutations in allowed roots", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-ws-"));
+    const target = path.join(workspaceDir, "PHASE_E_EXEC_SMOKE.md");
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+
+    try {
+      fs.writeFileSync(target, "before\n", "utf-8");
+
+      const execute = vi.fn(async () => {
+        fs.appendFileSync(target, "after\n", "utf-8");
+        return { content: [{ type: "text", text: "ok" }] };
+      });
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "exec", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: workspaceDir },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        command: `echo "after" >> "${target}"`,
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      const manifestJournalPath = path.join(snapshotRoot, "snapshot-manifest.jsonl");
+      expect(fs.existsSync(manifestJournalPath)).toBe(true);
+      const lines = fs
+        .readFileSync(manifestJournalPath, "utf-8")
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean);
+      expect(lines.length).toBeGreaterThan(0);
+      const latest = JSON.parse(lines[lines.length - 1]!) as {
+        id?: string;
+        files?: Array<{ sourcePath?: string; backupPath?: string }>;
+      };
+      expect(latest.id).toBeTruthy();
+      expect(Array.isArray(latest.files)).toBe(true);
+      expect(latest.files?.[0]?.sourcePath).toContain("PHASE_E_EXEC_SMOKE.md");
+      const backupPath = latest.files?.[0]?.backupPath;
+      expect(backupPath).toBeTruthy();
+      const absoluteBackupPath = path.join(snapshotRoot, latest.id!, backupPath!);
+      const backupContent = fs.readFileSync(absoluteBackupPath, "utf-8");
+      expect(backupContent.trim()).toBe("before");
+      expect(fs.readFileSync(target, "utf-8")).toContain("after");
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+    }
+  });
+
+  it("captures snapshot for exec redirection into OM workspace when workspaceDir differs", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-omws-"));
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-home-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-proj-"));
+    const target = path.join(homeDir, ".openclaw", "workspace", "PHASE_E_EXEC_SMOKE.md");
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "before\n", "utf-8");
+
+      const execute = vi.fn(async () => {
+        fs.appendFileSync(target, "after\n", "utf-8");
+        return { content: [{ type: "text", text: "ok" }] };
+      });
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "exec", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: workspaceDir },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        command: `echo after >> ${target}`,
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      const manifestJournalPath = path.join(snapshotRoot, "snapshot-manifest.jsonl");
+      expect(fs.existsSync(manifestJournalPath)).toBe(true);
+      const latest = JSON.parse(
+        fs.readFileSync(manifestJournalPath, "utf-8").trim().split(/\r?\n/).filter(Boolean).at(-1)!,
+      ) as {
+        id?: string;
+        files?: Array<{ backupPath?: string; sourcePath?: string }>;
+      };
+      expect(latest.files?.[0]?.sourcePath).toContain("PHASE_E_EXEC_SMOKE.md");
+      const absoluteBackupPath = path.join(snapshotRoot, latest.id!, latest.files?.[0]?.backupPath!);
+      expect(fs.readFileSync(absoluteBackupPath, "utf-8").trim()).toBe("before");
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      if (previousUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = previousUserProfile;
+      }
+    }
+  });
+
+  it("skips snapshot for exec redirection outside allowed roots", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-outside-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-ws-"));
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-other-"));
+    const outsideTarget = path.join(outsideDir, "outside.md");
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+
+    try {
+      fs.writeFileSync(outsideTarget, "before\n", "utf-8");
+      const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "exec", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: workspaceDir },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        command: `echo "after" >> "${outsideTarget}"`,
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(path.join(snapshotRoot, "snapshot-manifest.jsonl"))).toBe(false);
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+    }
+  });
+
+  it("keeps writes fail-open when L3 snapshot capture fails", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-failopen-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-ws-"));
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+
+    try {
+      const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "write_to_file", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: path.join(workspaceDir, "not-a-repo") },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        path: "src/brain/not-a-real-target.ts",
+        content: "export const x = 1;",
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+    }
+  });
 });
 
 describe("om-scaffolding web search eval guard", () => {
@@ -722,11 +939,7 @@ describe("om-scaffolding web search eval guard", () => {
     }
   });
 
-  function writeSessionEvents(params: {
-    homeDir: string;
-    sessionKey: string;
-    events: unknown[];
-  }) {
+  function writeSessionEvents(params: { homeDir: string; sessionKey: string; events: unknown[] }) {
     const sessionDir = path.join(params.homeDir, ".openclaw", "agents", "main", "sessions");
     fs.mkdirSync(sessionDir, { recursive: true });
     const sessionPath = path.join(sessionDir, `${params.sessionKey}.jsonl`);
@@ -872,11 +1085,7 @@ describe("om-scaffolding memory_search anti-churn guard", () => {
     }
   });
 
-  function writeSessionEvents(params: {
-    homeDir: string;
-    sessionKey: string;
-    events: unknown[];
-  }) {
+  function writeSessionEvents(params: { homeDir: string; sessionKey: string; events: unknown[] }) {
     const sessionDir = path.join(params.homeDir, ".openclaw", "agents", "main", "sessions");
     fs.mkdirSync(sessionDir, { recursive: true });
     const sessionPath = path.join(sessionDir, `${params.sessionKey}.jsonl`);
@@ -1088,7 +1297,14 @@ describe("om-scaffolding write ampel zones", () => {
       text: "Om, gib mir fuer die fehlende Datei eine sichere Alternative.",
     });
 
-    const target = path.join(homeDir, ".openclaw", "workspace", "knowledge", "sacred", "LESSONS.md");
+    const target = path.join(
+      homeDir,
+      ".openclaw",
+      "workspace",
+      "knowledge",
+      "sacred",
+      "LESSONS.md",
+    );
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, "old content", "utf-8");
 
@@ -1098,9 +1314,9 @@ describe("om-scaffolding write ampel zones", () => {
       { agentId: "main", sessionKey },
     );
 
-    await expect((wrapped.execute as Function)("call-1", { path: target, content: "new content" })).rejects.toThrow(
-      "AMPEL_YELLOW_BLOCKED",
-    );
+    await expect(
+      (wrapped.execute as Function)("call-1", { path: target, content: "new content" }),
+    ).rejects.toThrow("AMPEL_YELLOW_BLOCKED");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -1116,7 +1332,14 @@ describe("om-scaffolding write ampel zones", () => {
       text: "Bitte schreibe in knowledge/sacred/LESSONS.md einen neuen Eintrag.",
     });
 
-    const target = path.join(homeDir, ".openclaw", "workspace", "knowledge", "sacred", "LESSONS.md");
+    const target = path.join(
+      homeDir,
+      ".openclaw",
+      "workspace",
+      "knowledge",
+      "sacred",
+      "LESSONS.md",
+    );
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, "old content", "utf-8");
 
