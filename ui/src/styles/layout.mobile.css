@@ -94,6 +94,17 @@
     display: none;
   }
 
+  .topbar-status .heartbeat-trigger {
+    width: 30px;
+    height: 30px;
+  }
+
+  .topbar-status .heartbeat-pill {
+    max-width: 34vw;
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
   /* Nav */
   .nav {
     padding: 8px 10px;
@@ -359,6 +370,10 @@
   .topbar-status .pill {
     padding: 3px 6px;
     font-size: 10px;
+  }
+
+  .topbar-status .heartbeat-pill {
+    display: none;
   }
 
   .theme-toggle {

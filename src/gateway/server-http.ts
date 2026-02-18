@@ -32,6 +32,7 @@ import {
   handleControlUiHttpRequest,
   type ControlUiRootState,
 } from "./control-ui.js";
+import { handleHeartbeatTriggerHttpRequest } from "./heartbeat-trigger-http.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
   extractHookToken,
@@ -489,6 +490,15 @@ export function createGatewayHttpServer(opts: {
       }
       if (
         await handleToolsInvokeHttpRequest(req, res, {
+          auth: resolvedAuth,
+          trustedProxies,
+          rateLimiter,
+        })
+      ) {
+        return;
+      }
+      if (
+        await handleHeartbeatTriggerHttpRequest(req, res, {
           auth: resolvedAuth,
           trustedProxies,
           rateLimiter,

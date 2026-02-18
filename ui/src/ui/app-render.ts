@@ -137,6 +137,33 @@ export function renderApp(state: AppViewState) {
             <span>Health</span>
             <span class="mono">${state.connected ? "OK" : "Offline"}</span>
           </div>
+          <button
+            class="heartbeat-trigger"
+            type="button"
+            ?disabled=${state.heartbeatTriggerRunning}
+            @click=${() => void state.handleHeartbeatTrigger()}
+            title=${state.heartbeatTriggerRunning
+              ? "Heartbeat running..."
+              : "Trigger heartbeat now"}
+            aria-label=${state.heartbeatTriggerRunning
+              ? "Heartbeat running"
+              : "Trigger heartbeat now"}
+          >
+            <span class="heartbeat-trigger__icon" aria-hidden="true"
+              >${state.heartbeatTriggerRunning ? "..." : "💓"}</span
+            >
+          </button>
+          ${
+            state.heartbeatTriggerMessage
+              ? html`<div
+                  class="pill heartbeat-pill heartbeat-pill--${state.heartbeatTriggerMessageKind}"
+                  role="status"
+                  aria-live="polite"
+                >
+                  ${state.heartbeatTriggerMessage}
+                </div>`
+              : nothing
+          }
           ${renderThemeToggle(state)}
         </div>
       </header>
