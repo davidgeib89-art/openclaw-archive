@@ -744,6 +744,55 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
     }
   });
 
+  it("captures an L2 snapshot before THINKING_PROTOCOL mutations", async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-root-l2-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-ws-l2-"));
+    const target = path.join(workspaceDir, "knowledge", "sacred", "THINKING_PROTOCOL.md");
+    const previousSnapshotRoot = process.env.OM_SNAPSHOT_DIR;
+    process.env.OM_SNAPSHOT_DIR = snapshotRoot;
+
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "Old protocol", "utf-8");
+
+      const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const wrapped = wrapToolWithRefusalOnlyGuard(
+        { name: "write_to_file", execute } as unknown as AnyAgentTool,
+        { workspaceDir, repoDir: workspaceDir },
+      );
+
+      await (wrapped.execute as Function)("call-1", {
+        file_path: target,
+        content: "New protocol",
+      });
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      const manifestJournalPath = path.join(snapshotRoot, "snapshot-manifest.jsonl");
+      expect(fs.existsSync(manifestJournalPath)).toBe(true);
+      const lines = fs
+        .readFileSync(manifestJournalPath, "utf-8")
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean);
+      expect(lines.length).toBeGreaterThan(0);
+      const latest = JSON.parse(lines[lines.length - 1]!) as {
+        level?: string;
+        mode?: string;
+        files?: Array<{ sourcePath?: string }>;
+      };
+      expect(latest.level).toBe("L2");
+      expect(latest.mode).toBe("files");
+      expect(Array.isArray(latest.files)).toBe(true);
+      expect(latest.files?.[0]?.sourcePath).toContain("THINKING_PROTOCOL.md");
+    } finally {
+      if (previousSnapshotRoot === undefined) {
+        delete process.env.OM_SNAPSHOT_DIR;
+      } else {
+        process.env.OM_SNAPSHOT_DIR = previousSnapshotRoot;
+      }
+    }
+  });
+
   it("captures snapshot before exec redirection mutations in allowed roots", async () => {
     const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-"));
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-exec-ws-"));

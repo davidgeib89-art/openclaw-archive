@@ -16,6 +16,7 @@ export const L1_IDENTITY_PATHS = [
   "knowledge/sacred/IDENTITY.md",
   "knowledge/sacred/MOOD.md",
 ] as const;
+export const L2_SELF_CONFIG_PATHS = ["knowledge/sacred/THINKING_PROTOCOL.md"] as const;
 const READ_ONLY_SACRED_PATHS = ["knowledge/sacred/David_Akasha.md"] as const;
 
 function resolveSandboxWorkspaceDir(config: AutonomyConfig): string {
@@ -40,6 +41,9 @@ function normalizeRelativePath(value: string): string {
 
 const L1_IDENTITY_PATH_SET = new Set(
   L1_IDENTITY_PATHS.map((entry) => normalizeRelativePath(entry).toLowerCase()),
+);
+const L2_SELF_CONFIG_PATH_SET = new Set(
+  L2_SELF_CONFIG_PATHS.map((entry) => normalizeRelativePath(entry).toLowerCase()),
 );
 const READ_ONLY_SACRED_PATH_SET = new Set(
   READ_ONLY_SACRED_PATHS.map((entry) => normalizeRelativePath(entry).toLowerCase()),
@@ -72,6 +76,9 @@ export function isPathWritableInSandbox(targetPath: string, config: AutonomyConf
   }
 
   if (L1_IDENTITY_PATH_SET.has(normalizedRelative)) {
+    return true;
+  }
+  if (L2_SELF_CONFIG_PATH_SET.has(normalizedRelative)) {
     return true;
   }
 

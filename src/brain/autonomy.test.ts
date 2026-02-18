@@ -26,6 +26,11 @@ describe("autonomy sandbox policy", () => {
         workspaceDir,
       }),
     ).toBe(true);
+    expect(
+      isPathWritableInSandbox("knowledge/sacred/THINKING_PROTOCOL.md", {
+        workspaceDir,
+      }),
+    ).toBe(true);
   });
 
   it("keeps David_Akasha and non-L1 sacred files read-only", () => {
