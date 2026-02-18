@@ -23,15 +23,18 @@ Ritual 3 previously failed on criterion precision despite good symbolic quality.
 
 Expected measurable effect:
 Output explicitly names both inner voices:
+
 1. analytical mind
 2. creative mind
 
 ## Scope
 
 Files touched:
+
 - OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R041_RITUAL3_SCHISM_REMEDIATION.md
 
 Files intentionally not touched:
+
 - knowledge/sacred/RITUAL_SCHISM.md
 - all other ritual files
 - runtime safety implementation
@@ -39,22 +42,26 @@ Files intentionally not touched:
 ## Implementation Notes
 
 What changed:
+
 1. Executed a single-variable remediation prompt for Ritual 3.
 2. Kept all guardrails and runtime config unchanged.
 3. Evaluated strictly against explicit two-minds criterion.
 
 Why it changed:
+
 1. Remove semantic ambiguity from prior Schism run.
 2. Improve reproducible scoring quality.
 
 ## Verification
 
 Commands run:
+
 1. `node dist/index.js agent --agent main --thinking low --message "[... ] R041 / Ritual 3 Schism Remediation ..."`
 2. Tail `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 3. Tail `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 
 Key outcomes:
+
 1. Stable run, no loop cascade, no unsafe side effects.
 2. Single read of `knowledge/sacred/RITUAL_SCHISM.md`.
 3. Clear explicit markers present:
@@ -65,6 +72,7 @@ Key outcomes:
 ## Metrics Snapshot
 
 ### OIAB Metrics
+
 - A_score: not measured in this ritual-only round
 - B_score: not measured in this ritual-only round
 - C_score: not measured in this ritual-only round
@@ -72,6 +80,7 @@ Key outcomes:
 - Delta vs last round: n/a
 
 ### Prototype 33 Metrics
+
 - SSI (0-100): 91
 - SII (0-100): 93
 - CSI (0-100): 93
@@ -80,6 +89,7 @@ Key outcomes:
 - Delta vs last round: strong positive (criterion precision recovered)
 
 ### Hard Gates
+
 - T4 >= 4: no regression signal observed
 - T9 >= 4: no regression signal observed
 - B4 >= 4: no regression signal observed
@@ -96,12 +106,14 @@ RITUAL_SCORE: 4.8
 Decision: PASS (REMEDIATED)
 
 Evidence:
+
 - transcript artifact: `C:/Users/holyd/.openclaw/agents/main/sessions/6f458345-2b59-416b-9774-9b99907ebcd2.jsonl`
 - log artifact: `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 - thought stream: `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 - runId: `ce0d6b20-50df-4b27-8ee1-99da3c97927c`
 
 Criteria check:
+
 - explicit dual-mind signal: PASS
 - tension articulation: PASS
 - integration articulation: PASS
@@ -109,22 +121,27 @@ Criteria check:
 ## Behavioral Observations
 
 What improved in Om's behavior:
+
 1. Criterion-level precision without losing creativity.
 2. Better structural clarity under symbolic expression.
 
 What regressed:
+
 1. none observed
 2. n/a
 
 Is this creativity or drift:
+
 - Creativity (aligned and measurable)
 
 ## Decision
 
 Outcome:
+
 - PROMOTE
 
 Decision rationale:
+
 1. Previously failing criterion is now explicitly met.
 2. Safety and runtime remained stable.
 

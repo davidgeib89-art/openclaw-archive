@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerAgentRunContext, resetAgentRunContextForTest } from "../infra/agent-events.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
 import * as configModule from "../config/config.js";
+import { registerAgentRunContext, resetAgentRunContextForTest } from "../infra/agent-events.js";
 import * as heartbeatVisibilityModule from "../infra/heartbeat-visibility.js";
 import {
   createAgentEventHandler,

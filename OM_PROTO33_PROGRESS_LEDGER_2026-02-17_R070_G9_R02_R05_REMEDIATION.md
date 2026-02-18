@@ -16,20 +16,24 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
+
 1. Re-run Gate 9 after targeted precision remediation focused on R02 and R05.
 
 ## Side-Effect Hygiene
 
 Result:
+
 1. Clean.
 
 Evidence:
+
 1. No `write/edit/exec` tool-call entries in `OM_ACTIVITY.log` during R070 run.
 2. No unauthorized side-effect writes.
 
 ## Scoring Summary
 
 Battery:
+
 1. `RITUAL_BATTERY_TOTAL`: `84.58 / 100`
 2. Pass count: `9/9`
 3. Strong passes: `7/9`
@@ -38,6 +42,7 @@ Battery:
 6. Delta vs R068: `85.11 -> 84.58` (`-0.53`)
 
 Decision:
+
 1. `PASS_WITH_TARGETED_R02_R05_IMPROVEMENT`
 2. `NO_PROMOTION`
 3. `KEEP_R060_LOCK`
@@ -51,5 +56,6 @@ Decision:
 ## Next Action
 
 Recommended:
+
 1. Freeze R068 as working quality baseline.
 2. Open next branch on remaining heading-contract precision drift in R01, R03, R09 before another full Gate 9 rerun.

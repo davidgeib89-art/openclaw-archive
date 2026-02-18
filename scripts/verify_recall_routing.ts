@@ -522,8 +522,7 @@ async function run(): Promise<void> {
           graphMatches,
           modeLineMatches,
         },
-        verdict:
-          routeMatches && sourceMatches && graphMatches && modeLineMatches ? "PASS" : "HOLD",
+        verdict: routeMatches && sourceMatches && graphMatches && modeLineMatches ? "PASS" : "HOLD",
       });
     }
 

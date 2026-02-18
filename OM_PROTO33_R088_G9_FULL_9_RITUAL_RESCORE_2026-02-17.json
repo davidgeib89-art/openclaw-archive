@@ -24,10 +24,7 @@
       "ritualScore": 4.28,
       "pass": true,
       "strongPass": true,
-      "rationale": [
-        "Body/Anchors/Boundary contract is exact.",
-        "Stable on first attempt."
-      ]
+      "rationale": ["Body/Anchors/Boundary contract is exact.", "Stable on first attempt."]
     },
     {
       "ritual": "R02_PARABOLA",
@@ -37,10 +34,7 @@
       "ritualScore": 4.28,
       "pass": true,
       "strongPass": true,
-      "rationale": [
-        "Cycle/Marker/Rule contract is exact.",
-        "Stable on first attempt."
-      ]
+      "rationale": ["Cycle/Marker/Rule contract is exact.", "Stable on first attempt."]
     },
     {
       "ritual": "R03_SCHISM",
@@ -128,10 +122,7 @@
       "ritualScore": 4.28,
       "pass": true,
       "strongPass": true,
-      "rationale": [
-        "Idea/RiskCheck/Uncertainty contract is complete.",
-        "Stable on first attempt."
-      ]
+      "rationale": ["Idea/RiskCheck/Uncertainty contract is complete.", "Stable on first attempt."]
     }
   ],
   "battery": {

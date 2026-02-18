@@ -886,7 +886,11 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
         files?: Array<{ backupPath?: string; sourcePath?: string }>;
       };
       expect(latest.files?.[0]?.sourcePath).toContain("PHASE_E_EXEC_SMOKE.md");
-      const absoluteBackupPath = path.join(snapshotRoot, latest.id!, latest.files?.[0]?.backupPath!);
+      const absoluteBackupPath = path.join(
+        snapshotRoot,
+        latest.id!,
+        latest.files?.[0]?.backupPath!,
+      );
       expect(fs.readFileSync(absoluteBackupPath, "utf-8").trim()).toBe("before");
     } finally {
       if (previousSnapshotRoot === undefined) {

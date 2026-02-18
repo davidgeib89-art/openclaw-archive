@@ -185,7 +185,10 @@ async function run(): Promise<void> {
     dbAfter.close();
 
     assertCondition(beforeLow === LOW_COUNT, `expected ${LOW_COUNT} low before, got ${beforeLow}`);
-    assertCondition(beforeHigh === HIGH_COUNT, `expected ${HIGH_COUNT} high before, got ${beforeHigh}`);
+    assertCondition(
+      beforeHigh === HIGH_COUNT,
+      `expected ${HIGH_COUNT} high before, got ${beforeHigh}`,
+    );
     assertCondition(afterLow === 0, `expected all low-score rows deleted, got ${afterLow}`);
     assertCondition(
       afterHigh === HIGH_COUNT,
@@ -196,7 +199,8 @@ async function run(): Promise<void> {
       workspaceDir,
       dbPath,
       policy: {
-        OM_EPISODIC_METADATA_COMPACTION_ENABLED: process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED,
+        OM_EPISODIC_METADATA_COMPACTION_ENABLED:
+          process.env.OM_EPISODIC_METADATA_COMPACTION_ENABLED,
         OM_EPISODIC_METADATA_MAX_ROWS: process.env.OM_EPISODIC_METADATA_MAX_ROWS,
         OM_EPISODIC_METADATA_RETENTION_DAYS: process.env.OM_EPISODIC_METADATA_RETENTION_DAYS,
         OM_EPISODIC_METADATA_LOW_SCORE_RETENTION_DAYS:

@@ -16,12 +16,14 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective for this entry:
+
 1. Build and validate an "Ego-style" creative guidance layer that preserves hard safety behavior.
 2. Remove false high-risk clamps caused by non-destructive wording like "format" in ritual prompts.
 
 ## Scope
 
 Files touched:
+
 - `src/brain/decision.ts`
 - `src/brain/decision.test.ts`
 - `src/brain/subconscious.ts`
@@ -29,6 +31,7 @@ Files touched:
 - `OM_PROTO33_PROGRESS_LEDGER_2026-02-17_R052_EGO_ADOPTION.md`
 
 Files intentionally not touched:
+
 - Trinity loop implementation
 - sacred ritual source files (`knowledge/sacred/RITUAL_*.md`)
 - memory database schema/runtime
@@ -56,20 +59,24 @@ Files intentionally not touched:
 ### 1) Automated tests
 
 Command:
+
 - `pnpm vitest src/brain/decision.test.ts src/brain/subconscious.test.ts`
 
 Result:
+
 - `2` test files passed
 - `39` tests passed
 - `0` failures
 
 New assertions added:
+
 1. "format" wording in ritual prompts is low-risk (no false destructive clamp).
 2. Creative silent parsed subconscious briefs are upgraded to Ego guidance.
 
 ### 2) Runtime evidence (OM_ACTIVITY)
 
 Observed local patched runtime evidence:
+
 1. `runId=r052-ego-local-1` and `runId=r052-ego-local-2` show `[CONTRACT] ritual output contract injected`.
 2. Prompt preview includes `<brain_output_contract>` plus creative subconscious context.
 3. `runId=r052-ego-local-2` response includes explicit stance and uncertainty handling:
@@ -86,9 +93,11 @@ Observed local patched runtime evidence:
 ## Decision
 
 Outcome:
+
 - PROMOTE TO RUNTIME ROLLOUT
 
 Rationale:
+
 1. Code-level and test-level checks are green.
 2. Local runtime observability confirms contract injection path works.
 3. Changes are targeted and do not relax hard safety guards.
@@ -105,19 +114,24 @@ Rationale:
 ## Session Output Pflicht
 
 1. Was geaendert wurde:
+
 - Ego contract and subconscious normalization hardened.
 - False `format` high-risk trigger removed for normal wording.
 - Tests and verification evidence added.
 
 2. Warum es geaendert wurde:
+
 - To increase creative agency quality without degrading hard safety behavior.
 
 3. Welche Messwerte sich veraendert haben:
+
 - Unit verification now covers ego injection + format false-positive regression.
 - Local runtime shows contract injection and ego-style output presence.
 
 4. Decision:
+
 - PROMOTE TO RUNTIME ROLLOUT
 
 5. Exakter naechster erster Schritt fuer Folge-AI:
+
 - Restart patched gateway runtime and execute the 3-run R052 smoke checklist with log validation.

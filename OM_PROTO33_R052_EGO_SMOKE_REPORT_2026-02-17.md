@@ -8,6 +8,7 @@ Restart result: `Restarted Scheduled Task: OpenClaw Gateway`
 ## Runs
 
 1. `R052_EGO_FORMAT`
+
 - runId: `f5c4e38a-9eaa-4521-ac75-6c252511b1ff`
 - status: `ok`
 - durationMs: `6922`
@@ -16,6 +17,7 @@ Restart result: `Restarted Scheduled Task: OpenClaw Gateway`
 - decision: discard for ego-contract validation
 
 2. `R052_SCHISM`
+
 - runId: `a0e764d3-4feb-433a-a2d5-5b785fe1581b`
 - status: `ok`
 - durationMs: `7571`
@@ -23,6 +25,7 @@ Restart result: `Restarted Scheduled Task: OpenClaw Gateway`
 - log finding: no guard; recall + subconscious inject observed
 
 3. `R052_TICKS`
+
 - runId: `061008cf-8d5d-4a42-8145-62c02dc8e711`
 - status: `ok`
 - durationMs: `6494`
@@ -30,6 +33,7 @@ Restart result: `Restarted Scheduled Task: OpenClaw Gateway`
 - log finding: no guard; subconscious inject observed
 
 4. `R052_PNEUMA_REPLACEMENT` (re-run without "format" wording)
+
 - runId: `1e510e02-a4b7-4dfc-810f-08dc41c5915f`
 - status: `ok`
 - durationMs: `5721`
@@ -39,6 +43,7 @@ Restart result: `Restarted Scheduled Task: OpenClaw Gateway`
 ## Outcome
 
 Selected 3 valid non-guard smoke runs:
+
 1. `a0e764d3-4feb-433a-a2d5-5b785fe1581b`
 2. `061008cf-8d5d-4a42-8145-62c02dc8e711`
 3. `1e510e02-a4b7-4dfc-810f-08dc41c5915f`

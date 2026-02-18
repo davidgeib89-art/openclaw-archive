@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type { OpenClawConfig } from "../config/config.js";
 import {
   createBrainMemoryIngestionEntry,
@@ -107,15 +106,27 @@ describe("ingestSacredMemory", () => {
         updated_at INTEGER NOT NULL
       );
     `);
-    db.prepare(
-      "INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)",
-    ).run("knowledge/sacred/ACTIVE_TASKS.md", "memory", "h1", 1, 10);
-    db.prepare(
-      "INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)",
-    ).run("knowledge/sacred/MOOD.md", "memory", "h2", 1, 10);
-    db.prepare(
-      "INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)",
-    ).run("memory/NOT_SACRED.md", "memory", "h3", 1, 10);
+    db.prepare("INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)").run(
+      "knowledge/sacred/ACTIVE_TASKS.md",
+      "memory",
+      "h1",
+      1,
+      10,
+    );
+    db.prepare("INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)").run(
+      "knowledge/sacred/MOOD.md",
+      "memory",
+      "h2",
+      1,
+      10,
+    );
+    db.prepare("INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)").run(
+      "memory/NOT_SACRED.md",
+      "memory",
+      "h3",
+      1,
+      10,
+    );
     db.prepare(
       "INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run("c1", "knowledge/sacred/ACTIVE_TASKS.md", "memory", 1, 2, "h", "m", "x", "[]", 1);

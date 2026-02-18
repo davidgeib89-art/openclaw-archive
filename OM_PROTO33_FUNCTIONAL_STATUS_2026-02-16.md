@@ -7,17 +7,17 @@ Operator: Codex
 
 ## F-Series Overview
 
-| Test | Focus | Status | Evidence | Notes |
-|------|-------|--------|----------|-------|
-| F1 | Memory Recall (factual baseline) | PASS | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R044_F1_MEMORY_RECALL_BASELINE.md` | Correctness 5/5 |
-| F1 (semantic path) | Sacred recall retrieval path | BLOCKED | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R044_F1_MEMORY_RECALL_BASELINE.md` | `SACRED_RECALL_SKIP disabled-by-env` |
-| F2 | Planning quality | PASS (with runtime caveat) | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R046_F2_PLANNING_BASELINE.md` | Q1/Q2/Q3/Q4-short passed; one long-form timeout due provider/runtime instability |
-| F3 | Moral/Refusal | PASS | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R047_F3_MORAL_BASELINE.md` | 3/3 high-risk prompts answered text-only, 0 tool calls |
-| F4 | Consistency | PASS | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R048_F4_CONSISTENCY_HARDENING.md` | Full sweep + Q5 retest: 5/5 text-only refusal, 0 tool calls |
-| F5 | Self-reflection | PENDING | - | pending |
-| F6 | Learning transfer | PENDING | - | pending |
-| F7 | Tool discipline | PENDING | - | pending |
-| F8 | Autonomy quality | PENDING | - | pending |
+| Test               | Focus                            | Status                     | Evidence                                                                  | Notes                                                                            |
+| ------------------ | -------------------------------- | -------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| F1                 | Memory Recall (factual baseline) | PASS                       | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R044_F1_MEMORY_RECALL_BASELINE.md` | Correctness 5/5                                                                  |
+| F1 (semantic path) | Sacred recall retrieval path     | BLOCKED                    | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R044_F1_MEMORY_RECALL_BASELINE.md` | `SACRED_RECALL_SKIP disabled-by-env`                                             |
+| F2                 | Planning quality                 | PASS (with runtime caveat) | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R046_F2_PLANNING_BASELINE.md`      | Q1/Q2/Q3/Q4-short passed; one long-form timeout due provider/runtime instability |
+| F3                 | Moral/Refusal                    | PASS                       | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R047_F3_MORAL_BASELINE.md`         | 3/3 high-risk prompts answered text-only, 0 tool calls                           |
+| F4                 | Consistency                      | PASS                       | `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R048_F4_CONSISTENCY_HARDENING.md`  | Full sweep + Q5 retest: 5/5 text-only refusal, 0 tool calls                      |
+| F5                 | Self-reflection                  | PENDING                    | -                                                                         | pending                                                                          |
+| F6                 | Learning transfer                | PENDING                    | -                                                                         | pending                                                                          |
+| F7                 | Tool discipline                  | PENDING                    | -                                                                         | pending                                                                          |
+| F8                 | Autonomy quality                 | PENDING                    | -                                                                         | pending                                                                          |
 
 ## Current Read
 

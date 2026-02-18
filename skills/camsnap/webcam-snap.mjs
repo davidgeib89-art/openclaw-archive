@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * webcam-snap.mjs — Windows-compatible webcam snapshot tool for Øm
- * 
+ *
  * Uses ffmpeg + DirectShow to capture a single frame from the webcam.
  * Designed to be called by Øm (via shell/tool) to "see" the world.
- * 
+ *
  * Usage:
  *   node webcam-snap.mjs [--out <path>] [--device <name>] [--quality <1-31>]
- * 
+ *
  * Defaults:
  *   --out      ./snapshot_<timestamp>.jpg
  *   --device   "HD Pro Webcam C920"
@@ -63,7 +63,9 @@ if (existsSync(outPath)) {
   const { size } = /** @type {import('fs').Stats} */ (
     /** @type {any} */ (await import("node:fs/promises")).stat(outPath).catch(() => ({ size: 0 }))
   );
-  console.log(`✅ Snapshot saved: ${outPath} (${Math.round((await import("node:fs")).statSync(outPath).size / 1024)}KB)`);
+  console.log(
+    `✅ Snapshot saved: ${outPath} (${Math.round((await import("node:fs")).statSync(outPath).size / 1024)}KB)`,
+  );
   console.log(`📍 Path: ${outPath}`);
 } else {
   console.error("❌ Snapshot failed — no output file created.");

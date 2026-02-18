@@ -3,6 +3,7 @@ import type { PluginHookAfterToolCallEvent } from "../plugins/types.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { omLog } from "./om-scaffolding.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
 import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
 import {
@@ -14,7 +15,6 @@ import {
 } from "./pi-embedded-subscribe.tools.js";
 import { inferToolMetaFromArgs } from "./pi-embedded-utils.js";
 import { normalizeToolName } from "./tool-policy.js";
-import { omLog } from "./om-scaffolding.js";
 
 /** Track tool execution start times and args for after_tool_call hook */
 const toolStartData = new Map<string, { startTime: number; args: unknown }>();
@@ -61,8 +61,9 @@ export async function handleToolExecutionStart(
 
   if (toolName === "read") {
     const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-    const filePath = (typeof record.path === "string" ? record.path.trim() : "") ||
-                     (typeof record.file_path === "string" ? record.file_path.trim() : "");
+    const filePath =
+      (typeof record.path === "string" ? record.path.trim() : "") ||
+      (typeof record.file_path === "string" ? record.file_path.trim() : "");
     if (!filePath) {
       const argsPreview = typeof args === "string" ? args.slice(0, 200) : undefined;
       ctx.log.warn(

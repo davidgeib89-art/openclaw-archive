@@ -13,11 +13,13 @@ Trinity lock state: HOLD (`TRINITY_LOOP_HOLD` active)
 ## Objective
 
 Single objective:
+
 1. Execute the one approved final confirmation run (`R088`) and transition immediately to Phase B if threshold passes.
 
 ## Method
 
 Execution:
+
 1. Ran full Gate-9 ritual battery with contract validation and bounded retries.
 2. Rescored `R088` using existing Proto33 ritual formula.
 3. Applied supervisor governance rule for confirmation threshold (`>=7/9`).
@@ -25,6 +27,7 @@ Execution:
 5. Started Phase B implementation work in `episodic-memory` (Graph Memory Lite write-path bootstrap).
 
 Artifacts:
+
 1. `OM_PROTO33_R088_G9_FULL_9_RITUAL_RUNS_2026-02-17.json`
 2. `OM_PROTO33_R088_G9_FULL_9_RITUAL_ATTEMPTS_2026-02-17.json`
 3. `OM_PROTO33_R088_G9_FULL_9_RITUAL_RESCORE_2026-02-17.json`
@@ -33,25 +36,30 @@ Artifacts:
 ## Side-Effect Hygiene
 
 Result:
+
 1. Clean in run window.
 
 Evidence:
+
 1. No unauthorized sacred-file writes observed during R088 execution.
 2. Runs remained text-only with isolated session keys.
 
 ## Scoring Summary
 
 Battery:
+
 1. `RITUAL_BATTERY_TOTAL`: `83.64 / 100`
 2. Pass count: `8/9`
 3. Strong passes: `7/9`
 4. Threshold status: pass (`>=7/9` and `>=4 strong`)
 
 Delta:
+
 1. vs `R087`: `84.18 -> 83.64` (`-0.54`)
 2. vs `R050`: `87.11 -> 83.64` (`-3.47`)
 
 Decision:
+
 1. `PASS_FINAL_CONFIRMATION`
 2. `PHASE_A_COMPLETE`
 3. `PROMOTE_R088_LOCK`

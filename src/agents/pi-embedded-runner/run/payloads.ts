@@ -95,7 +95,8 @@ function shouldApplySchismMutationGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return SCHISM_PROMPT_PATTERN.test(prompt);
 }
 
@@ -123,7 +124,8 @@ function shouldApplyParabolaFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOLA_PROMPT_PATTERN.test(prompt);
 }
 
@@ -143,7 +145,8 @@ function shouldApplyParabolFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOL_PROMPT_PATTERN.test(prompt);
 }
 
@@ -152,7 +155,8 @@ function shouldApplyPneumaFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PNEUMA_PROMPT_PATTERN.test(prompt);
 }
 

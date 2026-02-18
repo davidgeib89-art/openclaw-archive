@@ -190,6 +190,59 @@
   height: 12px;
 }
 
+.topbar-status .heartbeat-trigger {
+  height: 32px;
+  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--secondary);
+  color: var(--danger);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) ease,
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+}
+
+.topbar-status .heartbeat-trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+
+.topbar-status .heartbeat-trigger:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+
+.topbar-status .heartbeat-trigger__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.topbar-status .heartbeat-pill {
+  max-width: min(40vw, 340px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-status .heartbeat-pill--success {
+  color: var(--ok);
+  border-color: rgba(34, 197, 94, 0.35);
+  background: var(--ok-subtle);
+}
+
+.topbar-status .heartbeat-pill--error {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: var(--danger-subtle);
+}
+
 /* ===========================================
    Navigation Sidebar
    =========================================== */
