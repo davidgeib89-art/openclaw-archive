@@ -67,10 +67,6 @@ function buildNostrProfileUrl(accountId: string, suffix = ""): string {
 }
 
 function resolveGatewayHttpAuthHeader(host: OpenClawApp): string | null {
-  const deviceToken = host.hello?.auth?.deviceToken?.trim();
-  if (deviceToken) {
-    return `Bearer ${deviceToken}`;
-  }
   const token = host.settings.token.trim();
   if (token) {
     return `Bearer ${token}`;
@@ -78,6 +74,11 @@ function resolveGatewayHttpAuthHeader(host: OpenClawApp): string | null {
   const password = host.password.trim();
   if (password) {
     return `Bearer ${password}`;
+  }
+  // Keep device token as last fallback for mixed deployments.
+  const deviceToken = host.hello?.auth?.deviceToken?.trim();
+  if (deviceToken) {
+    return `Bearer ${deviceToken}`;
   }
   return null;
 }

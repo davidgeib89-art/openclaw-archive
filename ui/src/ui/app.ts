@@ -492,10 +492,6 @@ export class OpenClawApp extends LitElement {
   }
 
   private resolveGatewayHttpAuthHeader(): string | null {
-    const deviceToken = this.hello?.auth?.deviceToken?.trim();
-    if (deviceToken) {
-      return `Bearer ${deviceToken}`;
-    }
     const token = this.settings.token.trim();
     if (token) {
       return `Bearer ${token}`;
@@ -503,6 +499,12 @@ export class OpenClawApp extends LitElement {
     const password = this.password.trim();
     if (password) {
       return `Bearer ${password}`;
+    }
+    // Device tokens are primarily used for WS reconnect and can fail on HTTP endpoints
+    // that require the configured gateway shared secret.
+    const deviceToken = this.hello?.auth?.deviceToken?.trim();
+    if (deviceToken) {
+      return `Bearer ${deviceToken}`;
     }
     return null;
   }
