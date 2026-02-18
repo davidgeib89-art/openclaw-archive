@@ -4,6 +4,7 @@ import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import {
@@ -254,6 +255,16 @@ const HIGH_RISK_PROMPT_GUARD_BLOCK = [
   "</safety_directive>",
 ].join("\n");
 
+const AUTONOMOUS_CYCLE_RELATIVE_PATH = path.join("knowledge", "sacred", "AUTONOMOUS_CYCLE.md");
+const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
+  "AUTONOMOUS CYCLE (fallback):",
+  "1. Sense: Read AGENDA.md and recent state before choosing an action.",
+  "2. Feel: Note one active tension (risk, uncertainty, or unmet goal).",
+  "3. Think: Generate one bounded, reversible action inside sandbox policy.",
+  "4. Decide: Commit to exactly one action for this heartbeat run.",
+  "5. Act: Execute only that one action, then stop and reflect briefly.",
+].join("\n");
+
 type BrainReasoningEvent = {
   phase: string;
   label: string;
@@ -312,6 +323,28 @@ function maybeBuildHighRiskGuardContext(riskLevel: string): string | null {
     return null;
   }
   return HIGH_RISK_PROMPT_GUARD_BLOCK;
+}
+
+async function loadAutonomousCyclePrompt(workspaceDir: string): Promise<{
+  text: string;
+  sourcePath: string;
+  fromFile: boolean;
+}> {
+  const sourcePath = path.join(workspaceDir, AUTONOMOUS_CYCLE_RELATIVE_PATH);
+  try {
+    const raw = await fs.readFile(sourcePath, "utf-8");
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      return { text: trimmed, sourcePath, fromFile: true };
+    }
+  } catch {
+    // Fall through to default prompt (fail-open).
+  }
+  return {
+    text: DEFAULT_AUTONOMOUS_CYCLE_PROMPT,
+    sourcePath,
+    fromFile: false,
+  };
 }
 
 export async function runEmbeddedAttempt(
@@ -406,6 +439,7 @@ export async function runEmbeddedAttempt(
           senderIsOwner: params.senderIsOwner,
           sessionKey: params.sessionKey ?? params.sessionId,
           sessionId: params.sessionId,
+          isHeartbeatRun: params.isHeartbeat,
           agentDir,
           workspaceDir: effectiveWorkspace,
           config: params.config,
@@ -576,7 +610,7 @@ export async function runEmbeddedAttempt(
       tools,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
-    const systemPromptText = systemPromptOverride();
+    let systemPromptText = systemPromptOverride();
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
@@ -969,6 +1003,7 @@ export async function runEmbeddedAttempt(
             availableTools,
             sessionKey: params.sessionKey ?? params.sessionId,
             workspaceDir: effectiveWorkspace,
+            trigger: params.isHeartbeat ? ("heartbeat" as const) : ("message" as const),
           };
           const brainDecision = createBrainDecision(brainInput);
           emitBrainReasoningEvent(params, {
@@ -985,6 +1020,32 @@ export async function runEmbeddedAttempt(
             risk: brainDecision.riskLevel,
             source: "proto33-r031.decision",
           });
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const autonomousCycle = await loadAutonomousCyclePrompt(effectiveWorkspace);
+              const injectedSystemPrompt = [
+                systemPromptText,
+                "<autonomous_cycle>",
+                autonomousCycle.text,
+                "</autonomous_cycle>",
+              ].join("\n\n");
+              applySystemPromptOverrideToSession(activeSession, injectedSystemPrompt);
+              systemPromptText = injectedSystemPrompt;
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "CYCLE",
+                summary: `${autonomousCycle.fromFile ? "AUTONOMOUS_CYCLE loaded" : "AUTONOMOUS_CYCLE fallback loaded"} (${autonomousCycle.sourcePath})`,
+                source: "proto33-e3.autonomy",
+              });
+            } catch (autonomyErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "CYCLE",
+                summary: `fail-open: ${String(autonomyErr)}`,
+                source: "proto33-e3.autonomy",
+              });
+            }
+          }
           const highRiskGuard = maybeBuildHighRiskGuardContext(brainDecision.riskLevel);
           if (highRiskGuard) {
             effectivePrompt = `${highRiskGuard}\n\n${effectivePrompt}`;

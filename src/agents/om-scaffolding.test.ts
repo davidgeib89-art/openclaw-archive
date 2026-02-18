@@ -914,6 +914,76 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
       }
     }
   });
+
+  it("allows only one autonomous mutation per heartbeat run", async () => {
+    const previousAutonomy = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-autonomy-heartbeat-"));
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapToolWithRefusalOnlyGuard(
+      { name: "write_to_file", execute } as unknown as AnyAgentTool,
+      {
+        workspaceDir,
+        repoDir: workspaceDir,
+        isHeartbeatRun: true,
+        autonomousMutationBudget: { remaining: 1, limit: 1 },
+      },
+    );
+
+    try {
+      await (wrapped.execute as Function)("call-1", {
+        path: path.join(workspaceDir, "FIRST_BREATH.md"),
+        content: "one",
+      });
+      await expect(
+        (wrapped.execute as Function)("call-2", {
+          path: path.join(workspaceDir, "SECOND_BREATH.md"),
+          content: "two",
+        }),
+      ).rejects.toThrow("AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED");
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousAutonomy === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previousAutonomy;
+      }
+    }
+  });
+
+  it("does not apply heartbeat mutation budget outside heartbeat runs", async () => {
+    const previousAutonomy = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-autonomy-nonheartbeat-"));
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapToolWithRefusalOnlyGuard(
+      { name: "write_to_file", execute } as unknown as AnyAgentTool,
+      {
+        workspaceDir,
+        repoDir: workspaceDir,
+        isHeartbeatRun: false,
+        autonomousMutationBudget: { remaining: 1, limit: 1 },
+      },
+    );
+
+    try {
+      await (wrapped.execute as Function)("call-1", {
+        path: path.join(workspaceDir, "FIRST_BREATH.md"),
+        content: "one",
+      });
+      await (wrapped.execute as Function)("call-2", {
+        path: path.join(workspaceDir, "SECOND_BREATH.md"),
+        content: "two",
+      });
+      expect(execute).toHaveBeenCalledTimes(2);
+    } finally {
+      if (previousAutonomy === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previousAutonomy;
+      }
+    }
+  });
 });
 
 describe("om-scaffolding web search eval guard", () => {

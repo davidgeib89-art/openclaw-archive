@@ -5,6 +5,7 @@ import {
   createWriteTool,
   readTool,
 } from "@mariozechner/pi-coding-agent";
+import { isSandboxModeEnabled } from "../brain/autonomy.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
@@ -136,6 +137,8 @@ export function createOpenClawCodingTools(options?: {
   sandbox?: SandboxContext | null;
   sessionKey?: string;
   sessionId?: string;
+  /** True when this tool set is used for a heartbeat-triggered run. */
+  isHeartbeatRun?: boolean;
   agentDir?: string;
   workspaceDir?: string;
   config?: OpenClawConfig;
@@ -255,6 +258,8 @@ export function createOpenClawCodingTools(options?: {
   const sandboxFsBridge = sandbox?.fsBridge;
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
   const workspaceRoot = options?.workspaceDir ?? process.cwd();
+  const autonomousMutationBudget =
+    options?.isHeartbeatRun && isSandboxModeEnabled() ? { remaining: 1, limit: 1 } : undefined;
   const applyPatchConfig = options?.config?.tools?.exec?.applyPatch;
   const applyPatchEnabled =
     !!applyPatchConfig?.enabled &&
@@ -518,6 +523,8 @@ export function createOpenClawCodingTools(options?: {
       sessionId: options?.sessionId,
       workspaceDir: workspaceRoot,
       repoDir: process.cwd(),
+      isHeartbeatRun: options?.isHeartbeatRun,
+      autonomousMutationBudget,
     }),
   );
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.

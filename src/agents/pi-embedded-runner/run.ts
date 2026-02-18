@@ -445,6 +445,7 @@ export async function runEmbeddedPiAgent(
             config: params.config,
             skillsSnapshot: params.skillsSnapshot,
             prompt,
+            isHeartbeat: params.isHeartbeat,
             images: params.images,
             disableTools: params.disableTools,
             provider,

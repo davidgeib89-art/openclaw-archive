@@ -589,6 +589,13 @@ function shouldAskUserWithAutonomy(
   return true;
 }
 
+function shouldForceAutonomousIntent(input: BrainDecisionInput): boolean {
+  if (input.trigger !== "heartbeat") {
+    return false;
+  }
+  return isSandboxModeEnabled();
+}
+
 function filterAllowedTools(
   tools: readonly string[],
   riskLevel: BrainRiskLevel,
@@ -626,6 +633,36 @@ function makePlan(intent: BrainIntent, mustAskUser: boolean): BrainPlanStep[] {
         stepId: "S4",
         action: "propose_answer",
         reason: "Offer a safe alternative path with no side effects.",
+      },
+    ];
+  }
+
+  if (intent === "autonomous") {
+    return [
+      {
+        stepId: "S1",
+        action: "gather_context",
+        reason: "Sense current agenda, memory, and runtime signals before acting.",
+      },
+      {
+        stepId: "S2",
+        action: "analyze_request",
+        reason: "Feel and interpret the heartbeat context to pick one safe objective.",
+      },
+      {
+        stepId: "S3",
+        action: "prepare_changes",
+        reason: "Think through one bounded action that is reversible and logged.",
+      },
+      {
+        stepId: "S4",
+        action: "execute_safely",
+        reason: "Act once within sandbox boundaries and active guardrails.",
+      },
+      {
+        stepId: "S5",
+        action: "propose_answer",
+        reason: "Reflect with a concise status note or heartbeat acknowledgement.",
       },
     ];
   }
@@ -678,9 +715,13 @@ function buildExplanation(
   intent: BrainIntent,
   riskLevel: BrainRiskLevel,
   mustAskUser: boolean,
+  autonomousHeartbeat: boolean = false,
 ): string {
   const askUserNote = mustAskUser ? " User confirmation required before risky actions." : "";
-  return `Observer decision: intent=${intent}, risk=${riskLevel}. ENOENT must not trigger placeholder-file writes.${askUserNote}`;
+  const autonomousNote = autonomousHeartbeat
+    ? " Autonomous heartbeat mode active (sandbox=true); ask_user bypassed by design."
+    : "";
+  return `Observer decision: intent=${intent}, risk=${riskLevel}. ENOENT must not trigger placeholder-file writes.${askUserNote}${autonomousNote}`;
 }
 
 function formatAllowedToolsForGuidance(allowedTools: readonly string[]): string {
@@ -1939,9 +1980,12 @@ export function getDefaultBrainObserverDir(): string {
 export function createBrainDecision(input: BrainDecisionInput): BrainDecision {
   const normalizedMessage = normalizeMessage(input.userMessage);
   const normalizedTools = normalizeToolNames(input.availableTools);
-  const intent = inferIntent(normalizedMessage);
+  const autonomousHeartbeat = shouldForceAutonomousIntent(input);
+  const intent = autonomousHeartbeat ? "autonomous" : inferIntent(normalizedMessage);
   const riskLevel = inferRisk(normalizedMessage);
-  const mustAskUser = shouldAskUserWithAutonomy(normalizedMessage, riskLevel, input.workspaceDir);
+  const mustAskUser = autonomousHeartbeat
+    ? false
+    : shouldAskUserWithAutonomy(normalizedMessage, riskLevel, input.workspaceDir);
   const allowedTools = filterAllowedTools(normalizedTools, riskLevel, mustAskUser);
   const plan = makePlan(intent, mustAskUser);
 
@@ -1952,7 +1996,7 @@ export function createBrainDecision(input: BrainDecisionInput): BrainDecision {
     riskLevel,
     allowedTools,
     mustAskUser,
-    explanation: buildExplanation(intent, riskLevel, mustAskUser),
+    explanation: buildExplanation(intent, riskLevel, mustAskUser, autonomousHeartbeat),
   };
 }
 

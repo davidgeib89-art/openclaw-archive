@@ -148,6 +148,55 @@ describe("brain decision generator", () => {
     }
   });
 
+  it("forces autonomous intent for heartbeat turns when sandbox autonomy is enabled", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+
+    try {
+      const decision = createBrainDecision({
+        userMessage:
+          "Read AGENDA.md if it exists (workspace context). If AGENDA.md is missing, read HEARTBEAT.md. If nothing needs attention, reply HEARTBEAT_OK.",
+        availableTools: ["read", "write", "exec"],
+        trigger: "heartbeat",
+      });
+
+      expect(decision.intent).toBe("autonomous");
+      expect(decision.mustAskUser).toBe(false);
+      expect(decision.plan.some((step) => step.action === "ask_user")).toBe(false);
+      expect(decision.plan.some((step) => step.action === "execute_safely")).toBe(true);
+      expect(decision.explanation).toContain("Autonomous heartbeat mode active");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
+  it("keeps normal intent inference for heartbeat turns when sandbox autonomy is disabled", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    delete process.env.OM_AUTONOMY_SANDBOX;
+
+    try {
+      const decision = createBrainDecision({
+        userMessage:
+          "Read AGENDA.md if it exists (workspace context). If AGENDA.md is missing, read HEARTBEAT.md. If nothing needs attention, reply HEARTBEAT_OK.",
+        availableTools: ["read", "write", "exec"],
+        trigger: "heartbeat",
+      });
+
+      expect(decision.intent).not.toBe("autonomous");
+      expect(decision.explanation).not.toContain("Autonomous heartbeat mode active");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
   it("does not treat output format wording as destructive intent", () => {
     const decision = createBrainDecision({
       userMessage: "RITUAL PNEUMA: answer in this format: Insight, Rule, RiskCheck.",

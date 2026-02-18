@@ -289,12 +289,18 @@ const READ_LOOP_REPEAT_THRESHOLD = 12;
 const READ_LOOP_COOLDOWN_MS = 120_000;
 
 type WriteZone = "green" | "yellow" | "red";
+type AutonomousMutationBudget = {
+  remaining: number;
+  limit: number;
+};
 type SessionGuardContext = {
   agentId?: string;
   sessionKey?: string;
   sessionId?: string;
   workspaceDir?: string;
   repoDir?: string;
+  isHeartbeatRun?: boolean;
+  autonomousMutationBudget?: AutonomousMutationBudget;
 };
 type WriteGuardContext = SessionGuardContext;
 type ExecGuardContext = SessionGuardContext;
@@ -2171,6 +2177,28 @@ export function wrapToolWithRefusalOnlyGuard(
 
       const mutationTarget = resolveSnapshotMutationTarget(toolName, args, context);
       if (mutationTarget) {
+        if (context?.isHeartbeatRun && isSandboxModeEnabled() && context.autonomousMutationBudget) {
+          const budget = context.autonomousMutationBudget;
+          if (budget.remaining <= 0) {
+            logBlockedAction({
+              toolName,
+              guardian: "AUTONOMY",
+              reason: "ZONE",
+              target: mutationTarget,
+              detail: "heartbeat mutation budget exhausted",
+            });
+            throwToolBlocked(
+              "AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED: only one autonomous mutation is allowed per heartbeat run. Reflect and wait for the next heartbeat.",
+            );
+          }
+          budget.remaining -= 1;
+          const used = budget.limit - budget.remaining;
+          logGuardian(
+            "AUTONOMY",
+            `Heartbeat mutation budget ${used}/${budget.limit}`,
+            `${toolName}:${mutationTarget}`,
+          );
+        }
         await captureMutationSnapshotFailOpen({
           toolName,
           targetPath: mutationTarget,

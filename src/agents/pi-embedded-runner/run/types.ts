@@ -46,6 +46,8 @@ export type EmbeddedRunAttemptParams = {
   config?: OpenClawConfig;
   skillsSnapshot?: SkillSnapshot;
   prompt: string;
+  /** True when this run was triggered by the heartbeat scheduler. */
+  isHeartbeat?: boolean;
   images?: ImageContent[];
   /** Optional client-provided tools (OpenResponses hosted tools). */
   clientTools?: ClientToolDefinition[];

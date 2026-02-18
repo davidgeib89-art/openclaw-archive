@@ -1,4 +1,4 @@
-export type BrainIntent = "qa" | "edit" | "research" | "ops" | "creative";
+export type BrainIntent = "qa" | "edit" | "research" | "ops" | "creative" | "autonomous";
 
 export type BrainRiskLevel = "low" | "medium" | "high";
 
@@ -32,6 +32,7 @@ export type BrainDecisionInput = {
   availableTools?: readonly string[];
   sessionKey?: string;
   workspaceDir?: string;
+  trigger?: "message" | "heartbeat";
 };
 
 export type BrainSubconsciousMode = "answer_direct" | "ask_clarify" | "plan_then_answer";

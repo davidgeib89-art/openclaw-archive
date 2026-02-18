@@ -286,6 +286,7 @@ export async function runAgentTurnWithFallback(params: {
             config: params.followupRun.run.config,
             skillsSnapshot: params.followupRun.run.skillsSnapshot,
             prompt: params.commandBody,
+            isHeartbeat: params.isHeartbeat,
             extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
             ownerNumbers: params.followupRun.run.ownerNumbers,
             enforceFinalTag: resolveEnforceFinalTag(params.followupRun.run, provider),
