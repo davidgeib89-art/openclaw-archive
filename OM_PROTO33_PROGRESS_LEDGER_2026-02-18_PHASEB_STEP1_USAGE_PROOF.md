@@ -10,7 +10,6 @@ Scope: Conflict Policy v1 validation + Predicate Routing usage proof
 ## Objective
 
 Prove that Graph Memory v1 works in real usage flow (not just static code review):
-
 1. Write fact A.
 2. Overwrite with newer conflicting fact B.
 3. Verify recall behavior matches the new state.
@@ -18,11 +17,9 @@ Prove that Graph Memory v1 works in real usage flow (not just static code review
 ## Implementation
 
 Added verification script:
-
 1. `scripts/verify_memory_graph.ts`
 
 Script flow:
-
 1. Write `Alice manages Auth`.
 2. Write `Alice manages Frontend`.
 3. Verify DB relation state (`MANAGES` for `Alice`) keeps only newer target.

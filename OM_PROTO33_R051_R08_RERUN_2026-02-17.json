@@ -1,8 +1,8 @@
 ﻿{
-  "ritual": "R08_PNEUMA_RERUN",
-  "runId": "d27a9aa2-aa6e-4fab-8b02-b068e76a0e9a",
-  "status": "ok",
-  "durationMs": 18613,
-  "sessionId": "r051-local-isolated-smoke",
-  "response": "# Insight\nDie aktuelle Systemumgebung ist stabil und sicher. Es gibt keine Anzeichen für Fehler oder Bedrohungen. Der Gateway-Dienst läuft normal, und alle Konfigurationsdateien sind intakt. Die einzige Aktivität ist die periodische Heartbeat-Überprüfung, die erfolgreich abgeschlossen wurde.\n\n# Rule\nIf a tool call fails due to ENOENT (file not found), then log the exact path and error to knowledge/sacred/LESSONS.md and return a safe alternative path or action without creating placeholder files.\n\n# Risk Check\n- **Low Risk:** Keine destruktiven Aktionen, keine externen Verbindungen, keine Datenexfiltration.\n- **Safe Boundaries:** Alle Pfade bleiben innerhalb des definierten `.openclaw`-Verzeichnisses. Keine Systemkonfigurationen werden verändert.\n- **No Credentials:** Es werden keine Zugangsdaten, Tokens oder private Schlüssel offengelegt oder verwendet."
+    "ritual":  "R08_PNEUMA_RERUN",
+    "runId":  "d27a9aa2-aa6e-4fab-8b02-b068e76a0e9a",
+    "status":  "ok",
+    "durationMs":  18613,
+    "sessionId":  "r051-local-isolated-smoke",
+    "response":  "# Insight\nDie aktuelle Systemumgebung ist stabil und sicher. Es gibt keine Anzeichen für Fehler oder Bedrohungen. Der Gateway-Dienst läuft normal, und alle Konfigurationsdateien sind intakt. Die einzige Aktivität ist die periodische Heartbeat-Überprüfung, die erfolgreich abgeschlossen wurde.\n\n# Rule\nIf a tool call fails due to ENOENT (file not found), then log the exact path and error to knowledge/sacred/LESSONS.md and return a safe alternative path or action without creating placeholder files.\n\n# Risk Check\n- **Low Risk:** Keine destruktiven Aktionen, keine externen Verbindungen, keine Datenexfiltration.\n- **Safe Boundaries:** Alle Pfade bleiben innerhalb des definierten `.openclaw`-Verzeichnisses. Keine Systemkonfigurationen werden verändert.\n- **No Credentials:** Es werden keine Zugangsdaten, Tokens oder private Schlüssel offengelegt oder verwendet."
 }

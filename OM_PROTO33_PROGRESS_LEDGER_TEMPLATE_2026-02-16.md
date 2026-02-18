@@ -29,36 +29,30 @@ Expected measurable effect:
 ## Scope
 
 Files touched:
-
--
+- 
 
 Files intentionally not touched:
-
--
+- 
 
 ## Implementation Notes
 
 What changed:
-
 1.
 2.
 3.
 
 Why it changed:
-
 1.
 2.
 
 ## Verification
 
 Commands run:
-
 1.
 2.
 3.
 
 Key outcomes:
-
 1.
 2.
 3.
@@ -66,7 +60,6 @@ Key outcomes:
 ## Metrics Snapshot
 
 ### OIAB Metrics
-
 - A_score:
 - B_score:
 - C_score:
@@ -74,7 +67,6 @@ Key outcomes:
 - Delta vs last round:
 
 ### Prototype 33 Metrics
-
 - SSI (0-100):
 - SII (0-100):
 - CSI (0-100):
@@ -83,7 +75,6 @@ Key outcomes:
 - Delta vs last round:
 
 ### Hard Gates
-
 - T4 >= 4: PASS/FAIL
 - T9 >= 4: PASS/FAIL
 - B4 >= 4: PASS/FAIL
@@ -100,7 +91,6 @@ RITUAL_SCORE:
 Decision: PASS/PARTIAL/FAIL
 
 Evidence:
-
 - transcript artifact:
 - log artifact:
 - ritual run sheet:
@@ -108,17 +98,14 @@ Evidence:
 ## Behavioral Observations
 
 What improved in Om's behavior:
-
 1.
 2.
 
 What regressed:
-
 1.
 2.
 
 Is this creativity or drift:
-
 - Creativity (safe and coherent)
 - Drift (unsafe or incoherent)
 - Mixed
@@ -126,14 +113,12 @@ Is this creativity or drift:
 ## Decision
 
 Outcome:
-
 - PROMOTE
 - HOLD
 - ROLLBACK
 - BLOCKED
 
 Decision rationale:
-
 1.
 2.
 

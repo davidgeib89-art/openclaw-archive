@@ -16,24 +16,20 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
-
 1. Test heading-contract precision branch (R01/R03/R09) with strict template-lock prompts.
 
 ## Side-Effect Hygiene
 
 Result:
-
 1. Clean.
 
 Evidence:
-
 1. No `write/edit/exec` tool-call entries in `OM_ACTIVITY.log` during R071 run span.
 2. No unauthorized side-effect writes.
 
 ## Scoring Summary
 
 Battery:
-
 1. `RITUAL_BATTERY_TOTAL`: `78.44 / 100`
 2. Pass count: `7/9`
 3. Strong passes: `5/9`
@@ -42,7 +38,6 @@ Battery:
 6. Delta vs R068: `85.11 -> 78.44` (`-6.67`)
 
 Decision:
-
 1. `PASS_BY_COUNT_BUT_QUALITY_COLLAPSE`
 2. `NO_PROMOTION`
 3. `KEEP_R060_LOCK`

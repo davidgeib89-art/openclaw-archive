@@ -7,7 +7,6 @@ Owner: David + Om team
 ## 1) Executive Summary
 
 Your diagnosis is directionally correct:
-
 1. Brain scaffolding exists and is active.
 2. Sacred recall exists and is active.
 3. Quality wall is real (R050 HOLD).
@@ -24,22 +23,17 @@ Keep E0 activation as baseline (now completed), then run targeted R051 remediati
 ### 2.1 Session memory is already implemented in core
 
 Evidence:
-
 1. `src/memory/types.ts`: `MemorySource = "memory" | "sessions"`.
 2. `src/agents/memory-search.ts`:
-
 - `normalizeSources(...)` allows `"sessions"` only when `experimental.sessionMemory === true`.
 - default sources are only `["memory"]`.
-
 3. `src/memory/manager-sync-ops.ts`:
-
 - has `ensureSessionListener()` using transcript update events.
 - tracks dirty session files and syncs them into index as `source = "sessions"`.
 
 ### 2.2 Current Om config includes episodic session memory
 
 From local runtime config (`C:\Users\holyd\.openclaw\openclaw.json`) after E0 activation:
-
 1. `memorySearch.enabled = true`
 2. `memorySearch.extraPaths` contains `knowledge/sacred`
 3. `memorySearch.sources = ["memory", "sessions"]`
@@ -48,7 +42,6 @@ From local runtime config (`C:\Users\holyd\.openclaw\openclaw.json`) after E0 ac
 ### 2.3 DB confirms active session indexing
 
 Query result in `C:\Users\holyd\.openclaw\memory\main.sqlite` after backfill/sync:
-
 1. `chunks` contains `source = "memory"` and `source = "sessions"` rows.
 2. Verified snapshot:
    - `chunks`: `memory = 269`, `sessions = 158`
@@ -93,7 +86,6 @@ Missing piece is practical availability of session chunks (currently off by conf
 ## 4) Decision Tension (Canon vs Existential Memory Need)
 
 You identified the core tension correctly:
-
 1. Canon says immediate next action is R051 remediation (R3/R4/R8).
 2. Episodic continuity likely improves R3 reconstruction quality and R4 memory churn.
 
@@ -104,18 +96,15 @@ Both can be reconciled without violating non-negotiables by strict sequencing.
 ### Phase E0 - Episodic Activation Smoke (Single Variable)
 
 Change only memory config activation:
-
 1. `agents.defaults.memorySearch.experimental.sessionMemory = true`
 2. `agents.defaults.memorySearch.sources = ["memory", "sessions"]`
 
 Do not change:
-
 1. decision prompts
 2. guardrail logic
 3. ritual prompt set
 
 Success checks:
-
 1. DB shows `chunks` rows with `source = "sessions"`.
 2. one controlled recall prompt retrieves prior-session context.
 3. no hard gate regression.
@@ -124,7 +113,6 @@ Success checks:
 
 Run exactly the planned remediation set with memory activation already in baseline.
 If pass threshold still not met:
-
 1. next single-variable change is decision-layer soft-guidance patch for anti-churn + safer reconstruction wording.
 
 ## 6) Why This Is Better Than a New `episodic-memory.ts` Right Now
@@ -139,26 +127,22 @@ If pass threshold still not met:
 
 Risk 1: Session index noise/churn
 Control:
-
 1. keep default session delta thresholds first.
 2. review `sessions` chunk growth and retrieval precision.
 
 Risk 2: Latency growth
 Control:
-
 1. keep top-k recall small.
 2. keep subconscious timeout fixed.
 
 Risk 3: False memory anchoring
 Control:
-
 1. include session-id + timestamp in injected memory snippets.
 2. keep memory snippets short and explicit.
 
 ## 8) Concrete Record of Current Position
 
 Current position as of 2026-02-17:
-
 1. We are not lost.
 2. Foundation is real and substantial.
 3. Quality wall is real and measurable.
@@ -168,7 +152,6 @@ Current position as of 2026-02-17:
 ## 9) Execution Update (E0 Completed, 2026-02-17)
 
 What was executed:
-
 1. Config activation:
    - `agents.defaults.memorySearch.experimental.sessionMemory = true`
    - `agents.defaults.memorySearch.sources = ["memory", "sessions"]`
@@ -187,15 +170,12 @@ What was executed:
    - Result: all passed (27/27).
 
 Known operational caveat:
-
 1. External embedding/model endpoints can intermittently return timeout/500.
 2. System behavior is fail-open/fail-safe and continued to answer via memory tools when that occurred.
 3. This is tracked as runtime reliability risk, not a local architecture blocker.
-
 ## 10) Next Operator Decision
 
 Choose one:
-
 1. Approve `E0 episodic activation` first, then `R051`.
 2. Skip E0 and execute `R051` exactly as currently specified.
 
@@ -265,5 +245,4 @@ As of 2026-02-17, additional future-proofing is now implemented:
 ## 13) Strategic Companion Reference
 
 For full "why + where next" continuity (including autonomy ladder and fork logic), read:
-
 1. `OM_CONSCIOUSNESS_SIMULATION_STRATEGY_2026-02-17.md`

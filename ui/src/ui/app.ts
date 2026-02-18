@@ -111,9 +111,6 @@ export class OpenClawApp extends LitElement {
   @state() tab: Tab = "chat";
   @state() onboarding = resolveOnboardingMode();
   @state() connected = false;
-  @state() heartbeatTriggerRunning = false;
-  @state() heartbeatTriggerMessage: string | null = null;
-  @state() heartbeatTriggerMessageKind: "info" | "success" | "error" = "info";
   @state() theme: ThemeMode = this.settings.theme ?? "system";
   @state() themeResolved: ResolvedTheme = "dark";
   @state() hello: GatewayHelloOk | null = null;
@@ -353,7 +350,6 @@ export class OpenClawApp extends LitElement {
   private themeMedia: MediaQueryList | null = null;
   private themeMediaHandler: ((event: MediaQueryListEvent) => void) | null = null;
   private topbarObserver: ResizeObserver | null = null;
-  private heartbeatTriggerMessageTimer: number | null = null;
 
   createRenderRoot() {
     return this;
@@ -376,10 +372,6 @@ export class OpenClawApp extends LitElement {
 
   disconnectedCallback() {
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);
-    if (this.heartbeatTriggerMessageTimer != null) {
-      window.clearTimeout(this.heartbeatTriggerMessageTimer);
-      this.heartbeatTriggerMessageTimer = null;
-    }
     // Cleanup voice state listeners + stop any active playback/recording
     for (const cleanup of this.voiceCleanup) {
       cleanup();
@@ -489,91 +481,6 @@ export class OpenClawApp extends LitElement {
 
   async handleWhatsAppLogout() {
     await handleWhatsAppLogoutInternal(this);
-  }
-
-  private resolveGatewayHttpAuthHeader(): string | null {
-    const deviceToken = this.hello?.auth?.deviceToken?.trim();
-    if (deviceToken) {
-      return `Bearer ${deviceToken}`;
-    }
-    const token = this.settings.token.trim();
-    if (token) {
-      return `Bearer ${token}`;
-    }
-    const password = this.password.trim();
-    if (password) {
-      return `Bearer ${password}`;
-    }
-    return null;
-  }
-
-  private buildGatewayHttpHeaders(): Record<string, string> {
-    const authorization = this.resolveGatewayHttpAuthHeader();
-    return authorization ? { Authorization: authorization } : {};
-  }
-
-  private setHeartbeatTriggerMessage(message: string, kind: "info" | "success" | "error" = "info") {
-    if (this.heartbeatTriggerMessageTimer != null) {
-      window.clearTimeout(this.heartbeatTriggerMessageTimer);
-      this.heartbeatTriggerMessageTimer = null;
-    }
-    this.heartbeatTriggerMessage = message;
-    this.heartbeatTriggerMessageKind = kind;
-    this.heartbeatTriggerMessageTimer = window.setTimeout(() => {
-      this.heartbeatTriggerMessage = null;
-      this.heartbeatTriggerMessageTimer = null;
-    }, 5000);
-  }
-
-  async handleHeartbeatTrigger() {
-    if (this.heartbeatTriggerRunning) {
-      return;
-    }
-    if (this.heartbeatTriggerMessageTimer != null) {
-      window.clearTimeout(this.heartbeatTriggerMessageTimer);
-      this.heartbeatTriggerMessageTimer = null;
-    }
-    this.heartbeatTriggerMessage = "Triggering heartbeat...";
-    this.heartbeatTriggerMessageKind = "info";
-    this.heartbeatTriggerRunning = true;
-    try {
-      const response = await fetch("/api/heartbeat/trigger", {
-        method: "POST",
-        headers: this.buildGatewayHttpHeaders(),
-      });
-      const data = (await response.json().catch(() => null)) as {
-        ok?: boolean;
-        result?: { status?: string; durationMs?: number; reason?: string };
-        error?: { message?: string };
-      } | null;
-      if (!response.ok || data?.ok !== true) {
-        const message =
-          data?.error?.message ??
-          (data?.result?.reason ? String(data.result.reason) : `HTTP ${response.status}`);
-        throw new Error(message);
-      }
-
-      const status = data.result?.status;
-      if (status === "ran") {
-        const durationLabel =
-          typeof data.result?.durationMs === "number" ? ` (${data.result.durationMs}ms)` : "";
-        this.setHeartbeatTriggerMessage(`Heartbeat complete${durationLabel}.`, "success");
-      } else if (status === "skipped") {
-        this.setHeartbeatTriggerMessage(
-          `Heartbeat skipped: ${data.result?.reason ?? "unknown reason"}.`,
-          "info",
-        );
-      } else {
-        this.setHeartbeatTriggerMessage(
-          `Heartbeat failed: ${data.result?.reason ?? "unknown error"}.`,
-          "error",
-        );
-      }
-    } catch (err) {
-      this.setHeartbeatTriggerMessage(`Heartbeat trigger failed: ${String(err)}.`, "error");
-    } finally {
-      this.heartbeatTriggerRunning = false;
-    }
   }
 
   async handleChannelConfigSave() {

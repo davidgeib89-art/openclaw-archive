@@ -5,11 +5,11 @@ import {
   createWriteTool,
   readTool,
 } from "@mariozechner/pi-coding-agent";
+import { isSandboxModeEnabled } from "../brain/autonomy.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
-import { isSandboxModeEnabled } from "../brain/autonomy.js";
 import { withSacredMemorySearchConfig } from "../brain/memory-ingestion.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";

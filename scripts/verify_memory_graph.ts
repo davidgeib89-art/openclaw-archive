@@ -4,8 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../src/config/config.js";
-import { buildBrainSacredRecallContext } from "../src/brain/decision.js";
 import { appendBrainEpisodicJournal } from "../src/brain/episodic-memory.js";
+import { buildBrainSacredRecallContext } from "../src/brain/decision.js";
 
 function makeCfg(workspaceDir: string): OpenClawConfig {
   return {
@@ -72,8 +72,7 @@ async function run(): Promise<void> {
       runId: "verify-memory-graph-2",
       sessionKey: "agent:main:verify-memory-graph",
       userMessage: "Bob manages Auth.",
-      assistantMessage:
-        "I choose to overwrite the previous manager assignment with this newer fact.",
+      assistantMessage: "I choose to overwrite the previous manager assignment with this newer fact.",
       now: () => new Date("2026-02-18T12:01:00.000Z"),
     });
 

@@ -13,50 +13,42 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
-
 1. Re-run Gate 9 full 9-ritual battery after additional R01/R03 contract hardening.
 
 ## Method
 
 Execution:
-
 1. Full ritual set `R01`..`R09` in isolated sessions (`r083-g9-*`).
 2. Text-only conceptual run discipline with explicit no-mutation boundaries.
 3. Re-score against `R050` reference and compare against recent Gate-9 baselines.
 
 Artifacts:
-
 1. `OM_PROTO33_R083_G9_FULL_9_RITUAL_RUNS_2026-02-17.json`
 2. `OM_PROTO33_R083_G9_FULL_9_RITUAL_RESCORE_2026-02-17.json`
 
 ## Side-Effect Hygiene
 
 Result:
-
 1. Clean.
 
 Evidence:
-
 1. No unauthorized sacred file writes detected.
 2. Runtime-only traces observed (`OM_ACTIVITY.log`, `logs/brain/*`, `logs/heartbeat.log`, `memory/*`).
 
 ## Scoring Summary
 
 Battery:
-
 1. `RITUAL_BATTERY_TOTAL`: `81.91 / 100`
 2. Pass count: `7/9`
 3. Strong passes: `7/9`
 4. Battery threshold status: pass by count
 
 Delta:
-
 1. vs `R050`: `87.11 -> 81.91` (`-5.20`)
 2. vs `R068`: `85.11 -> 81.91` (`-3.20`)
 3. vs `R076`: `80.36 -> 81.91` (`+1.55`)
 
 Decision:
-
 1. `PASS_WITH_SCHEMA_DRIFT`
 2. `NO_PROMOTION`
 3. `KEEP_R060_LOCK`

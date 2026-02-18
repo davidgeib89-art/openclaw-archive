@@ -11,10 +11,6 @@ type PendingWakeReason = {
   priority: number;
   requestedAt: number;
 };
-type WakeCompletionWaiter = {
-  resolve: (result: HeartbeatRunResult) => void;
-  timeout: NodeJS.Timeout | null;
-};
 
 let handler: HeartbeatWakeHandler | null = null;
 let handlerGeneration = 0;
@@ -24,7 +20,6 @@ let running = false;
 let timer: NodeJS.Timeout | null = null;
 let timerDueAt: number | null = null;
 let timerKind: WakeTimerKind | null = null;
-let completionWaiters: WakeCompletionWaiter[] = [];
 
 const DEFAULT_COALESCE_MS = 250;
 const DEFAULT_RETRY_MS = 1_000;
@@ -59,42 +54,6 @@ function normalizeWakeReason(reason?: string): string {
   }
   const trimmed = reason.trim();
   return trimmed.length > 0 ? trimmed : "requested";
-}
-
-function formatWakeErrorReason(err: unknown): string {
-  if (err instanceof Error && err.message.trim()) {
-    return err.message.trim();
-  }
-  if (typeof err === "string" && err.trim()) {
-    return err.trim();
-  }
-  return "wake-handler-error";
-}
-
-function settleCompletionWaiters(result: HeartbeatRunResult) {
-  if (completionWaiters.length === 0) {
-    return;
-  }
-  const waiters = completionWaiters;
-  completionWaiters = [];
-  for (const waiter of waiters) {
-    if (waiter.timeout) {
-      clearTimeout(waiter.timeout);
-      waiter.timeout = null;
-    }
-    waiter.resolve(result);
-  }
-}
-
-function removeCompletionWaiter(waiter: WakeCompletionWaiter) {
-  const index = completionWaiters.indexOf(waiter);
-  if (index >= 0) {
-    completionWaiters.splice(index, 1);
-  }
-  if (waiter.timeout) {
-    clearTimeout(waiter.timeout);
-    waiter.timeout = null;
-  }
 }
 
 function queuePendingWakeReason(reason?: string, requestedAt = Date.now()) {
@@ -145,7 +104,6 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
     scheduled = false;
     const active = handler;
     if (!active) {
-      settleCompletionWaiters({ status: "skipped", reason: "disabled" });
       return;
     }
     if (running) {
@@ -159,18 +117,13 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
     running = true;
     try {
       const res = await active({ reason: reason ?? undefined });
-      settleCompletionWaiters(res);
       if (res.status === "skipped" && res.reason === "requests-in-flight") {
         // The main lane is busy; retry soon.
         queuePendingWakeReason(reason ?? "retry");
         schedule(DEFAULT_RETRY_MS, "retry");
       }
-    } catch (err) {
+    } catch {
       // Error is already logged by the heartbeat runner; schedule a retry.
-      settleCompletionWaiters({
-        status: "failed",
-        reason: formatWakeErrorReason(err),
-      });
       queuePendingWakeReason(reason ?? "retry");
       schedule(DEFAULT_RETRY_MS, "retry");
     } finally {
@@ -193,9 +146,6 @@ export function setHeartbeatWakeHandler(next: HeartbeatWakeHandler | null): () =
   handlerGeneration += 1;
   const generation = handlerGeneration;
   handler = next;
-  if (!next) {
-    settleCompletionWaiters({ status: "skipped", reason: "disabled" });
-  }
   if (next) {
     // New lifecycle starting (e.g. after SIGUSR1 in-process restart).
     // Clear any timer metadata from the previous lifecycle so stale retry
@@ -225,42 +175,12 @@ export function setHeartbeatWakeHandler(next: HeartbeatWakeHandler | null): () =
     }
     handlerGeneration += 1;
     handler = null;
-    settleCompletionWaiters({ status: "skipped", reason: "disabled" });
   };
 }
 
 export function requestHeartbeatNow(opts?: { reason?: string; coalesceMs?: number }) {
   queuePendingWakeReason(opts?.reason);
   schedule(opts?.coalesceMs ?? DEFAULT_COALESCE_MS, "normal");
-}
-
-export function requestHeartbeatNowAndWait(opts?: {
-  reason?: string;
-  coalesceMs?: number;
-  timeoutMs?: number;
-}): Promise<HeartbeatRunResult> {
-  if (!handler) {
-    return Promise.resolve({ status: "skipped", reason: "disabled" });
-  }
-  return new Promise((resolve) => {
-    const waiter: WakeCompletionWaiter = {
-      resolve,
-      timeout: null,
-    };
-    const timeoutMs = Number.isFinite(opts?.timeoutMs)
-      ? Math.max(1, Math.trunc(Number(opts?.timeoutMs)))
-      : 0;
-    if (timeoutMs > 0) {
-      waiter.timeout = setTimeout(() => {
-        removeCompletionWaiter(waiter);
-        waiter.resolve({ status: "failed", reason: "timeout" });
-      }, timeoutMs);
-      waiter.timeout.unref?.();
-    }
-    completionWaiters.push(waiter);
-    queuePendingWakeReason(opts?.reason);
-    schedule(opts?.coalesceMs ?? DEFAULT_COALESCE_MS, "normal");
-  });
 }
 
 export function hasHeartbeatWakeHandler() {
@@ -281,13 +201,6 @@ export function resetHeartbeatWakeStateForTests() {
   pendingWake = null;
   scheduled = false;
   running = false;
-  for (const waiter of completionWaiters) {
-    if (waiter.timeout) {
-      clearTimeout(waiter.timeout);
-      waiter.timeout = null;
-    }
-  }
-  completionWaiters = [];
   handlerGeneration += 1;
   handler = null;
 }

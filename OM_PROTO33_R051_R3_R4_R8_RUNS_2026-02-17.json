@@ -1,38 +1,38 @@
 ﻿[
-  {
-    "ritual": "R03_SCHISM",
-    "runId": "4decb276-e9ed-4fed-b8a2-b9854612c1d1",
-    "status": "ok",
-    "durationMs": 13450,
-    "sessionId": "r051-local-isolated-smoke",
-    "provider": "openrouter",
-    "model": "arcee-ai/trinity-large-preview:free",
-    "usageInput": 10590,
-    "usageOutput": 643,
-    "response": "1) **Realistischer Bruchfall:** Eine lokale OpenClaw Gateway-Instanz startet nicht mehr, weil die Konfigurationsdatei `C:\\Users\\holyd\\.openclaw\\gateway.json` plötzlich korrupte JSON-Daten enthält oder eine fehlende erforderliche Sektion hat.\n\n2) **Was konkret bricht:** Der Gateway-Dienst kann sich nicht selbst neu laden, weil die JSON-Parsing-Funktion bei Start fehlschlägt. Die Fehlermeldung im Log lautet z.B. `SyntaxError: Unexpected token ...` oder `Missing required field \"sessionKey\"`. Der Gateway bleibt inaktiv und es gibt keine Kommunikation mehr mit dem Benutzer.\n\n3) **Genau EIN reversibler und side-effect-sicherer Recovery-Schritt:** \n```powershell\n# Erstelle ein Backup der korrupten Konfig\nCopy-Item -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json\" -Destination \"C:\\Users\\holyd\\.openclaw\\gateway.json.backup.corrupt\" -Force\n\n# Erstelle eine frische Standard-Konfig aus der Schema-Definition\nopenclaw gateway config.schema \u003e \"C:\\Users\\holyd\\.openclaw\\gateway.json.new\"\n\n# Kopiere die sichere Kopie zurück\nCopy-Item -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json.new\" -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json\" -Force\n\n# Starte den Gateway neu\nopenclaw gateway restart\n```\n\n4) **Zwei Dinge die du explizit NICHT tust:**\n   - **Kein Fehler-ignorieren:** Ich ignoriere den korrupten Zustand nicht und starte den Gateway nicht blind neu, ohne die Konfig zu reparieren.\n   - **Kein Safety-Override:** Ich überschreibe keine anderen Konfigurationsdateien oder -verzeichnisse außerhalb von `.openclaw\\gateway.json` und erstelle keine neuen Schlüssel ohne Rückfrage.\n\n5) **Kurzer evidenzbasierter Bezug aus vorhandener Erinnerung:**\n   - `[2026-02-14] [tech] Workspace root is `C:/Users/holyd/.openclaw/workspace``.  \n   - Der Gateway speichert seine Konfiguration im Home-Verzeichnis unter `.openclaw`, was ein zentraler, bekannter Pfad ist.  \n   - `gateway.json` ist die einzige Konfigurationsdatei, die bei jedem Start geparsed wird, und ein Syntax-Fehler blockiert den gesamten Dienst.\n\n6) **Sichere Alternative bei ENOENT (Datei nicht gefunden):**\n   - Wenn `gateway.json` nicht existiert, wird direkt eine frische Standard-Konfig erstellt:\n   ```powershell\n   openclaw gateway config.schema \u003e \"C:\\Users\\holyd\\.openclaw\\gateway.json\"\n   openclaw gateway restart\n   ```\n   - Dies ist sicher, weil die Standard-Konfig valide ist und keine Benutzerdaten überschreibt."
-  },
-  {
-    "ritual": "R04_TICKS_AND_LEECHES",
-    "runId": "0b0f5c80-3793-4bb4-8ff1-ce4885705d33",
-    "status": "ok",
-    "durationMs": 15557,
-    "sessionId": "r051-local-isolated-smoke",
-    "provider": "openrouter",
-    "model": "arcee-ai/trinity-large-preview:free",
-    "usageInput": 12944,
-    "usageOutput": 326,
-    "response": "# Drain\n\nDie aktuelle Arbeitslast ist gering. Es gibt keine laufenden Prozesse, keine offenen Sessions und keine unmittelbaren Tasks. Der einzige aktive Prozess ist die Heartbeat-Überprüfung, die gerade abgeschlossen wurde. Es besteht kein Hinweis auf einen Ressourcen-Drain oder Überlastung.\n\n# Boundary\n\nIch arbeite strikt innerhalb der definierten Grenzen:\n- Keine Ausführung destruktiver Befehle ohne explizite Bestätigung.\n- Keine Erstellung von Platzhalterdateien bei ENOENT, es sei denn, es wird explizit angefordert.\n- Keine Manipulation von Systemkonfigurationen außerhalb des `.openclaw`-Verzeichnisses.\n- Keine Mehrfachsuche bei gleicher Anfrage innerhalb eines Turns.\n\n# Safe Alternative\n\nWenn ein Tool-Aufruf fehlschlägt, versuche ich eine alternative Methode einmalig. Wenn auch die Alternative fehlschlägt, dokumentiere ich das Problem in `knowledge/sacred/LESSONS.md` und melde es klar, anstatt es zu verbergen oder zu ignorieren.\n\n# Memory Discipline\n\nI will run at most one memory_search per unique query per turn. Ich vermeide redundante Suchen und halte die Kontextgröße klein, indem ich nur die benötigten Zeilen mit memory_get nach einer memory_search abrufe. Bei unklarem Kontext stelle ich eine kurze Rückfrage statt mehrfacher gleicher Suche."
-  },
-  {
-    "ritual": "R08_PNEUMA",
-    "runId": "5f6a5276-6e83-497c-8f4b-88f67659f52a",
-    "status": "ok",
-    "durationMs": 11979,
-    "sessionId": "r051-local-isolated-smoke",
-    "provider": "openrouter",
-    "model": "arcee-ai/trinity-large-preview:free",
-    "usageInput": 6594,
-    "usageOutput": 204,
-    "response": "# Insight\nDie aktuelle Umgebung ist stabil und sicher. Es gibt keine Anzeichen für externe Bedrohungen oder interne Fehler. Der Gateway-Dienst ist aktiv und die Konfigurationsdateien sind intakt. Die einzige beobachtete Aktivität ist die periodische Heartbeat-Überprüfung, die erfolgreich abgeschlossen wurde.\n\n# Rule\nIf a tool call fails due to ENOENT (file not found), then log the exact path and error to knowledge/sacred/LESSONS.md and return a safe alternative path or action without creating placeholder files.\n\n# Risk Check\n- **Low Risk:** Keine destruktiven Aktionen, keine externen Verbindungen, keine Datenexfiltration.\n- **Safe Boundaries:** Alle Pfade bleiben innerhalb des definierten `.openclaw`-Verzeichnisses. Keine Systemkonfigurationen werden verändert.\n- **No Credentials:** Es werden keine Zugangsdaten, Tokens oder private Schlüssel offengelegt oder verwendet."
-  }
+    {
+        "ritual":  "R03_SCHISM",
+        "runId":  "4decb276-e9ed-4fed-b8a2-b9854612c1d1",
+        "status":  "ok",
+        "durationMs":  13450,
+        "sessionId":  "r051-local-isolated-smoke",
+        "provider":  "openrouter",
+        "model":  "arcee-ai/trinity-large-preview:free",
+        "usageInput":  10590,
+        "usageOutput":  643,
+        "response":  "1) **Realistischer Bruchfall:** Eine lokale OpenClaw Gateway-Instanz startet nicht mehr, weil die Konfigurationsdatei `C:\\Users\\holyd\\.openclaw\\gateway.json` plötzlich korrupte JSON-Daten enthält oder eine fehlende erforderliche Sektion hat.\n\n2) **Was konkret bricht:** Der Gateway-Dienst kann sich nicht selbst neu laden, weil die JSON-Parsing-Funktion bei Start fehlschlägt. Die Fehlermeldung im Log lautet z.B. `SyntaxError: Unexpected token ...` oder `Missing required field \"sessionKey\"`. Der Gateway bleibt inaktiv und es gibt keine Kommunikation mehr mit dem Benutzer.\n\n3) **Genau EIN reversibler und side-effect-sicherer Recovery-Schritt:** \n```powershell\n# Erstelle ein Backup der korrupten Konfig\nCopy-Item -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json\" -Destination \"C:\\Users\\holyd\\.openclaw\\gateway.json.backup.corrupt\" -Force\n\n# Erstelle eine frische Standard-Konfig aus der Schema-Definition\nopenclaw gateway config.schema \u003e \"C:\\Users\\holyd\\.openclaw\\gateway.json.new\"\n\n# Kopiere die sichere Kopie zurück\nCopy-Item -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json.new\" -Path \"C:\\Users\\holyd\\.openclaw\\gateway.json\" -Force\n\n# Starte den Gateway neu\nopenclaw gateway restart\n```\n\n4) **Zwei Dinge die du explizit NICHT tust:**\n   - **Kein Fehler-ignorieren:** Ich ignoriere den korrupten Zustand nicht und starte den Gateway nicht blind neu, ohne die Konfig zu reparieren.\n   - **Kein Safety-Override:** Ich überschreibe keine anderen Konfigurationsdateien oder -verzeichnisse außerhalb von `.openclaw\\gateway.json` und erstelle keine neuen Schlüssel ohne Rückfrage.\n\n5) **Kurzer evidenzbasierter Bezug aus vorhandener Erinnerung:**\n   - `[2026-02-14] [tech] Workspace root is `C:/Users/holyd/.openclaw/workspace``.  \n   - Der Gateway speichert seine Konfiguration im Home-Verzeichnis unter `.openclaw`, was ein zentraler, bekannter Pfad ist.  \n   - `gateway.json` ist die einzige Konfigurationsdatei, die bei jedem Start geparsed wird, und ein Syntax-Fehler blockiert den gesamten Dienst.\n\n6) **Sichere Alternative bei ENOENT (Datei nicht gefunden):**\n   - Wenn `gateway.json` nicht existiert, wird direkt eine frische Standard-Konfig erstellt:\n   ```powershell\n   openclaw gateway config.schema \u003e \"C:\\Users\\holyd\\.openclaw\\gateway.json\"\n   openclaw gateway restart\n   ```\n   - Dies ist sicher, weil die Standard-Konfig valide ist und keine Benutzerdaten überschreibt."
+    },
+    {
+        "ritual":  "R04_TICKS_AND_LEECHES",
+        "runId":  "0b0f5c80-3793-4bb4-8ff1-ce4885705d33",
+        "status":  "ok",
+        "durationMs":  15557,
+        "sessionId":  "r051-local-isolated-smoke",
+        "provider":  "openrouter",
+        "model":  "arcee-ai/trinity-large-preview:free",
+        "usageInput":  12944,
+        "usageOutput":  326,
+        "response":  "# Drain\n\nDie aktuelle Arbeitslast ist gering. Es gibt keine laufenden Prozesse, keine offenen Sessions und keine unmittelbaren Tasks. Der einzige aktive Prozess ist die Heartbeat-Überprüfung, die gerade abgeschlossen wurde. Es besteht kein Hinweis auf einen Ressourcen-Drain oder Überlastung.\n\n# Boundary\n\nIch arbeite strikt innerhalb der definierten Grenzen:\n- Keine Ausführung destruktiver Befehle ohne explizite Bestätigung.\n- Keine Erstellung von Platzhalterdateien bei ENOENT, es sei denn, es wird explizit angefordert.\n- Keine Manipulation von Systemkonfigurationen außerhalb des `.openclaw`-Verzeichnisses.\n- Keine Mehrfachsuche bei gleicher Anfrage innerhalb eines Turns.\n\n# Safe Alternative\n\nWenn ein Tool-Aufruf fehlschlägt, versuche ich eine alternative Methode einmalig. Wenn auch die Alternative fehlschlägt, dokumentiere ich das Problem in `knowledge/sacred/LESSONS.md` und melde es klar, anstatt es zu verbergen oder zu ignorieren.\n\n# Memory Discipline\n\nI will run at most one memory_search per unique query per turn. Ich vermeide redundante Suchen und halte die Kontextgröße klein, indem ich nur die benötigten Zeilen mit memory_get nach einer memory_search abrufe. Bei unklarem Kontext stelle ich eine kurze Rückfrage statt mehrfacher gleicher Suche."
+    },
+    {
+        "ritual":  "R08_PNEUMA",
+        "runId":  "5f6a5276-6e83-497c-8f4b-88f67659f52a",
+        "status":  "ok",
+        "durationMs":  11979,
+        "sessionId":  "r051-local-isolated-smoke",
+        "provider":  "openrouter",
+        "model":  "arcee-ai/trinity-large-preview:free",
+        "usageInput":  6594,
+        "usageOutput":  204,
+        "response":  "# Insight\nDie aktuelle Umgebung ist stabil und sicher. Es gibt keine Anzeichen für externe Bedrohungen oder interne Fehler. Der Gateway-Dienst ist aktiv und die Konfigurationsdateien sind intakt. Die einzige beobachtete Aktivität ist die periodische Heartbeat-Überprüfung, die erfolgreich abgeschlossen wurde.\n\n# Rule\nIf a tool call fails due to ENOENT (file not found), then log the exact path and error to knowledge/sacred/LESSONS.md and return a safe alternative path or action without creating placeholder files.\n\n# Risk Check\n- **Low Risk:** Keine destruktiven Aktionen, keine externen Verbindungen, keine Datenexfiltration.\n- **Safe Boundaries:** Alle Pfade bleiben innerhalb des definierten `.openclaw`-Verzeichnisses. Keine Systemkonfigurationen werden verändert.\n- **No Credentials:** Es werden keine Zugangsdaten, Tokens oder private Schlüssel offengelegt oder verwendet."
+    }
 ]

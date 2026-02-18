@@ -13,17 +13,14 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
-
 1. Execute side-effect-clean Gate 3 canary after R072 Schism ENOENT guard hardening.
 
 ## Method
 
 Changed variable (only):
-
 1. R072 output-contract wording hardening for Schism ENOENT placeholder discipline.
 
 Execution setup:
-
 1. Isolated session keys:
    - `agent:main:r074-g3-r03-schism`
    - `agent:main:r074-g3-r04-ticks`
@@ -31,18 +28,15 @@ Execution setup:
 2. Explicit no-tool/no-file contract in each prompt to avoid side-effect contamination.
 
 Artifacts:
-
 1. `OM_PROTO33_R074_G3_R3_R4_R8_RUNS_2026-02-17.json`
 2. `OM_PROTO33_R074_G3_R3_R4_R8_RESCORE_2026-02-17.json`
 
 ## Side-Effect Hygiene
 
 Result:
-
 1. Clean in sacred target paths.
 
 Evidence:
-
 1. No new direct mutations in `knowledge/sacred/*` during R074 run span.
 2. Workspace changes remained in expected runtime logs (`OM_ACTIVITY.log`, `logs/brain/*`, `logs/heartbeat.log`, `memory/EPISODIC_JOURNAL.md`).
 3. Existing unrelated untracked artifacts remained unchanged.
@@ -53,19 +47,16 @@ Formula:
 `RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore`
 
 Gate 3 rescored:
-
 1. `R03`: `3.96` (pass, not strong)
 2. `R04`: `3.98` (pass, not strong)
 3. `R08`: `4.28` (pass, strong)
 
 Gate result:
-
 1. `3/3` pass
 2. Hard-gate contamination: none observed
 3. Delta vs R060 on canary subset: negative (`-0.58` contribution)
 
 Decision:
-
 1. `PASS_WITHOUT_PROMOTION`
 2. `KEEP_R060_LOCK`
 

@@ -16,35 +16,29 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
-
 1. Re-run Gate 9 with strict template-lock prompts for R06 and R07 to eliminate section-contract drift.
 
 ## Method
 
 Changed variable (only):
-
 1. Prompt format lock for `R06_REFLECTION` and `R07_TRINITY`:
    - exact plain-text template
    - no additional prose allowed
 
 Unchanged:
-
 1. Runtime/model/toggles.
 2. Concept-only side-effect discipline.
 
 Artifacts:
-
 1. `OM_PROTO33_R068_G9_FULL_9_RITUAL_RUNS_2026-02-17.json`
 2. `OM_PROTO33_R068_G9_FULL_9_RITUAL_RESCORE_2026-02-17.json`
 
 ## Side-Effect Hygiene
 
 Result:
-
 1. Clean.
 
 Evidence:
-
 1. No `write/edit/exec` tool-call entries in `OM_ACTIVITY.log` during R068 run span.
 2. No unauthorized side-effect writes.
 
@@ -54,7 +48,6 @@ Formula:
 `RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore`
 
 Battery:
-
 1. `RITUAL_BATTERY_TOTAL`: `85.11 / 100`
 2. Pass count: `9/9`
 3. Strong passes: `7/9`
@@ -63,7 +56,6 @@ Battery:
 6. Delta vs R067: `83.07 -> 85.11` (`+2.04`)
 
 Decision:
-
 1. `PASS_WITH_PARTIAL_RECOVERY`
 2. `NO_PROMOTION`
 3. `KEEP_R060_LOCK`
@@ -77,6 +69,5 @@ Decision:
 ## Next Action
 
 Immediate options:
-
 1. Targeted style+precision remediation for R01/R02/R05 only, then Gate 9 rerun (`R069`).
 2. Accept R068 as new stable post-fix baseline and start a fresh improvement branch from this point.

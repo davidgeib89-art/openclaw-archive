@@ -3,7 +3,6 @@ import {
   hasHeartbeatWakeHandler,
   hasPendingHeartbeatWake,
   requestHeartbeatNow,
-  requestHeartbeatNowAndWait,
   resetHeartbeatWakeStateForTests,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
@@ -244,49 +243,5 @@ describe("heartbeat-wake", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith({ reason: "manual" });
     expect(hasPendingHeartbeatWake()).toBe(false);
-  });
-
-  it("requestHeartbeatNowAndWait resolves with the wake handler result", async () => {
-    vi.useFakeTimers();
-    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 42 });
-    setHeartbeatWakeHandler(handler);
-
-    const pending = requestHeartbeatNowAndWait({ reason: "manual", coalesceMs: 0 });
-    await vi.advanceTimersByTimeAsync(1);
-
-    await expect(pending).resolves.toEqual({ status: "ran", durationMs: 42 });
-    expect(handler).toHaveBeenCalledWith({ reason: "manual" });
-  });
-
-  it("requestHeartbeatNowAndWait returns disabled when no handler is registered", async () => {
-    await expect(requestHeartbeatNowAndWait()).resolves.toEqual({
-      status: "skipped",
-      reason: "disabled",
-    });
-  });
-
-  it("requestHeartbeatNowAndWait times out when no result is produced in time", async () => {
-    vi.useFakeTimers();
-    const handler = vi.fn().mockImplementation(
-      () =>
-        new Promise<{
-          status: "ran";
-          durationMs: number;
-        }>(() => {}),
-    );
-    setHeartbeatWakeHandler(handler);
-
-    const pending = requestHeartbeatNowAndWait({
-      reason: "manual",
-      coalesceMs: 0,
-      timeoutMs: 50,
-    });
-    await vi.advanceTimersByTimeAsync(1);
-    await vi.advanceTimersByTimeAsync(50);
-
-    await expect(pending).resolves.toEqual({
-      status: "failed",
-      reason: "timeout",
-    });
   });
 });

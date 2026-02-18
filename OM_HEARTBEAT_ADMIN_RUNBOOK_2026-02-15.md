@@ -49,7 +49,6 @@ Get-Content C:\Users\holyd\.openclaw\workspace\logs\heartbeat.log -Tail 40
 Expected pattern: one `pulse` per minute only.
 
 7. Verify done criterion for `S1`:
-
 - Observe `1 pulse/min` for 30 minutes.
 - No multi-writer offset pattern (`:13/:15/:17/:20`) should appear.
 

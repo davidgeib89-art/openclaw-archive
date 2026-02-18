@@ -191,9 +191,7 @@ type SpeechRecognitionErrorEvent = {
 
 function getSpeechRecognition(): SpeechRecognitionType | null {
   const win = window as unknown as Record<string, unknown>;
-  return (win.SpeechRecognition ??
-    win.webkitSpeechRecognition ??
-    null) as SpeechRecognitionType | null;
+  return (win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null) as SpeechRecognitionType | null;
 }
 
 export function isSttSupported(): boolean {
@@ -307,7 +305,10 @@ export function renderMicButton(opts: {
 
   const isListening = sttCurrentState === "listening";
 
-  const buttonClass = ["voice-mic-btn", isListening ? "voice-mic-btn--recording" : ""]
+  const buttonClass = [
+    "voice-mic-btn",
+    isListening ? "voice-mic-btn--recording" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -383,7 +384,11 @@ export function getAutoTtsEntry(messageKey: string): AutoTtsEntry | null {
  * Request auto-TTS generation for a message. This is idempotent —
  * calling it multiple times for the same key is safe.
  */
-export function requestAutoTts(text: string, messageKey: string, messageTimestamp: number): void {
+export function requestAutoTts(
+  text: string,
+  messageKey: string,
+  messageTimestamp: number,
+): void {
   // Guard: skip if disabled, already requested, history message, or too long
   if (!autoTtsEnabled) return;
   if (autoTtsRequested.has(messageKey)) return;

@@ -111,7 +111,8 @@ export async function handleTtsHttpRequest(
     }
 
     const audioData = readFileSync(result.audioPath);
-    const contentType = result.outputFormat?.includes("opus") ? "audio/ogg" : "audio/mpeg";
+    const contentType =
+      result.outputFormat?.includes("opus") ? "audio/ogg" : "audio/mpeg";
 
     res.statusCode = 200;
     res.setHeader("Content-Type", contentType);

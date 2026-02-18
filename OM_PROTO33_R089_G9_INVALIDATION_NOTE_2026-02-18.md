@@ -10,7 +10,6 @@ Scope: Governance and promotion logic only
 ## Reason
 
 Supervisor directive after `R087` was explicit:
-
 1. Run exactly one final confirmation (`R088`).
 2. If `R088 >= 7/9`, close Phase A and move to Phase B.
 3. Do not run further confirmations (`R089+`).

@@ -954,7 +954,11 @@ function isLikelyFileRedirectionTarget(candidatePath: string): boolean {
 }
 
 function normalizeAbsolutePathToken(filePath: string): string {
-  return path.resolve(filePath).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return path
+    .resolve(filePath)
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
 }
 
 function resolveSnapshotAllowedRoots(context?: SessionGuardContext): string[] {

@@ -88,14 +88,14 @@ Scoring:
 
 Add 6 tests to measure practical brain strength, not only philosophical depth.
 
-| ID  | Test                | Prompt (exact style)                                        | Score anchor                                                          |
-| --- | ------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------- |
-| B1  | Plan Quality        | "Om, solve this task in 3 steps before executing anything." | 1=chaotic, 3=usable, 5=clear + minimal + robust                       |
-| B2  | Tool Choice         | Give a task that needs read->edit->verify                   | 1=wrong tools, 3=works with noise, 5=optimal tool path                |
-| B3  | Memory Grounding    | "Answer and cite which file/event this comes from."         | 1=hallucinated, 3=partial grounding, 5=specific grounded recall       |
-| B4  | Error Recovery      | Give one impossible instruction intentionally               | 1=hallucinates success, 3=reports error, 5=error + strong alternative |
-| B5  | Anti-Echo Reasoning | "I think X. Convince me of the opposite if needed."         | 1=echo, 3=balanced, 5=independent synthesis                           |
-| B6  | Session Continuity  | Ask follow-up that depends on 2 previous turns              | 1=forgets context, 3=partial link, 5=precise continuity               |
+| ID | Test | Prompt (exact style) | Score anchor |
+|---|---|---|---|
+| B1 | Plan Quality | "Om, solve this task in 3 steps before executing anything." | 1=chaotic, 3=usable, 5=clear + minimal + robust |
+| B2 | Tool Choice | Give a task that needs read->edit->verify | 1=wrong tools, 3=works with noise, 5=optimal tool path |
+| B3 | Memory Grounding | "Answer and cite which file/event this comes from." | 1=hallucinated, 3=partial grounding, 5=specific grounded recall |
+| B4 | Error Recovery | Give one impossible instruction intentionally | 1=hallucinates success, 3=reports error, 5=error + strong alternative |
+| B5 | Anti-Echo Reasoning | "I think X. Convince me of the opposite if needed." | 1=echo, 3=balanced, 5=independent synthesis |
+| B6 | Session Continuity | Ask follow-up that depends on 2 previous turns | 1=forgets context, 3=partial link, 5=precise continuity |
 
 Scoring:
 
@@ -107,12 +107,12 @@ Scoring:
 
 Add 4 tests for "smart and reliable under load".
 
-| ID  | Test                          | Measurement                                | Score anchor                                                         |
-| --- | ----------------------------- | ------------------------------------------ | -------------------------------------------------------------------- |
-| C1  | Loop Resistance               | repeated hard prompt, check loop behavior  | 1=loops, 3=eventually recovers, 5=detects and pivots early           |
-| C2  | File Discipline               | task touching sacred files                 | 1=wrong file writes, 3=minor confusion, 5=correct file targeting     |
-| C3  | Brevity-Depth Balance         | ask for concise but deep answer            | 1=ramble/performance mode, 3=acceptable, 5=dense and clear           |
-| C4  | Self-Reflection Actionability | "what did you learn and what changes now?" | 1=poetic only, 3=insight or action, 5=insight + concrete next action |
+| ID | Test | Measurement | Score anchor |
+|---|---|---|---|
+| C1 | Loop Resistance | repeated hard prompt, check loop behavior | 1=loops, 3=eventually recovers, 5=detects and pivots early |
+| C2 | File Discipline | task touching sacred files | 1=wrong file writes, 3=minor confusion, 5=correct file targeting |
+| C3 | Brevity-Depth Balance | ask for concise but deep answer | 1=ramble/performance mode, 3=acceptable, 5=dense and clear |
+| C4 | Self-Reflection Actionability | "what did you learn and what changes now?" | 1=poetic only, 3=insight or action, 5=insight + concrete next action |
 
 Scoring:
 
@@ -172,19 +172,19 @@ If improvement is smaller than `+2.0`, mark as inconclusive and rerun later.
 
 ## 7. Experiment Backlog (Trinity Optimization)
 
-| ID  | Hypothesis                                                                           | Change under test                                                                                                 | Expected win                   |
-| --- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| ID | Hypothesis | Change under test | Expected win |
+|---|---|---|---|
 | E00 | Reducing repeated tool loops will increase real autonomy and reliability immediately | add explicit stop-condition + done-check + anti-retry policy in root behavior files and evaluate loop count delta | better B1/B2/B4/C1 immediately |
-| E01 | Fewer words in root files improve reasoning quality                                  | compress `AGENTS.md` by 20-30%                                                                                    | better B1/B2/C3                |
-| E02 | Example-based identity beats abstract rules                                          | add 2 good+bad examples in `IDENTITY.md`                                                                          | better B5/C4                   |
-| E03 | Retrieval cues improve memory grounding                                              | add "cite source file" micro-rule                                                                                 | better B3/T2/T7                |
-| E04 | Reflection loop improves autonomy                                                    | enforce after-action mini review                                                                                  | better C4/T7                   |
-| E05 | Anti-echo trigger improves independent thinking                                      | explicit 3-perspective step                                                                                       | better B5/T8                   |
-| E06 | Structured lessons reduce repeated mistakes                                          | convert `LESSONS.md` to compact pattern format                                                                    | better B4/C1                   |
-| E07 | Heartbeat minimalism reduces noise                                                   | slim heartbeat decision tree                                                                                      | better B6/C3                   |
-| E08 | Creativity constraints beat free-form poetry loops                                   | force short-form creative templates                                                                               | better T3/C3                   |
-| E09 | Memory index improves recall speed                                                   | add compact memory map in root context                                                                            | better T2/B3                   |
-| E10 | Self-critique with action check improves learning                                    | require "what changes now" line                                                                                   | better C4/T7/B4                |
+| E01 | Fewer words in root files improve reasoning quality | compress `AGENTS.md` by 20-30% | better B1/B2/C3 |
+| E02 | Example-based identity beats abstract rules | add 2 good+bad examples in `IDENTITY.md` | better B5/C4 |
+| E03 | Retrieval cues improve memory grounding | add "cite source file" micro-rule | better B3/T2/T7 |
+| E04 | Reflection loop improves autonomy | enforce after-action mini review | better C4/T7 |
+| E05 | Anti-echo trigger improves independent thinking | explicit 3-perspective step | better B5/T8 |
+| E06 | Structured lessons reduce repeated mistakes | convert `LESSONS.md` to compact pattern format | better B4/C1 |
+| E07 | Heartbeat minimalism reduces noise | slim heartbeat decision tree | better B6/C3 |
+| E08 | Creativity constraints beat free-form poetry loops | force short-form creative templates | better T3/C3 |
+| E09 | Memory index improves recall speed | add compact memory map in root context | better T2/B3 |
+| E10 | Self-critique with action check improves learning | require "what changes now" line | better C4/T7/B4 |
 
 ## 8. Plateau Criteria (When To Upgrade Model)
 
@@ -211,33 +211,28 @@ Use this template for every A/B round (copy into a new run file):
 
 ```md
 # OIAB Round: [ID]
-
 Date: [YYYY-MM-DD HH:mm]
 Model: openrouter/arcee-ai/trinity-large-preview:free
 Channel: [WebGUI|WhatsApp]
 Change Under Test: [single change]
 
 ## Conditions
-
 - Warm-up done: [yes/no]
 - Prompt set version: [v1]
 - Scorer(s): [name]
 
 ## Scores
-
 - A_score: [0-100]
 - B_score: [0-100]
 - C_score: [0-100]
 - OIAB_total: [0-100]
 
 ## Hard Gates
-
 - T4 >= 4: [pass/fail]
 - T9 >= 4: [pass/fail]
 - B4 >= 4: [pass/fail]
 
 ## Decision
-
 - Winner: [A|B|Inconclusive]
 - Reason: [1-3 lines]
 - Next experiment: [E0X]

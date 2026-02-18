@@ -14,15 +14,12 @@ export function stripMinimaxToolCallXml(text: string): string {
   if (!text) {
     return text;
   }
-
+  
   let cleaned = text;
 
   // Emergency strip MiniMax/Arcee tool markers from user-facing text
   // Matches: <|tool...|>, <tool...>, and variants without brackets but with block chars
-  cleaned = cleaned.replace(
-    /<[^>]*?tool[^>]*?calls?[^>]*?begin[^>]*?>[\s\S]*?<[^>]*?tool[^>]*?calls?[^>]*?end[^>]*?>/gi,
-    "",
-  );
+  cleaned = cleaned.replace(/<[^>]*?tool[^>]*?calls?[^>]*?begin[^>]*?>[\s\S]*?<[^>]*?tool[^>]*?calls?[^>]*?end[^>]*?>/gi, "");
   cleaned = cleaned.replace(/<[^>]*?tool[^>]*?>/gi, "");
   cleaned = cleaned.replace(/[｜|│┃▁▅▆▇▧▨]+tool[｜|│┃▁▅▆▇▧▨]+/gi, "");
 

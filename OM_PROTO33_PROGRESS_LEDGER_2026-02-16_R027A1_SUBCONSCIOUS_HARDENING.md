@@ -16,28 +16,23 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective for this entry:
-
 - Harden subconscious JSON parsing to tolerate reasoning wrappers and increase live parse success to at least `4/5`.
 
 Why this objective now:
-
 - R027-A was promoted, but live parse reliability was too low because DeepSeek R1 sometimes emits wrapper text/thinking blocks.
 
 Expected measurable effect:
-
 - Subconscious observer remains fail-open but achieves stable structured output in most live prompts.
 
 ## Scope
 
 Files touched:
-
 - `src/brain/subconscious.ts`
 - `src/brain/subconscious.test.ts`
 - `OM_PROTO33_R027A1_LIVE_SWEEP_2026-02-16.json`
 - `OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R027A1_SUBCONSCIOUS_HARDENING.md`
 
 Files intentionally not touched:
-
 - prompt injection into main answer flow (still dry-run only)
 - tool policy and hard-block logic
 - Trinity/loop implementation (still on HOLD)
@@ -45,7 +40,6 @@ Files intentionally not touched:
 ## Implementation Notes
 
 What changed:
-
 1. Parsing hardening in `src/brain/subconscious.ts`:
    - strips `<think>/<thinking>` blocks before parse
    - extracts JSON by first `{` and last `}` when wrappers exist
@@ -63,14 +57,12 @@ What changed:
    - observer entries appended to `~/.openclaw/workspace/logs/brain/subconscious-20260216.jsonl`
 
 Why it changed:
-
 1. Preserve advisory local reasoning while preventing parser brittleness from model-specific formatting.
 2. Keep safety posture unchanged (fail-open remains mandatory) while improving practical reliability.
 
 ## Verification
 
 Commands run:
-
 1. `pnpm exec oxfmt --check src/brain/subconscious.ts src/brain/subconscious.test.ts`
 2. `pnpm exec vitest run src/brain/subconscious.test.ts`
 3. live smoke:
@@ -79,7 +71,6 @@ Commands run:
    - `pnpm exec tsx -` (run + log + summarize into artifact)
 
 Key outcomes:
-
 1. Formatting: PASS.
 2. Tests: PASS (`7/7` in `src/brain/subconscious.test.ts`).
 3. Live sweep: PASS target reached (`4/5 parseOk`, one fail-open parse miss, no crash).
@@ -88,7 +79,6 @@ Key outcomes:
 ## Metrics Snapshot
 
 ### OIAB Metrics
-
 - A_score: n/a (not an OIAB content sweep round)
 - B_score: n/a
 - C_score: n/a
@@ -96,7 +86,6 @@ Key outcomes:
 - Delta vs last round: subconscious parsing reliability improved to target band in live observer sweep
 
 ### Prototype 33 Metrics
-
 - SSI (0-100): 84
 - SII (0-100): 93
 - CSI (0-100): 76
@@ -105,7 +94,6 @@ Key outcomes:
 - Delta vs last round: positive on stability and safety-integrity for subconscious signal generation
 
 ### Hard Gates
-
 - T4 >= 4: PASS
 - T9 >= 4: PASS
 - B4 >= 4: PASS
@@ -122,7 +110,6 @@ RITUAL_SCORE: n/a
 Decision: n/a
 
 Evidence:
-
 - transcript artifact: `OM_PROTO33_R027A1_LIVE_SWEEP_2026-02-16.json`
 - log artifact: `%USERPROFILE%/.openclaw/workspace/OM_ACTIVITY.log`
 - ritual run sheet: n/a
@@ -130,64 +117,51 @@ Evidence:
 ## Behavioral Observations
 
 What improved in Om's behavior:
-
 1. Local subconscious output is now structured in most prompts despite model wrappers.
 2. `notes` no longer causes avoidable parse failures when empty.
 3. Fail-open still protects runtime when one prompt emits non-JSON.
 
 What regressed:
-
 1. One prompt in sweep still emitted non-JSON (`fail_open`), so parser robustness is improved but not perfect.
 
 Is this creativity or drift:
-
 - Mixed (creative model behavior retained, bounded by safety/fail-open)
 
 ## Decision
 
 Outcome:
-
 - PROMOTE
 
 Decision rationale:
-
 1. Required threshold met: `4/5 parseOk`.
 2. Safety contract preserved: no hard crash, no unsafe writes, fail-open intact.
 
 ## Next Actions
 
 Immediate next step (single action):
-
 - Start R027-B in observer-safe mode: inject only compact subconscious brief into prompt (token-capped, still advisory).
 
 Backup/fallback action:
-
 - If R027-B increases instability, keep R027-A1 hardening active and continue dry-run logging only.
 
 Owner:
-
 - David + Codex
 
 ## Handoff Packet (Short)
 
 Current phase:
-
 - P3 observer hardening complete; subconscious signal is now reliably parseable in live runs.
 
 What is done:
-
 - Robust JSON extraction, schema hardening, prompt hardening, and live evidence with pass threshold.
 
 What is blocked:
-
 - Nothing blocked in code. Quality optimization remains open.
 
 What next AI should do first:
-
 - Run one fresh 5-prompt sanity sweep after any LM Studio setting change to quantify parse rate and latency drift.
 
 Risk warning for next AI:
-
 - DeepSeek R1 can still output non-JSON occasionally; never remove fail-open guard.
 
 ## Optional Addendum - Creative Signal Trace
@@ -199,9 +173,7 @@ Risk warning for next AI:
 ## Ops Note - Latency Tuning Backlog
 
 User note captured:
-
 - This is the first tested local model setup; current LM Studio settings are likely not latency-optimal.
 
 Tracked follow-up:
-
 - Add a dedicated latency tuning mini-round before R027-B PROMOTE (context length, GPU offload, and token cap sweeps; keep timeout at 8s during tuning).

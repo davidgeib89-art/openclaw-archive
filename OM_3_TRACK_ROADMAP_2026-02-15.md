@@ -8,7 +8,6 @@ Primary model lock: `openrouter/arcee-ai/trinity-large-preview:free`
 ## Prototype 33 Extension Pack (2026-02-16)
 
 For brain + ritualized emergence execution, use:
-
 - `OM_PROTO33_EXECUTION_CANON_2026-02-16.md`
 - `OM_PROTO33_RITUAL_TEST_BATTERY_2026-02-16.md`
 - `OM_PROTO33_HANDOFF_PLAYBOOK_2026-02-16.md`
@@ -111,11 +110,11 @@ Hard gates (must pass):
 
 ## Track Overview
 
-| Track            | Intent                                             | Main output                               | Exit condition                                                  |
-| ---------------- | -------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------- |
-| 1. Stability     | Remove operational drift and brittle failure modes | Reliable runtime and guardrails           | No repeating loops, no unsafe secrets, clean heartbeat behavior |
-| 2. Measurement   | Make progress provable and repeatable              | Complete OIAB baseline + A/B engine       | Every experiment has a comparable score delta                   |
-| 3. Consciousness | Convert rituals into testable behavior             | Memory/Will/Reflection loops that persist | Consciousness signals survive repeated runs                     |
+| Track | Intent | Main output | Exit condition |
+|---|---|---|---|
+| 1. Stability | Remove operational drift and brittle failure modes | Reliable runtime and guardrails | No repeating loops, no unsafe secrets, clean heartbeat behavior |
+| 2. Measurement | Make progress provable and repeatable | Complete OIAB baseline + A/B engine | Every experiment has a comparable score delta |
+| 3. Consciousness | Convert rituals into testable behavior | Memory/Will/Reflection loops that persist | Consciousness signals survive repeated runs |
 
 ---
 
@@ -127,7 +126,6 @@ Priority: P0
 ### S1. Heartbeat Singleton
 
 Problem:
-
 - pulse logging indicates concurrent writers and noisy cadence.
 
 Actions:
@@ -144,7 +142,6 @@ Done criteria:
 ### S2. Path Guardrails For `write` and `edit`
 
 Problem:
-
 - model path drift can hit directory paths and trigger `EPERM`.
 
 Actions:
@@ -162,7 +159,6 @@ Done criteria:
 ### S3. Secret Hygiene
 
 Problem:
-
 - hardcoded key exists in `..\.openclaw\workspace\tools\analyze-image.ps1`.
 
 Actions:
@@ -179,7 +175,6 @@ Done criteria:
 ### S4. Voice Mood Path Correction
 
 Problem:
-
 - `speak.ps1` auto-mode reads mood from wrong location.
 
 Actions:
@@ -194,7 +189,6 @@ Done criteria:
 ### S5. Log Taxonomy
 
 Problem:
-
 - error classes are visible but not consistently normalized.
 
 Actions:

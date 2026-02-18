@@ -2,11 +2,12 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+
+import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { MemorySearchConfig } from "../config/types.tools.js";
-import type { MemoryProviderStatus, MemorySyncProgressUpdate } from "../memory/types.js";
-import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { getMemorySearchManager } from "../memory/index.js";
+import type { MemoryProviderStatus, MemorySyncProgressUpdate } from "../memory/types.js";
 
 const DEFAULT_BRAIN_LOG_SOURCE = "proto33-p3.memory-ingestion";
 const DEFAULT_SYNC_REASON = "brain.memory.ingestion";
@@ -60,10 +61,7 @@ type IngestionParams = {
 };
 
 function normalizeRelativePath(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/^[./\\]+/, "")
-    .replace(/\\/g, "/");
+  const normalized = value.trim().replace(/^[./\\]+/, "").replace(/\\/g, "/");
   return normalized.replace(/\/{2,}/g, "/");
 }
 
@@ -182,10 +180,10 @@ function escapeLike(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-function countIndexedSacredRows(params: { dbPath?: string; sacredRelativePath: string }): {
-  files: number;
-  chunks: number;
-} {
+function countIndexedSacredRows(params: {
+  dbPath?: string;
+  sacredRelativePath: string;
+}): { files: number; chunks: number } {
   if (!params.dbPath || !fsSync.existsSync(params.dbPath)) {
     return { files: 0, chunks: 0 };
   }
@@ -249,9 +247,7 @@ function resolveStatusFields(status: MemoryProviderStatus | undefined): {
   };
 }
 
-export async function ingestSacredMemory(
-  params: IngestionParams,
-): Promise<BrainMemoryIngestionResult> {
+export async function ingestSacredMemory(params: IngestionParams): Promise<BrainMemoryIngestionResult> {
   const now = params.now ?? (() => new Date());
   const startedAt = now();
   const reason = params.reason?.trim() || DEFAULT_SYNC_REASON;

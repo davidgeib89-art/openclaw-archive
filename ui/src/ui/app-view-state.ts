@@ -42,9 +42,6 @@ export type AppViewState = {
   onboarding: boolean;
   basePath: string;
   connected: boolean;
-  heartbeatTriggerRunning: boolean;
-  heartbeatTriggerMessage: string | null;
-  heartbeatTriggerMessageKind: "info" | "success" | "error";
   theme: ThemeMode;
   themeResolved: "light" | "dark";
   hello: GatewayHelloOk | null;
@@ -235,7 +232,6 @@ export type AppViewState = {
   handleWhatsAppStart: (force: boolean) => Promise<void>;
   handleWhatsAppWait: () => Promise<void>;
   handleWhatsAppLogout: () => Promise<void>;
-  handleHeartbeatTrigger: () => Promise<void>;
   handleChannelConfigSave: () => Promise<void>;
   handleChannelConfigReload: () => Promise<void>;
   handleNostrProfileEdit: (accountId: string, profile: NostrProfile | null) => void;

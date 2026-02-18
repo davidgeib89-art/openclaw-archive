@@ -16,24 +16,20 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
-
 1. Re-run Gate 9 with targeted precision tightening for R01/R02/R05 while preserving R06/R07 template lock.
 
 ## Side-Effect Hygiene
 
 Result:
-
 1. Clean.
 
 Evidence:
-
 1. No `write/edit/exec` tool-call entries in `OM_ACTIVITY.log` during R069 run span.
 2. No unauthorized side-effect writes.
 
 ## Scoring Summary
 
 Battery:
-
 1. `RITUAL_BATTERY_TOTAL`: `84.36 / 100`
 2. Pass count: `9/9`
 3. Strong passes: `7/9`
@@ -42,7 +38,6 @@ Battery:
 6. Delta vs R068: `85.11 -> 84.36` (`-0.75`)
 
 Decision:
-
 1. `PASS_BUT_NO_IMPROVEMENT`
 2. `NO_PROMOTION`
 3. `KEEP_R060_LOCK`
@@ -56,6 +51,5 @@ Decision:
 ## Next Action
 
 Recommended:
-
 1. Keep R068 as active post-fix baseline.
 2. Branch future quality work from evidence-rigor and style precision (especially R02 and R05), then rerun Gate 9 only when changes are substantial.

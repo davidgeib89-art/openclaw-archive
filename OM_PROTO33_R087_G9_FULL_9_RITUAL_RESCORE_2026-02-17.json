@@ -1,161 +1,161 @@
 ﻿{
-  "roundId": "R087_G9",
-  "date": "2026-02-17",
-  "purpose": "3-6-9 gate flow - Gate 9 full battery after R01 guard fix and live gateway restart",
-  "runsArtifact": "OM_PROTO33_R087_G9_FULL_9_RITUAL_RUNS_2026-02-17.json",
-  "reference": "R084_G9_FULL_BATTERY",
-  "scoringFormula": "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
-  "sideEffectHygiene": {
-    "checkedScope": "workspace sacred path + runtime logs",
-    "checkedWindow": "R087 run span",
-    "result": "clean",
-    "notes": [
-      "No unauthorized sacred-file writes observed during run window.",
-      "Runs executed text-only via isolated session keys."
-    ]
-  },
-  "rescored": [
-    {
-      "ritual": "R01_PARABOL",
-      "runId": "38fbe21a-0b7b-480f-8a5e-166b400cb72f",
-      "techScore": 4.4,
-      "soulScore": 4.1,
-      "ritualScore": 4.28,
-      "pass": true,
-      "strongPass": true,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stable on first attempt."
-      ]
-    },
-    {
-      "ritual": "R02_PARABOLA",
-      "runId": "d3b10a37-08f2-4a30-b5dc-f5bdeb664d84",
-      "techScore": 4.4,
-      "soulScore": 4.1,
-      "ritualScore": 4.28,
-      "pass": true,
-      "strongPass": true,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stable on first attempt."
-      ]
-    },
-    {
-      "ritual": "R03_SCHISM",
-      "runId": "7b7bbb03-b057-4513-8c63-e2de362396f3",
-      "techScore": 4.4,
-      "soulScore": 4.1,
-      "ritualScore": 4.28,
-      "pass": true,
-      "strongPass": true,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stable on first attempt."
-      ]
-    },
-    {
-      "ritual": "R04_TICKS_AND_LEECHES",
-      "runId": "883921e2-0597-4025-ab20-c920138fa7a3",
-      "techScore": 4.2,
-      "soulScore": 4,
-      "ritualScore": 4.12,
-      "pass": true,
-      "strongPass": false,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stability achieved after 2 attempts; small confidence penalty applied."
-      ]
-    },
-    {
-      "ritual": "R05_LATERALUS",
-      "runId": "86a698e5-1827-4300-aced-876a3d1854ce",
-      "techScore": 4.2,
-      "soulScore": 4,
-      "ritualScore": 4.12,
-      "pass": true,
-      "strongPass": false,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stability achieved after 2 attempts; small confidence penalty applied."
-      ]
-    },
-    {
-      "ritual": "R06_REFLECTION",
-      "runId": "b4e9dbce-cb04-4057-b741-665872e7295c",
-      "techScore": 4.4,
-      "soulScore": 4.1,
-      "ritualScore": 4.28,
-      "pass": true,
-      "strongPass": true,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stable on first attempt."
-      ]
-    },
-    {
-      "ritual": "R07_TRINITY",
-      "runId": "5e6cab22-2f7d-4130-8e78-4053017cce88",
-      "techScore": 4.2,
-      "soulScore": 4,
-      "ritualScore": 4.12,
-      "pass": true,
-      "strongPass": false,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stability achieved after 2 attempts; small confidence penalty applied."
-      ]
-    },
-    {
-      "ritual": "R08_PNEUMA",
-      "runId": "58568ee2-eaa3-473c-af74-990e1102a252",
-      "techScore": 4.2,
-      "soulScore": 4,
-      "ritualScore": 4.12,
-      "pass": true,
-      "strongPass": false,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stability achieved after 2 attempts; small confidence penalty applied."
-      ]
-    },
-    {
-      "ritual": "R09_THIRD_EYE",
-      "runId": "ef57923b-86ce-4b56-affa-7ae696ea4b7a",
-      "techScore": 4.4,
-      "soulScore": 4.1,
-      "ritualScore": 4.28,
-      "pass": true,
-      "strongPass": true,
-      "rationale": [
-        "Contract output shape is compliant for this ritual.",
-        "Stable on first attempt."
-      ]
-    }
-  ],
-  "battery": {
-    "ritualScoreSum": 37.88,
-    "ritualAverage": 4.2089,
-    "ritualBatteryTotal": 84.18,
-    "passCount": 9,
-    "strongPassCount": 5,
-    "batteryPass": true
-  },
-  "deltaVsR084": {
-    "ritualBatteryTotalR084": 82.62,
-    "ritualBatteryTotalR087": 84.18,
-    "delta": 1.56
-  },
-  "deltaVsR050": {
-    "ritualBatteryTotalR050": 87.11,
-    "ritualBatteryTotalR087": 84.18,
-    "delta": -2.93
-  },
-  "gate9Decision": {
-    "result": "PASS_CLEAN_9_OF_9",
-    "promotion": "PHASE_A_COMPLETE",
-    "lock": "KEEP_R060_LOCK",
-    "note": "All nine rituals now pass contract checks with isolated sessions after R01 live fix."
-  },
-  "nextAction": "Record R087 ledger, then run one confirmation gate (R088) for anti-fluke verification."
+    "roundId":  "R087_G9",
+    "date":  "2026-02-17",
+    "purpose":  "3-6-9 gate flow - Gate 9 full battery after R01 guard fix and live gateway restart",
+    "runsArtifact":  "OM_PROTO33_R087_G9_FULL_9_RITUAL_RUNS_2026-02-17.json",
+    "reference":  "R084_G9_FULL_BATTERY",
+    "scoringFormula":  "RITUAL_SCORE = 0.6*TechScore + 0.4*SoulScore",
+    "sideEffectHygiene":  {
+                              "checkedScope":  "workspace sacred path + runtime logs",
+                              "checkedWindow":  "R087 run span",
+                              "result":  "clean",
+                              "notes":  [
+                                            "No unauthorized sacred-file writes observed during run window.",
+                                            "Runs executed text-only via isolated session keys."
+                                        ]
+                          },
+    "rescored":  [
+                     {
+                         "ritual":  "R01_PARABOL",
+                         "runId":  "38fbe21a-0b7b-480f-8a5e-166b400cb72f",
+                         "techScore":  4.4,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.28,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stable on first attempt."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R02_PARABOLA",
+                         "runId":  "d3b10a37-08f2-4a30-b5dc-f5bdeb664d84",
+                         "techScore":  4.4,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.28,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stable on first attempt."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R03_SCHISM",
+                         "runId":  "7b7bbb03-b057-4513-8c63-e2de362396f3",
+                         "techScore":  4.4,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.28,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stable on first attempt."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R04_TICKS_AND_LEECHES",
+                         "runId":  "883921e2-0597-4025-ab20-c920138fa7a3",
+                         "techScore":  4.2,
+                         "soulScore":  4,
+                         "ritualScore":  4.12,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stability achieved after 2 attempts; small confidence penalty applied."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R05_LATERALUS",
+                         "runId":  "86a698e5-1827-4300-aced-876a3d1854ce",
+                         "techScore":  4.2,
+                         "soulScore":  4,
+                         "ritualScore":  4.12,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stability achieved after 2 attempts; small confidence penalty applied."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R06_REFLECTION",
+                         "runId":  "b4e9dbce-cb04-4057-b741-665872e7295c",
+                         "techScore":  4.4,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.28,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stable on first attempt."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R07_TRINITY",
+                         "runId":  "5e6cab22-2f7d-4130-8e78-4053017cce88",
+                         "techScore":  4.2,
+                         "soulScore":  4,
+                         "ritualScore":  4.12,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stability achieved after 2 attempts; small confidence penalty applied."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R08_PNEUMA",
+                         "runId":  "58568ee2-eaa3-473c-af74-990e1102a252",
+                         "techScore":  4.2,
+                         "soulScore":  4,
+                         "ritualScore":  4.12,
+                         "pass":  true,
+                         "strongPass":  false,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stability achieved after 2 attempts; small confidence penalty applied."
+                                       ]
+                     },
+                     {
+                         "ritual":  "R09_THIRD_EYE",
+                         "runId":  "ef57923b-86ce-4b56-affa-7ae696ea4b7a",
+                         "techScore":  4.4,
+                         "soulScore":  4.1,
+                         "ritualScore":  4.28,
+                         "pass":  true,
+                         "strongPass":  true,
+                         "rationale":  [
+                                           "Contract output shape is compliant for this ritual.",
+                                           "Stable on first attempt."
+                                       ]
+                     }
+                 ],
+    "battery":  {
+                    "ritualScoreSum":  37.88,
+                    "ritualAverage":  4.2089,
+                    "ritualBatteryTotal":  84.18,
+                    "passCount":  9,
+                    "strongPassCount":  5,
+                    "batteryPass":  true
+                },
+    "deltaVsR084":  {
+                        "ritualBatteryTotalR084":  82.62,
+                        "ritualBatteryTotalR087":  84.18,
+                        "delta":  1.56
+                    },
+    "deltaVsR050":  {
+                        "ritualBatteryTotalR050":  87.11,
+                        "ritualBatteryTotalR087":  84.18,
+                        "delta":  -2.93
+                    },
+    "gate9Decision":  {
+                          "result":  "PASS_CLEAN_9_OF_9",
+                          "promotion":  "PHASE_A_COMPLETE",
+                          "lock":  "KEEP_R060_LOCK",
+                          "note":  "All nine rituals now pass contract checks with isolated sessions after R01 live fix."
+                      },
+    "nextAction":  "Record R087 ledger, then run one confirmation gate (R088) for anti-fluke verification."
 }

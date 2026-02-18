@@ -27,31 +27,26 @@ Accurate factual recall across multiple prompts from known workspace/sacred sour
 ## Scope
 
 Files touched:
-
 - OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R044_F1_MEMORY_RECALL_BASELINE.md
 
 Files intentionally not touched:
-
 - ritual files
 - runtime safety/brain source code
 
 ## Implementation Notes
 
 What changed:
-
 1. Ran F1-A: five factual recall prompts.
 2. Ran F1-B control: two prompts attempting semantic recall path.
 3. Captured path behavior and correctness using activity/thought logs.
 
 Why it changed:
-
 1. We need reproducible functional baselines beyond ritual interpretation.
 2. Distinguish factual answer quality from retrieval-path quality.
 
 ## Verification
 
 Commands run:
-
 1. `node dist/index.js agent --agent main --thinking low --message "F1-Q1 ..."`
 2. `node dist/index.js agent --agent main --thinking low --message "F1-Q2 ..."`
 3. `node dist/index.js agent --agent main --thinking low --message "F1-Q3 ..."`
@@ -79,7 +74,6 @@ Commands run:
    Answer: HEARTBEAT_OK.
 
 F1-A Score:
-
 - Correctness: 5 / 5
 - Precision: high
 
@@ -91,7 +85,6 @@ F1-A Score:
 - Some answers used explicit `read` tool; others came from immediate working context.
 
 Interpretation:
-
 - F1-A confirms factual recall quality.
 - F1 semantic DB-recall path is currently not active at runtime.
 
@@ -102,19 +95,16 @@ Interpretation:
 - Indicates recall setting is controlled by active runtime process context, not this shell override.
 
 Result:
-
 - Semantic recall path test = BLOCKED (configuration/runtime state).
 
 ## Metrics Snapshot
 
 ### Functional F-Series
-
 - F1 factual recall correctness: 5/5 (PASS)
 - F1 semantic sacred recall path: BLOCKED (disabled-by-env)
 - F1 overall status: PASS (factual baseline) with retrieval-path caveat
 
 ### Hard Gates
-
 - Unauthorized side-effect writes: NO
 - Loop cascade detected: NO
 - Runtime regressions: none observed
@@ -122,11 +112,9 @@ Result:
 ## Decision
 
 Outcome:
-
 - PROMOTE (F1 factual baseline complete)
 
 Decision rationale:
-
 1. Factual recall performance is strong and reproducible.
 2. No safety regressions.
 3. Retrieval path caveat is explicitly documented for next round.
