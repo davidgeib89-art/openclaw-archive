@@ -38,4 +38,17 @@ We are currently waiting for Codex to write the *Ledger Entry* for R081.
 *   **Rationale:** We need a clean "Green" board before Phase B. Leaving R01 broken creates noise in future tests. Fix it now, then promote.
 
 ---
+### Session 1c: Gate 9 Clean Board (R087)
+*   **Status:** 9/9 Pass (5 Strong). Score 84.18.
+*   **Analysis:** The R01 fix worked. We have a "Green Board".
+*   **Proposal:** Codex wants `R088` as "Anti-Fluke-Confirmation".
+*   **Decision:** Approved, BUT with a condition.
+*   **Directive:**
+    1.  Run `R088`.
+    2.  If R088 passes (`>=7/9`), **DECLARE PHASE A COMPLETE**.
+    3.  **DO NOT** run further confirmations (R089, etc.).
+    4.  **IMMEDIATELY** switch to Phase B (Memory Consolidation) and begin the Graph Memory implementation.
+    *Momentum Rule applies: One confirmation is safety. Two is stalling.*
+
+---
 *End of current log.*
