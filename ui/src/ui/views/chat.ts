@@ -68,6 +68,10 @@ export type ChatProps = {
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
   onNewSession: () => void;
+  heartbeatTriggerRunning?: boolean;
+  heartbeatTriggerMessage?: string | null;
+  heartbeatTriggerMessageKind?: "info" | "success" | "error";
+  onHeartbeatTrigger?: () => void;
   onOpenSidebar?: (content: string) => void;
   onCloseSidebar?: () => void;
   onSplitRatioChange?: (ratio: number) => void;
@@ -463,6 +467,24 @@ export function renderChat(props: ChatProps) {
               ${canAbort ? "Stop" : "New session"}
             </button>
             <button
+              class="btn btn--icon chat-heartbeat"
+              type="button"
+              ?disabled=${!props.connected || props.heartbeatTriggerRunning}
+              @click=${() => props.onHeartbeatTrigger?.()}
+              title=${props.heartbeatTriggerRunning
+                ? "Heartbeat running..."
+                : "Trigger heartbeat now"}
+              aria-label=${props.heartbeatTriggerRunning
+                ? "Heartbeat running"
+                : "Trigger heartbeat now"}
+            >
+              ${
+                props.heartbeatTriggerRunning
+                  ? html`<span class="chat-heartbeat__loading">...</span>`
+                  : icons.heart
+              }
+            </button>
+            <button
               class="btn primary"
               ?disabled=${!props.connected}
               @click=${props.onSend}
@@ -472,6 +494,17 @@ export function renderChat(props: ChatProps) {
           </div>
         </div>
       </div>
+      ${
+        props.heartbeatTriggerMessage
+          ? html`<div
+              class="chat-heartbeat-status chat-heartbeat-status--${props.heartbeatTriggerMessageKind ?? "info"}"
+              role="status"
+              aria-live="polite"
+            >
+              ${props.heartbeatTriggerMessage}
+            </div>`
+          : nothing
+      }
     </section>
   `;
 }

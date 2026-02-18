@@ -259,7 +259,7 @@ export function createOpenClawCodingTools(options?: {
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
   const workspaceRoot = options?.workspaceDir ?? process.cwd();
   const autonomousMutationBudget =
-    options?.isHeartbeatRun && isSandboxModeEnabled() ? { remaining: 1, limit: 1 } : undefined;
+    options?.isHeartbeatRun && isSandboxModeEnabled() ? { remaining: 3, limit: 3 } : undefined;
   const applyPatchConfig = options?.config?.tools?.exec?.applyPatch;
   const applyPatchEnabled =
     !!applyPatchConfig?.enabled &&

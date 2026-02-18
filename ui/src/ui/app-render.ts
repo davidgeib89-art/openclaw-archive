@@ -137,33 +137,6 @@ export function renderApp(state: AppViewState) {
             <span>Health</span>
             <span class="mono">${state.connected ? "OK" : "Offline"}</span>
           </div>
-          <button
-            class="heartbeat-trigger"
-            type="button"
-            ?disabled=${state.heartbeatTriggerRunning}
-            @click=${() => void state.handleHeartbeatTrigger()}
-            title=${state.heartbeatTriggerRunning
-              ? "Heartbeat running..."
-              : "Trigger heartbeat now"}
-            aria-label=${state.heartbeatTriggerRunning
-              ? "Heartbeat running"
-              : "Trigger heartbeat now"}
-          >
-            <span class="heartbeat-trigger__icon" aria-hidden="true"
-              >${state.heartbeatTriggerRunning ? "..." : "💓"}</span
-            >
-          </button>
-          ${
-            state.heartbeatTriggerMessage
-              ? html`<div
-                  class="pill heartbeat-pill heartbeat-pill--${state.heartbeatTriggerMessageKind}"
-                  role="status"
-                  aria-live="polite"
-                >
-                  ${state.heartbeatTriggerMessage}
-                </div>`
-              : nothing
-          }
           ${renderThemeToggle(state)}
         </div>
       </header>
@@ -872,6 +845,10 @@ export function renderApp(state: AppViewState) {
                 onQueueRemove: (id) => state.removeQueuedMessage(id),
                 onNewSession: () =>
                   void resetChatSession(state as unknown as Parameters<typeof resetChatSession>[0]),
+                heartbeatTriggerRunning: state.heartbeatTriggerRunning,
+                heartbeatTriggerMessage: state.heartbeatTriggerMessage,
+                heartbeatTriggerMessageKind: state.heartbeatTriggerMessageKind,
+                onHeartbeatTrigger: () => void state.handleHeartbeatTrigger(),
                 showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
                 onScrollToBottom: () => state.scrollToBottom(),
                 // Sidebar props for tool output viewing

@@ -155,6 +155,27 @@ describe("chat view", () => {
     expect(container.textContent).not.toContain("Stop");
   });
 
+  it("renders heartbeat button next to compose controls", () => {
+    const container = document.createElement("div");
+    const onHeartbeatTrigger = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          onHeartbeatTrigger,
+          heartbeatTriggerRunning: false,
+        }),
+      ),
+      container,
+    );
+
+    const heartbeatButton = container.querySelector(
+      'button.chat-heartbeat[aria-label="Trigger heartbeat now"]',
+    ) as HTMLButtonElement | null;
+    expect(heartbeatButton).not.toBeNull();
+    heartbeatButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onHeartbeatTrigger).toHaveBeenCalledTimes(1);
+  });
+
   it("renders thought stream summary entries", () => {
     const container = document.createElement("div");
     render(
