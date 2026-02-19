@@ -516,6 +516,172 @@ describe("brain sacred recall hook", () => {
     expect(activity[0]?.details).toContain("title=THE 3-BREATH RULE");
   });
 
+  it("uses direct sacred files for identity prompts and skips LanceDB search", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-direct-identity-"));
+    const sacredDir = path.join(workspaceDir, "knowledge", "sacred");
+    fs.mkdirSync(sacredDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sacredDir, "SOUL.md"),
+      "# SOUL\nI am Om, grounded and aware.",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(sacredDir, "IDENTITY.md"),
+      "# IDENTITY\nName: Om\nRole: Digital being",
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(sacredDir, "MOOD.md"), "# MOOD\nfocused and calm", "utf-8");
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        userMessage: "Wer bist du?",
+        maxResults: 3,
+        managerResolver: async () => {
+          throw new Error("manager should not be called for direct identity recall");
+        },
+      });
+
+      expect(result.items).toHaveLength(3);
+      expect(result.items.map((item) => item.path)).toEqual([
+        "knowledge/sacred/SOUL.md",
+        "knowledge/sacred/IDENTITY.md",
+        "knowledge/sacred/MOOD.md",
+      ]);
+      expect(result.contextText).toContain("SOUL.md");
+      expect(result.contextText).toContain("IDENTITY.md");
+      expect(result.contextText).toContain("MOOD.md");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses MEMORY_INDEX and DREAMS fallback before LanceDB when both are sufficient", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-fallback-chain-"));
+    const memoryDir = path.join(workspaceDir, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, "MEMORY_INDEX.md"),
+      [
+        "# MEMORY INDEX",
+        "",
+        "- [2026-02-19T10:00:00.000Z] #identity score=5 | user: My codename is Omega.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(memoryDir, "DREAMS.md"),
+      [
+        "# DREAMS",
+        "",
+        "## [2026-02-19T10:00:00.000Z] run=test session=agent:main:main",
+        "- insight: Omega remains the strongest continuity marker.",
+        "- action_hint: Keep Omega grounded in identity replies.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        userMessage: "Who am I Omega?",
+        maxResults: 2,
+        managerResolver: async () => {
+          throw new Error("manager should not be called when local fallback is sufficient");
+        },
+      });
+
+      expect(result.items).toHaveLength(0);
+      expect(result.memoryIndexFacts?.length).toBe(1);
+      expect((result.dreamFacts?.length ?? 0) >= 1).toBe(true);
+      expect(result.contextText).toContain("Assoziativer Memory-Index");
+      expect(result.contextText).toContain("Traum-Kontext");
+      expect(result.contextText).toContain("Omega");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps only top-3 prioritized sacred files for LanceDB recall ranking", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-priority-top3-"));
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        userMessage: "anchor recall",
+        maxResults: 3,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "knowledge/sacred/ACTIVE_TASKS.md",
+                startLine: 1,
+                endLine: 4,
+                score: 0.99,
+                snippet: "# ACTIVE TASKS\nanchor",
+                source: "memory",
+              },
+              {
+                path: "knowledge/sacred/THINKING_PROTOCOL.md",
+                startLine: 1,
+                endLine: 4,
+                score: 0.98,
+                snippet: "# THINKING PROTOCOL\nanchor",
+                source: "memory",
+              },
+              {
+                path: "knowledge/sacred/MOOD.md",
+                startLine: 1,
+                endLine: 4,
+                score: 0.7,
+                snippet: "# MOOD\nanchor",
+                source: "memory",
+              },
+              {
+                path: "knowledge/sacred/IDENTITY.md",
+                startLine: 1,
+                endLine: 4,
+                score: 0.6,
+                snippet: "# IDENTITY\nanchor",
+                source: "memory",
+              },
+              {
+                path: "knowledge/sacred/SOUL.md",
+                startLine: 1,
+                endLine: 4,
+                score: 0.5,
+                snippet: "# SOUL\nanchor",
+                source: "memory",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.items).toHaveLength(3);
+      const selectedPaths = result.items.map((item) => item.path);
+      expect(selectedPaths).toContain("knowledge/sacred/SOUL.md");
+      expect(selectedPaths).toContain("knowledge/sacred/IDENTITY.md");
+      expect(selectedPaths).toContain("knowledge/sacred/MOOD.md");
+      expect(selectedPaths).not.toContain("knowledge/sacred/THINKING_PROTOCOL.md");
+      expect(selectedPaths).not.toContain("knowledge/sacred/ACTIVE_TASKS.md");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
   it("injects graph facts even when vector recall returns no hits", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-"));
     const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");

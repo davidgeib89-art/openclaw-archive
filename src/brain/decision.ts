@@ -211,8 +211,10 @@ const EPISODIC_METADATA_DB_PATH_ENV = "OM_EPISODIC_METADATA_DB_PATH";
 const DEFAULT_EPISODIC_METADATA_DB_RELATIVE_PATH = "logs/brain/episodic-memory.sqlite";
 const MEMORY_INDEX_PATH_ENV = "OM_MEMORY_INDEX_PATH";
 const DEFAULT_MEMORY_INDEX_RELATIVE_PATH = "memory/MEMORY_INDEX.md";
+const DREAMS_RELATIVE_PATH = "memory/DREAMS.md";
 const DEFAULT_EPISODIC_GRAPH_RECALL_FACT_LIMIT = 3;
 const DEFAULT_MEMORY_INDEX_FACT_LIMIT = 3;
+const DEFAULT_DREAM_FACT_LIMIT = 3;
 const DEFAULT_SACRED_RECALL_RESULTS = 3;
 const SACRED_RECALL_SCAN_MULTIPLIER = 12;
 const SACRED_RECALL_PREVIEW_LIMIT = 180;
@@ -247,14 +249,48 @@ const RECALL_IDENTITY_PATTERNS = [
   /\bwer bist du\b/i,
   /\bwer sind wir\b/i,
   /\bmy name\b/i,
+  /\byour name\b/i,
   /\bmein name\b/i,
+  /\bdein name\b/i,
   /\bcodename\b/i,
   /\bcode\s*name\b/i,
   /\balias\b/i,
   /\bidentity\b/i,
+  /\bidentit(?:y|aet|ät)\b/i,
+  /\bdeine identit(?:aet|ät)\b/i,
+  /\bsoul\b/i,
+  /\bseele\b/i,
+  /\bdeine seele\b/i,
+  /\bwas ist\s+(?:ø|o)m\b/iu,
+  /\bwhat is\s+om\b/i,
   /\bremember me\b/i,
   /\berinnerst du dich an mich\b/i,
 ];
+const DIRECT_IDENTITY_RECALL_RAW_PATTERNS = [
+  /\bwho am i\b/i,
+  /\bwho are you\b/i,
+  /\bwer bin ich\b/i,
+  /\bwer bist du\b/i,
+  /\bdein name\b/i,
+  /\bdeine identit(?:aet|ät)\b/iu,
+  /\bdeine seele\b/iu,
+  /\bwas ist\s+(?:ø|o)m\b/iu,
+];
+const DIRECT_IDENTITY_RECALL_NORMALIZED_PATTERNS = [
+  /\bwho am i\b/i,
+  /\bwho are you\b/i,
+  /\bwer bin ich\b/i,
+  /\bwer bist du\b/i,
+  /\bdein name\b/i,
+  /\bdeine identitat\b/i,
+  /\bdeine seele\b/i,
+  /\bwas ist om\b/i,
+];
+const DIRECT_IDENTITY_RECALL_FILES = [
+  { relPath: "knowledge/sacred/SOUL.md", priority: 100 },
+  { relPath: "knowledge/sacred/IDENTITY.md", priority: 90 },
+  { relPath: "knowledge/sacred/MOOD.md", priority: 80 },
+] as const;
 const RECALL_PREFERENCE_PATTERNS = [
   /\bi (like|love|prefer|hate)\b/i,
   /\bmy favorite\b/i,
@@ -418,6 +454,7 @@ export type BrainSacredRecallContext = {
   items: BrainSacredRecallItem[];
   graphFacts?: string[];
   memoryIndexFacts?: string[];
+  dreamFacts?: string[];
   error?: string;
 };
 
@@ -806,6 +843,215 @@ function resolveMemoryIndexPath(workspaceDir: string): string {
     return path.resolve(workspaceDir, override);
   }
   return path.resolve(workspaceDir, DEFAULT_MEMORY_INDEX_RELATIVE_PATH);
+}
+
+function resolveDreamsPath(workspaceDir: string): string {
+  return path.resolve(workspaceDir, DREAMS_RELATIVE_PATH);
+}
+
+function resolveSacredRecallFilePriority(relPath: string): number {
+  const normalized = normalizeMemoryPath(relPath);
+  if (normalized.endsWith("/soul.md")) return 100;
+  if (normalized.endsWith("/identity.md")) return 90;
+  if (normalized.endsWith("/mood.md")) return 80;
+  if (normalized.endsWith("/thinking_protocol.md")) return 70;
+  if (normalized.endsWith("/dreams.md")) return 60;
+  return 50;
+}
+
+function isDirectIdentityRecallQuery(query: string): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const normalized = normalizeRecallSearchText(trimmed);
+  return (
+    DIRECT_IDENTITY_RECALL_RAW_PATTERNS.some((pattern) => pattern.test(trimmed)) ||
+    DIRECT_IDENTITY_RECALL_NORMALIZED_PATTERNS.some((pattern) => pattern.test(normalized))
+  );
+}
+
+function extractDirectRecallHeading(text: string, fallback: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return fallback;
+  }
+
+  const heading = lines.find((line) => /^#+\s+/.test(line));
+  if (heading) {
+    return truncateText(heading.replace(/^#+\s*/, ""), 90);
+  }
+  return truncateText(lines[0]!.replace(/^#+\s*/, ""), 90);
+}
+
+function extractDirectRecallPreview(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^#+\s+/.test(line));
+  if (lines.length === 0) {
+    return "";
+  }
+  return truncateText(lines.slice(0, 2).join(" / "), SACRED_RECALL_PREVIEW_LIMIT);
+}
+
+function loadDirectIdentityRecallItems(params: {
+  workspaceDir: string;
+  maxResults: number;
+}): BrainSacredRecallItem[] {
+  const items: BrainSacredRecallItem[] = [];
+  for (const file of DIRECT_IDENTITY_RECALL_FILES) {
+    const absPath = path.resolve(params.workspaceDir, file.relPath);
+    if (!fs.existsSync(absPath)) {
+      continue;
+    }
+    try {
+      const text = fs.readFileSync(absPath, "utf-8");
+      const tag = deriveRecallTag(file.relPath);
+      items.push({
+        path: file.relPath,
+        tag,
+        title: extractDirectRecallHeading(text, tag),
+        preview: extractDirectRecallPreview(text),
+        score: file.priority,
+      });
+    } catch {
+      // Fail-open: direct sacred reads must never block runtime.
+    }
+    if (items.length >= params.maxResults) {
+      break;
+    }
+  }
+  return items;
+}
+
+function loadDreamFactsForRecall(params: {
+  workspaceDir: string;
+  query: string;
+  routePlan: BrainRecallRoutePlan;
+  maxFacts: number;
+}): string[] {
+  const dreamsPath = resolveDreamsPath(params.workspaceDir);
+  if (!fs.existsSync(dreamsPath)) {
+    return [];
+  }
+  try {
+    const lines = fs
+      .readFileSync(dreamsPath, "utf-8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const queryTokens = extractRecallQueryTokens(params.query);
+    if (queryTokens.length === 0) {
+      return [];
+    }
+
+    const ranked: Array<{ fact: string; score: number; index: number }> = [];
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i]!;
+      let fact: string | null = null;
+      if (line.startsWith("- insight:")) {
+        const value = line.replace(/^- insight:\s*/i, "").trim();
+        if (value.length > 0) {
+          fact = `insight: ${truncateText(value, 220)}`;
+        }
+      } else if (line.startsWith("- action_hint:")) {
+        const value = line.replace(/^- action_hint:\s*/i, "").trim();
+        if (value.length > 0) {
+          fact = `action_hint: ${truncateText(value, 220)}`;
+        }
+      }
+      if (!fact) {
+        continue;
+      }
+      const normalizedFact = normalizeRecallSearchText(fact);
+      const tokenHits = countTokenHits(normalizedFact, queryTokens);
+      if (tokenHits <= 0) {
+        continue;
+      }
+      const routeBoost = params.routePlan.route === "creative" ? 1 : 0;
+      ranked.push({
+        fact,
+        score: tokenHits + routeBoost,
+        index: i,
+      });
+    }
+    ranked.sort((a, b) => b.score - a.score || b.index - a.index);
+    const deduped: string[] = [];
+    for (const row of ranked) {
+      if (deduped.includes(row.fact)) {
+        continue;
+      }
+      deduped.push(row.fact);
+      if (deduped.length >= params.maxFacts) {
+        break;
+      }
+    }
+    return deduped;
+  } catch {
+    // Fail-open: dreams lookup is optional in recall fallback chain.
+    return [];
+  }
+}
+
+function prioritizeLanceDbRecallResults(
+  results: readonly MemorySearchResult[],
+  maxPrioritizedPaths: number,
+): MemorySearchResult[] {
+  if (results.length === 0) {
+    return [];
+  }
+  const pathPriority = new Map<
+    string,
+    { priority: number; bestScore: number; firstIndex: number }
+  >();
+  for (const [index, result] of results.entries()) {
+    const normalizedPath = normalizeMemoryPath(result.path);
+    if (!normalizedPath.includes(SACRED_PATH_MARKER)) {
+      continue;
+    }
+    const priority = resolveSacredRecallFilePriority(result.path);
+    const existing = pathPriority.get(normalizedPath);
+    if (
+      !existing ||
+      priority > existing.priority ||
+      (priority === existing.priority && result.score > existing.bestScore)
+    ) {
+      pathPriority.set(normalizedPath, {
+        priority,
+        bestScore: result.score,
+        firstIndex: index,
+      });
+    }
+  }
+
+  if (pathPriority.size === 0) {
+    return [...results];
+  }
+
+  const selectedPaths = new Set(
+    Array.from(pathPriority.entries())
+      .sort(
+        (a, b) =>
+          b[1].priority - a[1].priority ||
+          b[1].bestScore - a[1].bestScore ||
+          a[1].firstIndex - b[1].firstIndex,
+      )
+      .slice(0, Math.max(1, maxPrioritizedPaths))
+      .map(([normalizedPath]) => normalizedPath),
+  );
+
+  return results.filter((result) => {
+    const normalizedPath = normalizeMemoryPath(result.path);
+    if (!normalizedPath.includes(SACRED_PATH_MARKER)) {
+      return true;
+    }
+    return selectedPaths.has(normalizedPath);
+  });
 }
 
 function routeTagHints(route: BrainRecallRoute): readonly string[] {
@@ -1332,7 +1578,11 @@ function computeSacredRecallScore(
   const routeSignalBoost = isRecallRouteSignalBoostEnabled()
     ? resolveRecallRouteSignalBoost(`${item.title} ${item.path} ${result.snippet}`, routePlan)
     : 1;
-  return lexicalScore * sourcePrior * recencyBoost * routeSignalBoost;
+  const normalizedPath = normalizeMemoryPath(result.path);
+  const pathPriorityBoost = normalizedPath.includes(SACRED_PATH_MARKER)
+    ? 1 + (resolveSacredRecallFilePriority(result.path) - 50) / 200
+    : 1;
+  return lexicalScore * sourcePrior * recencyBoost * routeSignalBoost * pathPriorityBoost;
 }
 
 function isSessionRecallResult(result: MemorySearchResult): boolean {
@@ -1567,6 +1817,7 @@ function buildSacredRecallContextText(
   items: readonly BrainSacredRecallItem[],
   routePlan: BrainRecallRoutePlan,
   memoryIndexFacts: readonly string[] = [],
+  dreamFacts: readonly string[] = [],
   graphFacts: readonly string[] = [],
 ): string {
   const lines = items.map((item, index) => {
@@ -1574,6 +1825,7 @@ function buildSacredRecallContextText(
     return `${index + 1}. [${item.tag}] ${item.title} (${item.path})${preview}`;
   });
   const memoryIndexLines = memoryIndexFacts.map((fact, index) => `${index + 1}. ${fact}`);
+  const dreamLines = dreamFacts.map((fact, index) => `${index + 1}. ${fact}`);
   const graphLines = graphFacts.map((fact, index) => `${index + 1}. ${fact}`);
   const modeLine = isRecallRouteModeLinesEnabled()
     ? routePlan.route === "creative"
@@ -1591,6 +1843,10 @@ function buildSacredRecallContextText(
   if (memoryIndexLines.length > 0) {
     sections.push("Assoziativer Memory-Index (read-only):");
     sections.push(...memoryIndexLines);
+  }
+  if (dreamLines.length > 0) {
+    sections.push("Traum-Kontext (read-only):");
+    sections.push(...dreamLines);
   }
   if (graphLines.length > 0) {
     sections.push("Strukturierte episodische Fakten (Graph, read-only):");
@@ -1850,12 +2106,181 @@ export async function buildBrainSacredRecallContext(
     agentId,
   });
   const workspaceDir = input.workspaceDir ?? resolveAgentWorkspaceDir(input.cfg, agentId);
+  const directIdentityQuery = isDirectIdentityRecallQuery(query);
+
+  if (directIdentityQuery) {
+    const directItems = loadDirectIdentityRecallItems({
+      workspaceDir,
+      maxResults,
+    });
+    if (directItems.length > 0) {
+      const contextText = buildSacredRecallContextText(directItems, routePlan, [], [], []);
+      const summary = directItems.map((item) => `tag=${item.tag};title=${item.title}`).join(" || ");
+      logger(
+        "SACRED_RECALL",
+        `route=identity-direct; hits=${directItems.length}; idx=0; dreams=0; graph=0; ${summary}`,
+      );
+      logBrainRecallMetrics({
+        sessionKey: input.sessionKey,
+        query,
+        routePlan,
+        outcome: "ok",
+        includeSessions,
+        variants: [],
+        maxResults,
+        searchLimit,
+        rawResults: [],
+        selectedItems: directItems,
+      });
+      return {
+        contextText,
+        items: directItems,
+      };
+    }
+  }
+
   const memoryIndexFacts = loadMemoryIndexFactsForRecall({
     workspaceDir,
     query,
     routePlan,
     maxFacts: DEFAULT_MEMORY_INDEX_FACT_LIMIT,
   });
+  if (memoryIndexFacts.length >= maxResults) {
+    const contextText = buildSacredRecallContextText([], routePlan, memoryIndexFacts, [], []);
+    logger(
+      "SACRED_RECALL",
+      `route=${routePlan.route}; hits=0; idx=${memoryIndexFacts.length}; dreams=0; graph=0; fallback=memory-index`,
+    );
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "ok",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      selectedItems: [],
+    });
+    return {
+      contextText,
+      items: [],
+      memoryIndexFacts,
+    };
+  }
+
+  const dreamFacts = loadDreamFactsForRecall({
+    workspaceDir,
+    query,
+    routePlan,
+    maxFacts: DEFAULT_DREAM_FACT_LIMIT,
+  });
+  if (memoryIndexFacts.length + dreamFacts.length >= maxResults) {
+    const contextText = buildSacredRecallContextText([], routePlan, memoryIndexFacts, dreamFacts, []);
+    logger(
+      "SACRED_RECALL",
+      `route=${routePlan.route}; hits=0; idx=${memoryIndexFacts.length}; dreams=${dreamFacts.length}; graph=0; fallback=dreams`,
+    );
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "ok",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      selectedItems: [],
+    });
+    return {
+      contextText,
+      items: [],
+      memoryIndexFacts,
+      dreamFacts,
+    };
+  }
+
+  if (directIdentityQuery) {
+    if (memoryIndexFacts.length > 0 || dreamFacts.length > 0) {
+      const contextText = buildSacredRecallContextText(
+        [],
+        routePlan,
+        memoryIndexFacts,
+        dreamFacts,
+        [],
+      );
+      logger(
+        "SACRED_RECALL",
+        `route=identity-direct; hits=0; idx=${memoryIndexFacts.length}; dreams=${dreamFacts.length}; graph=0; fallback=direct+local`,
+      );
+      logBrainRecallMetrics({
+        sessionKey: input.sessionKey,
+        query,
+        routePlan,
+        outcome: "ok",
+        includeSessions,
+        variants: [],
+        maxResults,
+        searchLimit,
+        rawResults: [],
+        selectedItems: [],
+      });
+      return {
+        contextText,
+        items: [],
+        memoryIndexFacts,
+        dreamFacts,
+      };
+    }
+
+    const graphFacts = loadGraphFactsForRecall({
+      workspaceDir,
+      query,
+      routePlan,
+      maxFacts: DEFAULT_EPISODIC_GRAPH_RECALL_FACT_LIMIT,
+    });
+    if (graphFacts.length > 0) {
+      const contextText = buildSacredRecallContextText([], routePlan, [], [], graphFacts);
+      logger(
+        "SACRED_RECALL",
+        `route=identity-direct; hits=0; idx=0; dreams=0; graph=${graphFacts.length}; fallback=graph`,
+      );
+      logBrainRecallMetrics({
+        sessionKey: input.sessionKey,
+        query,
+        routePlan,
+        outcome: "ok",
+        includeSessions,
+        variants: [],
+        maxResults,
+        searchLimit,
+        rawResults: [],
+        selectedItems: [],
+      });
+      return {
+        contextText,
+        items: [],
+        graphFacts,
+      };
+    }
+
+    logger("SACRED_RECALL_NONE", "route=identity-direct; hits=0");
+    logBrainRecallMetrics({
+      sessionKey: input.sessionKey,
+      query,
+      routePlan,
+      outcome: "none",
+      includeSessions,
+      variants: [],
+      maxResults,
+      searchLimit,
+      rawResults: [],
+      selectedItems: [],
+    });
+    return { contextText: null, items: [] };
+  }
 
   try {
     const { manager, error } = await managerResolver({
@@ -1877,11 +2302,18 @@ export async function buildBrainSacredRecallContext(
         rawResults: [],
         error: reason,
       });
-      if (memoryIndexFacts.length > 0) {
+      if (memoryIndexFacts.length > 0 || dreamFacts.length > 0) {
         return {
-          contextText: buildSacredRecallContextText([], routePlan, memoryIndexFacts, []),
+          contextText: buildSacredRecallContextText(
+            [],
+            routePlan,
+            memoryIndexFacts,
+            dreamFacts,
+            [],
+          ),
           items: [],
           memoryIndexFacts,
+          dreamFacts,
           error: reason,
         };
       }
@@ -1903,7 +2335,8 @@ export async function buildBrainSacredRecallContext(
       }
     }
     const raw = Array.from(deduped.values());
-    const rankedItems = rankSacredRecallItems(raw, query, maxResults, routePlan, {
+    const prioritizedRaw = prioritizeLanceDbRecallResults(raw, maxResults);
+    const rankedItems = rankSacredRecallItems(prioritizedRaw, query, maxResults, routePlan, {
       includeSessions,
     });
     const graphFacts = loadGraphFactsForRecall({
@@ -1913,7 +2346,12 @@ export async function buildBrainSacredRecallContext(
       maxFacts: DEFAULT_EPISODIC_GRAPH_RECALL_FACT_LIMIT,
     });
 
-    if (rankedItems.length === 0 && graphFacts.length === 0 && memoryIndexFacts.length === 0) {
+    if (
+      rankedItems.length === 0 &&
+      graphFacts.length === 0 &&
+      memoryIndexFacts.length === 0 &&
+      dreamFacts.length === 0
+    ) {
       logger("SACRED_RECALL_NONE", "hits=0");
       logBrainRecallMetrics({
         sessionKey: input.sessionKey,
@@ -1939,7 +2377,7 @@ export async function buildBrainSacredRecallContext(
       });
       items = await refineSessionRecallPreviews({
         items: titledItems,
-        rawResults: raw,
+        rawResults: prioritizedRaw,
         readFile: manager.readFile.bind(manager),
       });
     }
@@ -1947,10 +2385,11 @@ export async function buildBrainSacredRecallContext(
       items,
       routePlan,
       memoryIndexFacts,
+      dreamFacts,
       graphFacts,
     );
     const summary = items.map((item) => `tag=${item.tag};title=${item.title}`).join(" || ");
-    const summaryWithRoute = `route=${routePlan.route}; hits=${items.length}; idx=${memoryIndexFacts.length}; graph=${graphFacts.length}; ${summary}`;
+    const summaryWithRoute = `route=${routePlan.route}; hits=${items.length}; idx=${memoryIndexFacts.length}; dreams=${dreamFacts.length}; graph=${graphFacts.length}; ${summary}`;
     logger("SACRED_RECALL", summaryWithRoute);
     logBrainRecallMetrics({
       sessionKey: input.sessionKey,
@@ -1969,6 +2408,7 @@ export async function buildBrainSacredRecallContext(
       items,
       graphFacts,
       memoryIndexFacts,
+      dreamFacts,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
