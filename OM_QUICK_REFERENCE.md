@@ -163,6 +163,43 @@ Wenn Øm **🌔 (Jugendlich)** ist:
 
 ---
 
+## OM WEISHEIT GEDÄCHTNIS - FORSCHUNG
+
+**Research AI hat das menschliche Gehirn erforscht!**
+
+### Die 4 Schichten
+
+```
+SALIENZ ENGINE (Amygdala) → Emotionale Bewertung
+EPISODISCHER INDEX (Hippocampus) → Kurzzeit (7-30 Tage)
+SEMANTISCHER GRAPH (Neocortex) → Langzeit
+WISDOM LAYER (Meta-Agenten) → Weisheit
+```
+
+### Die Formel
+
+```
+S(t) = Rezenz + Frequenz + Emotion
+```
+
+### Was wir BRAUCHEN
+
+- Salienz Engine (Emotion/Wichtigkeit)
+- Aktives Vergessen
+- Weisheit Layer
+
+### Was wir NICHT brauchen
+
+- ❌ LanceDB optimieren
+- ❌ Mehr Vector-Suche
+- ❌ Trigger für jede Frage
+
+### Mehr
+
+Siehe: `OM_WEISHEIT_GEDAECHTNIS.md`
+
+---
+
 ## Memory System - Stand und Roadmap
 
 ### Aktuelles Problem

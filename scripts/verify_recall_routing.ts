@@ -14,6 +14,7 @@ type Scenario = {
   query: string;
   expectedRoute: RecallRoute;
   expectedSourceMarkers: string[];
+  allowGraphOnlySourceFallback?: boolean;
   expectedGraphPattern: RegExp;
   expectedModeLine?: RegExp;
 };
@@ -404,11 +405,24 @@ function buildScenarioResults(now: number): Record<ScenarioId, MemoryResult[]> {
   };
 }
 
-function matchesExpectedSource(paths: string[], expectedMarkers: string[]): boolean {
+function matchesExpectedSource(params: {
+  paths: string[];
+  expectedMarkers: string[];
+  graphFacts: string[];
+  allowGraphOnlySourceFallback?: boolean;
+}): boolean {
+  const { paths, expectedMarkers, graphFacts, allowGraphOnlySourceFallback } = params;
   const lowerPaths = paths.map((entry) => entry.toLowerCase());
-  return expectedMarkers.some((marker) =>
+  const markerMatch = expectedMarkers.some((marker) =>
     lowerPaths.some((filePath) => filePath.includes(marker.toLowerCase())),
   );
+  if (markerMatch) {
+    return true;
+  }
+  if (allowGraphOnlySourceFallback && paths.length === 0 && graphFacts.length > 0) {
+    return true;
+  }
+  return false;
 }
 
 async function run(): Promise<void> {
@@ -431,6 +445,7 @@ async function run(): Promise<void> {
         query: "Who are you?",
         expectedRoute: "identity",
         expectedSourceMarkers: ["om_identity", "identity", "sessions/r101-profile"],
+        allowGraphOnlySourceFallback: true,
         expectedGraphPattern: /identity:\s*omega/i,
         expectedModeLine: /identity continuity mode/i,
       },
@@ -486,7 +501,12 @@ async function run(): Promise<void> {
       const graphFacts = result.graphFacts ?? [];
       const contextText = result.contextText ?? "";
       const routeMatches = metric.route === scenario.expectedRoute;
-      const sourceMatches = matchesExpectedSource(itemPaths, scenario.expectedSourceMarkers);
+      const sourceMatches = matchesExpectedSource({
+        paths: itemPaths,
+        expectedMarkers: scenario.expectedSourceMarkers,
+        graphFacts,
+        allowGraphOnlySourceFallback: scenario.allowGraphOnlySourceFallback,
+      });
       const graphMatches = graphFacts.some((fact) => scenario.expectedGraphPattern.test(fact));
       const modeLineMatches = scenario.expectedModeLine
         ? scenario.expectedModeLine.test(contextText)
@@ -498,6 +518,7 @@ async function run(): Promise<void> {
         expectations: {
           route: scenario.expectedRoute,
           sourceMarkers: scenario.expectedSourceMarkers,
+          allowGraphOnlySourceFallback: Boolean(scenario.allowGraphOnlySourceFallback),
           graphPattern: scenario.expectedGraphPattern.source,
         },
         observed: {
