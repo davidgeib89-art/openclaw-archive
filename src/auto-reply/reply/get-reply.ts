@@ -105,7 +105,11 @@ export async function getReplyFromConfig(
   });
   const workspaceDir = workspace.dir;
   const agentDir = resolveAgentDir(cfg, agentId);
-  const timeoutMs = resolveAgentTimeoutMs({ cfg });
+  const resolvedTimeoutMs = resolveAgentTimeoutMs({ cfg });
+  // Heartbeats should stay bounded; long stalls block subsequent autonomous cycles.
+  const timeoutMs = opts?.isHeartbeat
+    ? Math.max(15_000, Math.min(resolvedTimeoutMs, 120_000))
+    : resolvedTimeoutMs;
   const configuredTypingSeconds =
     agentCfg?.typingIntervalSeconds ?? sessionCfg?.typingIntervalSeconds;
   const typingIntervalSeconds =

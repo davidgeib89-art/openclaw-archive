@@ -48,6 +48,17 @@ export async function handleHeartbeatTriggerHttpRequest(
     timeoutMs: HEARTBEAT_TRIGGER_TIMEOUT_MS,
   });
 
+  if (result.status === "failed" && result.reason === "timeout") {
+    sendJson(res, 200, {
+      ok: true,
+      result: {
+        status: "accepted",
+        reason: "running",
+      },
+    });
+    return true;
+  }
+
   sendJson(res, 200, { ok: true, result });
   return true;
 }

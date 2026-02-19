@@ -151,6 +151,8 @@ describe("brain episodic memory write path", () => {
     expect(result.path.endsWith(path.join("memory", "EPISODIC_JOURNAL.md"))).toBe(true);
     expect(result.structuredPersisted).toBe(true);
     expect(result.metadataPersisted).toBe(true);
+    expect(result.memoryIndexUpdated).toBe(true);
+    expect(result.memoryIndexPath).toContain(path.join("memory", "MEMORY_INDEX.md"));
     expect(result.structuredPath).toContain("EPISODIC_JOURNAL.jsonl");
     expect(result.metadataDbPath).toContain(path.join("logs", "brain", "episodic-memory.sqlite"));
     expect(result.entryId).toBeTruthy();
@@ -177,6 +179,11 @@ describe("brain episodic memory write path", () => {
     expect(structured.primaryKind).toBe("preference");
     expect(structured.kinds).toContain("preference");
     expect(structured.score).toBe(result.score);
+
+    const memoryIndexRaw = await fs.readFile(result.memoryIndexPath!, "utf-8");
+    expect(memoryIndexRaw).toContain("# MEMORY INDEX");
+    expect(memoryIndexRaw).toContain(`#${result.primaryKind}`);
+    expect(memoryIndexRaw).toContain(`entry=${result.entryId}`);
 
     const db = new DatabaseSync(result.metadataDbPath!);
     const row = db
@@ -353,6 +360,7 @@ describe("brain episodic memory write path", () => {
     expect(result.reason).toBe("below-threshold");
     expect(result.structuredPersisted).toBe(false);
     expect(result.metadataPersisted).toBe(false);
+    expect(result.memoryIndexUpdated).toBe(false);
     await expect(fs.access(result.path)).rejects.toThrow();
   });
 
@@ -372,6 +380,7 @@ describe("brain episodic memory write path", () => {
 
     expect(result.persisted).toBe(false);
     expect(result.reason).toBe("heartbeat-turn");
+    expect(result.memoryIndexUpdated).toBe(false);
   });
 
   it("skips agenda heartbeat turns", async () => {

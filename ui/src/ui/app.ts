@@ -563,6 +563,8 @@ export class OpenClawApp extends LitElement {
         const durationLabel =
           typeof data.result?.durationMs === "number" ? ` (${data.result.durationMs}ms)` : "";
         this.setHeartbeatTriggerMessage(`Heartbeat complete${durationLabel}.`, "success");
+      } else if (status === "accepted") {
+        this.setHeartbeatTriggerMessage("Heartbeat accepted and still running.", "info");
       } else if (status === "skipped") {
         this.setHeartbeatTriggerMessage(
           `Heartbeat skipped: ${data.result?.reason ?? "unknown reason"}.`,

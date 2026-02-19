@@ -171,4 +171,33 @@ describe("heartbeat trigger HTTP endpoint", () => {
       },
     });
   });
+
+  test("maps timeout to accepted running status", async () => {
+    await withTempConfig({
+      cfg: { gateway: { trustedProxies: [] } },
+      run: async () => {
+        vi.spyOn(heartbeatWake, "requestHeartbeatNowAndWait").mockResolvedValue({
+          status: "failed",
+          reason: "timeout",
+        });
+        const response = createResponse();
+        const handled = await handleHeartbeatTriggerHttpRequest(
+          createRequest({ authorization: "Bearer test-token" }),
+          response.res,
+          { auth: resolvedAuth, trustedProxies: [] },
+        );
+
+        expect(handled).toBe(true);
+        expect(response.res.statusCode).toBe(200);
+
+        const body = JSON.parse(response.getBody()) as {
+          ok: boolean;
+          result: { status: string; reason?: string };
+        };
+        expect(body.ok).toBe(true);
+        expect(body.result.status).toBe("accepted");
+        expect(body.result.reason).toBe("running");
+      },
+    });
+  });
 });

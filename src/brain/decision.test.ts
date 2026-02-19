@@ -804,6 +804,48 @@ describe("brain sacred recall hook", () => {
     }
   });
 
+  it("uses associative MEMORY_INDEX facts for identity recall when available", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-memory-index-"));
+    const memoryDir = path.join(workspaceDir, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, "MEMORY_INDEX.md"),
+      [
+        "# MEMORY INDEX",
+        "",
+        "- [2026-02-18T12:00:00.000Z] #identity #codename score=4 kind=identity entry=entry-omega | user: My secret codename is Omega. | assistant: Noted. I will remember this identity marker.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-memory-index",
+        userMessage: "Who am I?",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.memoryIndexFacts?.length).toBeGreaterThanOrEqual(1);
+      expect(result.contextText).toContain("Assoziativer Memory-Index");
+      expect(result.contextText).toContain("Omega");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
   it("can exclude session transcript recall via env switch", async () => {
     const previous = process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS;
     process.env.OM_SACRED_RECALL_INCLUDE_SESSIONS = "false";

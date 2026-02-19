@@ -8,6 +8,7 @@ import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 const DEFAULT_EPISODIC_JOURNAL_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.md";
 const DEFAULT_EPISODIC_STRUCTURED_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.jsonl";
 const DEFAULT_EPISODIC_METADATA_DB_RELATIVE_PATH = "logs/brain/episodic-memory.sqlite";
+const DEFAULT_MEMORY_INDEX_RELATIVE_PATH = "memory/MEMORY_INDEX.md";
 const EPISODIC_STRUCTURED_ROTATE_ENABLED_ENV = "OM_EPISODIC_STRUCTURED_ROTATE_ENABLED";
 const EPISODIC_STRUCTURED_ROTATE_MAX_BYTES_ENV = "OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES";
 const EPISODIC_STRUCTURED_ROTATE_MAX_FILES_ENV = "OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES";
@@ -37,6 +38,7 @@ const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_USER_CHARS = 560;
 const MAX_ASSISTANT_CHARS = 900;
 const SIGNIFICANCE_THRESHOLD = 2;
+const MEMORY_INDEX_SIGNIFICANCE_THRESHOLD = 3;
 const HEARTBEAT_ACK = "HEARTBEAT_OK";
 const EPISODIC_METADATA_SCHEMA_VERSION = 2;
 const EPISODIC_HEADER = [
@@ -44,6 +46,14 @@ const EPISODIC_HEADER = [
   "",
   "Append-only autobiographical memory stream for salient user-assistant turns.",
   "Each entry is scored by deterministic significance heuristics.",
+  "",
+].join("\n");
+
+const MEMORY_INDEX_HEADER = [
+  "# MEMORY INDEX",
+  "",
+  "Associative recall index for high-signal episodic events.",
+  "Format: timestamp + compact tags + user/assistant cue snippets.",
   "",
 ].join("\n");
 
@@ -103,6 +113,8 @@ export type BrainEpisodicWriteResult = {
   graphRelationshipsInserted?: number;
   graphOrphanRelationshipsDeleted?: number;
   graphConflictsResolved?: number;
+  memoryIndexPath?: string;
+  memoryIndexUpdated?: boolean;
   reason: string;
 };
 
@@ -242,6 +254,12 @@ function resolveStructuredPath(workspaceDir: string): string {
 function resolveMetadataDbPath(workspaceDir: string): string {
   const fromEnv = process.env.OM_EPISODIC_METADATA_DB_PATH?.trim();
   const rel = fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_EPISODIC_METADATA_DB_RELATIVE_PATH;
+  return path.resolve(workspaceDir, rel);
+}
+
+function resolveMemoryIndexPath(workspaceDir: string): string {
+  const fromEnv = process.env.OM_MEMORY_INDEX_PATH?.trim();
+  const rel = fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_MEMORY_INDEX_RELATIVE_PATH;
   return path.resolve(workspaceDir, rel);
 }
 
@@ -549,6 +567,92 @@ function extractSemanticRelationships(params: {
   }
 
   return relationships;
+}
+
+function normalizeIndexTag(raw: string): string {
+  const normalized = raw
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return normalized;
+}
+
+function deriveMemoryIndexTags(params: {
+  signals: readonly EpisodicSignal[];
+  kinds: readonly EpisodicKind[];
+  primaryKind: EpisodicKind;
+  relationships: readonly SemanticRelationshipEntry[];
+}): string[] {
+  const tags = new Set<string>();
+  tags.add(params.primaryKind);
+  for (const signal of params.signals) {
+    tags.add(signal);
+  }
+  for (const kind of params.kinds) {
+    tags.add(kind);
+  }
+  for (const relation of params.relationships) {
+    tags.add(relation.predicate.toLowerCase());
+    tags.add(relation.sourceEntity);
+    tags.add(relation.targetEntity);
+  }
+
+  const normalized: string[] = [];
+  for (const raw of tags) {
+    const tag = normalizeIndexTag(raw);
+    if (tag.length < 2) {
+      continue;
+    }
+    if (!normalized.includes(tag)) {
+      normalized.push(tag);
+    }
+    if (normalized.length >= 12) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+async function ensureMemoryIndexHeader(memoryIndexPath: string): Promise<void> {
+  try {
+    await fs.access(memoryIndexPath);
+  } catch {
+    await fs.mkdir(path.dirname(memoryIndexPath), { recursive: true });
+    await fs.writeFile(memoryIndexPath, MEMORY_INDEX_HEADER, "utf-8");
+  }
+}
+
+function buildMemoryIndexLine(params: {
+  now: Date;
+  entry: BrainEpisodicStructuredEntry;
+  tags: readonly string[];
+}): string {
+  const renderedTags = params.tags.map((tag) => `#${tag}`).join(" ");
+  const userCue = truncateText(params.entry.user, 140);
+  const assistantCue = truncateText(params.entry.assistant, 180);
+  return `- [${params.now.toISOString()}] ${renderedTags} score=${params.entry.score} kind=${params.entry.primaryKind} entry=${params.entry.entryId} | user: ${userCue} | assistant: ${assistantCue}`;
+}
+
+async function persistMemoryIndexEntry(params: {
+  memoryIndexPath: string;
+  now: Date;
+  entry: BrainEpisodicStructuredEntry;
+  tags: readonly string[];
+}): Promise<boolean> {
+  if (params.entry.score < MEMORY_INDEX_SIGNIFICANCE_THRESHOLD || params.tags.length === 0) {
+    return false;
+  }
+  try {
+    await ensureMemoryIndexHeader(params.memoryIndexPath);
+    const line = `${buildMemoryIndexLine(params)}\n`;
+    await fs.appendFile(params.memoryIndexPath, line, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildStructuredEntry(params: {
@@ -994,6 +1098,7 @@ export async function appendBrainEpisodicJournal(
   const journalPath = resolveJournalPath(input.workspaceDir);
   const structuredPath = resolveStructuredPath(input.workspaceDir);
   const metadataDbPath = resolveMetadataDbPath(input.workspaceDir);
+  const memoryIndexPath = resolveMemoryIndexPath(input.workspaceDir);
   const now = (input.now ?? (() => new Date()))();
 
   if (!isEpisodicWriteEnabled(input.cfg, input.agentId)) {
@@ -1012,6 +1117,8 @@ export async function appendBrainEpisodicJournal(
       structuredRotationPrunedFiles: 0,
       compactionApplied: false,
       compactionDeletedRows: 0,
+      memoryIndexPath,
+      memoryIndexUpdated: false,
       reason: "disabled",
     };
   }
@@ -1034,6 +1141,8 @@ export async function appendBrainEpisodicJournal(
       structuredRotationPrunedFiles: 0,
       compactionApplied: false,
       compactionDeletedRows: 0,
+      memoryIndexPath,
+      memoryIndexUpdated: false,
       reason: "empty-turn",
     };
   }
@@ -1053,6 +1162,8 @@ export async function appendBrainEpisodicJournal(
       structuredRotationPrunedFiles: 0,
       compactionApplied: false,
       compactionDeletedRows: 0,
+      memoryIndexPath,
+      memoryIndexUpdated: false,
       reason: "heartbeat-turn",
     };
   }
@@ -1074,6 +1185,8 @@ export async function appendBrainEpisodicJournal(
       structuredRotationPrunedFiles: 0,
       compactionApplied: false,
       compactionDeletedRows: 0,
+      memoryIndexPath,
+      memoryIndexUpdated: false,
       reason: "below-threshold",
     };
   }
@@ -1111,10 +1224,22 @@ export async function appendBrainEpisodicJournal(
     markdownPath: journalPath,
     structuredPath,
   });
+  const relationshipsForIndex = extractSemanticRelationships({ entry: structuredEntry });
   const persistedStructured = await persistStructuredEpisodicEntry({
     structuredPath,
     metadataDbPath,
     entry: structuredEntry,
+  });
+  const memoryIndexUpdated = await persistMemoryIndexEntry({
+    memoryIndexPath,
+    now,
+    entry: structuredEntry,
+    tags: deriveMemoryIndexTags({
+      signals: scored.signals,
+      kinds,
+      primaryKind,
+      relationships: relationshipsForIndex,
+    }),
   });
 
   return {
@@ -1138,6 +1263,8 @@ export async function appendBrainEpisodicJournal(
     graphRelationshipsInserted: persistedStructured.graphRelationshipsInserted,
     graphOrphanRelationshipsDeleted: persistedStructured.graphOrphanRelationshipsDeleted,
     graphConflictsResolved: persistedStructured.graphConflictsResolved,
+    memoryIndexPath,
+    memoryIndexUpdated,
     reason: "persisted",
   };
 }

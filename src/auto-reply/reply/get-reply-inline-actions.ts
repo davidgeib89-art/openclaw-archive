@@ -54,6 +54,129 @@ function extractTextFromToolResult(result: any): string | null {
   return trimmed ? trimmed : null;
 }
 
+function extractNaturalImagePrompt(body: string): string | null {
+  const text = body.trim();
+  if (!text) {
+    return null;
+  }
+  const patterns = [
+    /^(?:bitte\s+)?(?:generiere|erstelle|mach)\s+(?:mir\s+)?(?:ein|eine)?\s*(?:bild|image|foto|cover)?\s*(?:von|mit)?\s+(.+)$/i,
+    /^(?:bitte\s+)?zeichne\s+(?:mir\s+)?(?:ein|eine)?\s*(?:bild|szene|cover)?\s*(?:von|mit)?\s+(.+)$/i,
+    /^(?:please\s+)?(?:generate|create|draw)\s+(?:an?|the)?\s*(?:image|picture|artwork|cover)?\s*(?:of|with)?\s+(.+)$/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (captured) {
+      return captured;
+    }
+  }
+  return null;
+}
+
+function findComfySkillCommand(skillCommands: SkillCommandSpec[]): SkillCommandSpec | null {
+  for (const entry of skillCommands) {
+    const command = entry.name.trim().toLowerCase();
+    const skill = entry.skillName.trim().toLowerCase();
+    if (
+      command === "comfyui_image" ||
+      skill === "comfyui-image" ||
+      command.includes("comfy") ||
+      skill.includes("comfy")
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function normalizeSkillLookup(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+}
+
+function findSkillCommandByLookup(
+  skillCommands: SkillCommandSpec[],
+  skillKey: string,
+): SkillCommandSpec | null {
+  const wanted = normalizeSkillLookup(skillKey);
+  if (!wanted) {
+    return null;
+  }
+  for (const entry of skillCommands) {
+    const byName = normalizeSkillLookup(entry.name);
+    const bySkill = normalizeSkillLookup(entry.skillName);
+    if (wanted === byName || wanted === bySkill) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function resolveConfiguredSkillTriggerInvocation(params: {
+  cfg: OpenClawConfig;
+  skillCommands: SkillCommandSpec[];
+  commandBodyNormalized: string;
+}): { command: SkillCommandSpec; args?: string } | null {
+  const body = params.commandBodyNormalized.trim();
+  if (!body) {
+    return null;
+  }
+  const bodyLower = body.toLowerCase();
+
+  let best:
+    | {
+        triggerLength: number;
+        command: SkillCommandSpec;
+      }
+    | null = null;
+
+  const entries = params.cfg.skills?.entries;
+  if (!entries) {
+    return null;
+  }
+
+  for (const [skillKey, entry] of Object.entries(entries)) {
+    const config = entry?.config;
+    if (!config || typeof config !== "object") {
+      continue;
+    }
+    const triggerRaw =
+      (config as Record<string, unknown>).trigger ??
+      (config as Record<string, unknown>).triggers;
+    const triggers = Array.isArray(triggerRaw)
+      ? triggerRaw
+          .map((value) => String(value).trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+    if (triggers.length === 0) {
+      continue;
+    }
+    const command = findSkillCommandByLookup(params.skillCommands, skillKey);
+    if (!command) {
+      continue;
+    }
+    for (const trigger of triggers) {
+      if (!bodyLower.includes(trigger)) {
+        continue;
+      }
+      if (!best || trigger.length > best.triggerLength) {
+        best = {
+          triggerLength: trigger.length,
+          command,
+        };
+      }
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+  return { command: best.command, args: body };
+}
+
 export async function handleInlineActions(params: {
   ctx: MsgContext;
   sessionCtx: TemplateContext;
@@ -135,7 +258,23 @@ export async function handleInlineActions(params: {
   let directives = initialDirectives;
   let cleanedBody = initialCleanedBody;
 
-  const shouldLoadSkillCommands = command.commandBodyNormalized.startsWith("/");
+  const commandStartsWithSlash = command.commandBodyNormalized.startsWith("/");
+  const naturalImagePrompt =
+    allowTextCommands && !commandStartsWithSlash
+      ? extractNaturalImagePrompt(command.commandBodyNormalized)
+      : null;
+  const hasConfiguredSkillTriggers = Object.values(cfg.skills?.entries ?? {}).some((entry) => {
+    const config = entry?.config;
+    if (!config || typeof config !== "object") {
+      return false;
+    }
+    const triggerRaw =
+      (config as Record<string, unknown>).trigger ??
+      (config as Record<string, unknown>).triggers;
+    return Array.isArray(triggerRaw) && triggerRaw.length > 0;
+  });
+  const shouldLoadSkillCommands =
+    commandStartsWithSlash || Boolean(naturalImagePrompt) || hasConfiguredSkillTriggers;
   const skillCommands =
     shouldLoadSkillCommands && params.skillCommands
       ? params.skillCommands
@@ -147,13 +286,36 @@ export async function handleInlineActions(params: {
           })
         : [];
 
-  const skillInvocation =
+  const explicitSkillInvocation =
     allowTextCommands && skillCommands.length > 0
       ? resolveSkillCommandInvocation({
           commandBodyNormalized: command.commandBodyNormalized,
           skillCommands,
         })
       : null;
+  const configuredTriggerInvocation =
+    !explicitSkillInvocation &&
+    allowTextCommands &&
+    !commandStartsWithSlash &&
+    skillCommands.length > 0
+      ? resolveConfiguredSkillTriggerInvocation({
+          cfg,
+          skillCommands,
+          commandBodyNormalized: command.commandBodyNormalized,
+        })
+      : null;
+  const naturalSkillInvocation =
+    !explicitSkillInvocation &&
+    !configuredTriggerInvocation &&
+    naturalImagePrompt &&
+    skillCommands.length > 0
+      ? (() => {
+          const comfySkill = findComfySkillCommand(skillCommands);
+          return comfySkill ? { command: comfySkill, args: naturalImagePrompt } : null;
+        })()
+      : null;
+  const skillInvocation =
+    explicitSkillInvocation ?? configuredTriggerInvocation ?? naturalSkillInvocation;
   if (skillInvocation) {
     if (!command.isAuthorizedSender) {
       logVerbose(

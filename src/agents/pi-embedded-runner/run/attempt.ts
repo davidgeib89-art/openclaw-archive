@@ -256,6 +256,15 @@ const HIGH_RISK_PROMPT_GUARD_BLOCK = [
 ].join("\n");
 
 const AUTONOMOUS_CYCLE_RELATIVE_PATH = path.join("knowledge", "sacred", "AUTONOMOUS_CYCLE.md");
+const DREAMS_RELATIVE_PATH = path.join("memory", "DREAMS.md");
+const HEARTBEAT_ACK_TOKEN = "HEARTBEAT_OK";
+const HEARTBEAT_RECALL_TIMEOUT_MS = 12_000;
+const HEARTBEAT_RECALL_TIMEOUT_ENV = "OM_HEARTBEAT_RECALL_TIMEOUT_MS";
+const SACRED_RECALL_TIMEOUT_MS = 20_000;
+const SACRED_RECALL_TIMEOUT_ENV = "OM_SACRED_RECALL_TIMEOUT_MS";
+const STARTUP_STALL_TIMEOUT_ENV = "OPENCLAW_AGENT_STARTUP_STALL_TIMEOUT_MS";
+const STARTUP_STALL_TIMEOUT_DEFAULT_MS = 15_000;
+const STARTUP_STALL_TIMEOUT_MAX_MS = 120_000;
 const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "AUTONOMOUS CYCLE (fallback):",
   "1. Sense: Read AGENDA.md and recent state before choosing an action.",
@@ -264,6 +273,19 @@ const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "4. Decide: Commit to exactly one action for this heartbeat run.",
   "5. Act: Execute only that one action, then stop and reflect briefly.",
 ].join("\n");
+const DREAMS_HEADER = [
+  "# DREAMS",
+  "",
+  "Heartbeat dream capsules for continuity between autonomous cycles.",
+  "",
+].join("\n");
+const DREAM_REPEAT_WINDOW = 6;
+const DREAM_NOVELTY_CATALOG = [
+  "angle: switch perspective from inner feeling to one concrete external detail.",
+  "format: change medium (poem/code/ascii/reflection) for the next cycle output.",
+  "artifact: write to a different workspace file than the previous cycle.",
+  "constraint: keep the next action to one measurable, verifiable step.",
+] as const;
 
 type BrainReasoningEvent = {
   phase: string;
@@ -345,6 +367,319 @@ async function loadAutonomousCyclePrompt(workspaceDir: string): Promise<{
     sourcePath,
     fromFile: false,
   };
+}
+
+function normalizeDreamText(value: string, maxChars: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxChars - 3))}...`;
+}
+
+function stripHeartbeatAckArtifacts(value: string): string {
+  return value
+    .replace(/\bHEARTBEAT_OK\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeDreamSignature(value: string): string {
+  return stripHeartbeatAckArtifacts(String(value || ""))
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type DreamEntry = {
+  insight: string;
+  actionHint: string;
+  noveltyDelta: string;
+};
+
+function parseDreamEntries(raw: string): DreamEntry[] {
+  const entries: DreamEntry[] = [];
+  let current: DreamEntry = { insight: "", actionHint: "", noveltyDelta: "" };
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    if (/^##\s*\[/.test(line)) {
+      if (current.insight || current.actionHint || current.noveltyDelta) {
+        entries.push(current);
+      }
+      current = { insight: "", actionHint: "", noveltyDelta: "" };
+      continue;
+    }
+    if (/^- insight:/i.test(line)) {
+      current.insight = line.replace(/^- insight:\s*/i, "").trim();
+      continue;
+    }
+    if (/^- action_hint:/i.test(line)) {
+      current.actionHint = line.replace(/^- action_hint:\s*/i, "").trim();
+      continue;
+    }
+    if (/^- novelty_delta:/i.test(line)) {
+      current.noveltyDelta = line.replace(/^- novelty_delta:\s*/i, "").trim();
+      continue;
+    }
+  }
+  if (current.insight || current.actionHint || current.noveltyDelta) {
+    entries.push(current);
+  }
+  return entries;
+}
+
+function hashSeed(value: string): number {
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 33 + char.charCodeAt(0)) >>> 0;
+  }
+  return hash;
+}
+
+function selectNoveltyDelta(params: {
+  runId: string;
+  cue: string;
+  insight: string;
+  recentDeltas: readonly string[];
+}): string {
+  const seen = new Set(
+    params.recentDeltas
+      .map((entry) => normalizeDreamSignature(entry))
+      .filter((entry) => entry.length > 0),
+  );
+  const seed = hashSeed(`${params.runId}|${params.cue}|${params.insight}`);
+  for (let offset = 0; offset < DREAM_NOVELTY_CATALOG.length; offset += 1) {
+    const candidate = DREAM_NOVELTY_CATALOG[(seed + offset) % DREAM_NOVELTY_CATALOG.length];
+    if (!seen.has(normalizeDreamSignature(candidate))) {
+      return candidate;
+    }
+  }
+  return DREAM_NOVELTY_CATALOG[seed % DREAM_NOVELTY_CATALOG.length];
+}
+
+async function loadLatestDreamContext(workspaceDir: string): Promise<{
+  summary: string;
+  sourcePath: string;
+} | null> {
+  const sourcePath = path.join(workspaceDir, DREAMS_RELATIVE_PATH);
+  try {
+    const raw = await fs.readFile(sourcePath, "utf-8");
+    const latest = parseDreamEntries(raw).at(-1);
+    if (!latest?.insight) {
+      return null;
+    }
+    const insight = normalizeDreamText(stripHeartbeatAckArtifacts(latest.insight), 420);
+    if (!insight) {
+      return null;
+    }
+    const action = normalizeDreamText(stripHeartbeatAckArtifacts(latest.actionHint), 220);
+    const novelty = normalizeDreamText(stripHeartbeatAckArtifacts(latest.noveltyDelta), 220);
+    const lines = [`Previous dream insight: ${insight}`];
+    if (action) {
+      lines.push(`Carry-forward action: ${action}`);
+    }
+    if (novelty) {
+      lines.push(`Novelty delta for this cycle: ${novelty}`);
+    }
+    return {
+      summary: normalizeDreamText(lines.join("\n"), 520),
+      sourcePath,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveHeartbeatRecallTimeoutMs(): number {
+  const raw = process.env[HEARTBEAT_RECALL_TIMEOUT_ENV]?.trim();
+  if (!raw) {
+    return HEARTBEAT_RECALL_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return HEARTBEAT_RECALL_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+function resolveSacredRecallTimeoutMs(isHeartbeat: boolean): number {
+  if (isHeartbeat) {
+    return resolveHeartbeatRecallTimeoutMs();
+  }
+  const raw = process.env[SACRED_RECALL_TIMEOUT_ENV]?.trim();
+  if (!raw) {
+    return SACRED_RECALL_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return SACRED_RECALL_TIMEOUT_MS;
+  }
+  return Math.max(0, parsed);
+}
+
+function isFastRetryEligibleModel(provider: string, modelId: string): boolean {
+  const normalizedProvider = String(provider ?? "").toLowerCase();
+  const normalizedModel = String(modelId ?? "").toLowerCase();
+  return normalizedModel.includes(":free") || normalizedProvider === "openrouter";
+}
+
+function resolveStartupStallTimeoutMs(params: {
+  provider: string;
+  modelId: string;
+  timeoutMs: number;
+}): number {
+  const hardTimeoutMs = Math.max(1, Math.floor(params.timeoutMs));
+  const envRaw = process.env[STARTUP_STALL_TIMEOUT_ENV]?.trim();
+  const envParsed = envRaw ? Number.parseInt(envRaw, 10) : NaN;
+
+  let timeoutMs = 0;
+  if (Number.isFinite(envParsed)) {
+    timeoutMs = Math.max(0, envParsed);
+  } else if (!envRaw && isFastRetryEligibleModel(params.provider, params.modelId)) {
+    timeoutMs = STARTUP_STALL_TIMEOUT_DEFAULT_MS;
+  }
+
+  if (timeoutMs <= 0) {
+    return 0;
+  }
+
+  const capped = Math.min(timeoutMs, STARTUP_STALL_TIMEOUT_MAX_MS, Math.max(1, hardTimeoutMs - 1_000));
+  return capped > 0 ? capped : 0;
+}
+
+async function buildSacredRecallContextForAttempt(params: {
+  isHeartbeat: boolean;
+  input: Parameters<typeof buildBrainSacredRecallContext>[0];
+}): Promise<Awaited<ReturnType<typeof buildBrainSacredRecallContext>>> {
+  const timeoutMs = resolveSacredRecallTimeoutMs(params.isHeartbeat);
+  if (timeoutMs <= 0) {
+    return buildBrainSacredRecallContext(params.input);
+  }
+
+  return await new Promise<Awaited<ReturnType<typeof buildBrainSacredRecallContext>>>(
+    (resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve({
+          contextText: null,
+          items: [],
+          error: `sacred recall timeout after ${timeoutMs}ms`,
+        });
+      }, timeoutMs);
+
+      void buildBrainSacredRecallContext(params.input)
+        .then((result) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .catch((err) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        });
+    },
+  );
+}
+
+async function appendDreamCapsule(params: {
+  workspaceDir: string;
+  runId: string;
+  sessionKey: string;
+  heartbeatPrompt: string;
+  assistantMessage?: string;
+  timedOut?: boolean;
+  promptError?: boolean;
+  now?: Date;
+}): Promise<{ written: boolean; path: string; reason: string }> {
+  const sourcePath = path.join(params.workspaceDir, DREAMS_RELATIVE_PATH);
+  const assistant = normalizeDreamText(stripHeartbeatAckArtifacts(params.assistantMessage ?? ""), 420);
+  let insight = assistant;
+  let reason = "persisted";
+
+  if (!insight) {
+    if (params.timedOut) {
+      insight = normalizeDreamText(
+        "Run ended without assistant reply (timeout). Narrow the next cycle to one lightweight action.",
+        420,
+      );
+      reason = "timeout-fallback";
+    } else if (params.promptError) {
+      insight = normalizeDreamText(
+        "Run ended with a prompt error before full reply. Retry with a simpler cue.",
+        420,
+      );
+      reason = "prompt-error-fallback";
+    } else {
+      return { written: false, path: sourcePath, reason: "empty-assistant" };
+    }
+  }
+
+  insight = normalizeDreamText(stripHeartbeatAckArtifacts(insight), 420);
+  if (!insight || insight.toUpperCase() === HEARTBEAT_ACK_TOKEN) {
+    return { written: false, path: sourcePath, reason: "heartbeat-ack" };
+  }
+
+  const cue = normalizeDreamText(stripHeartbeatAckArtifacts(params.heartbeatPrompt), 220);
+  let recentEntries: DreamEntry[] = [];
+  try {
+    const raw = await fs.readFile(sourcePath, "utf-8");
+    recentEntries = parseDreamEntries(raw).slice(-DREAM_REPEAT_WINDOW);
+  } catch {
+    recentEntries = [];
+  }
+
+  const noveltyDelta = selectNoveltyDelta({
+    runId: params.runId,
+    cue,
+    insight,
+    recentDeltas: recentEntries.map((entry) => entry.noveltyDelta),
+  });
+  const insightSignature = normalizeDreamSignature(insight);
+  const duplicateInsight =
+    insightSignature.length > 0 &&
+    recentEntries.some((entry) => normalizeDreamSignature(entry.insight) === insightSignature);
+  if (duplicateInsight) {
+    insight = normalizeDreamText(`${insight} Novelty delta activated: ${noveltyDelta}`, 420);
+    reason = reason === "persisted" ? "repeat-guard" : `${reason}+repeat-guard`;
+  }
+
+  const actionHintSource = assistant || insight;
+  const actionHintBase = normalizeDreamText(actionHintSource.split(/[.!?]/)[0] ?? actionHintSource, 120);
+  const actionHint = normalizeDreamText(
+    actionHintBase
+      ? `${actionHintBase}. Novelty delta: ${noveltyDelta}`
+      : `Novelty delta: ${noveltyDelta}`,
+    180,
+  );
+  const now = params.now ?? new Date();
+  const entry = [
+    `## [${now.toISOString()}] run=${params.runId} session=${params.sessionKey}`,
+    `- cue: ${cue}`,
+    `- insight: ${insight}`,
+    `- action_hint: ${actionHint}`,
+    `- novelty_delta: ${noveltyDelta}`,
+    "",
+  ].join("\n");
+  try {
+    await fs.access(sourcePath);
+  } catch {
+    await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+    await fs.writeFile(sourcePath, DREAMS_HEADER, "utf-8");
+  }
+  await fs.appendFile(sourcePath, entry, "utf-8");
+  return { written: true, path: sourcePath, reason };
 }
 
 export async function runEmbeddedAttempt(
@@ -810,6 +1145,7 @@ export async function runEmbeddedAttempt(
 
       let aborted = Boolean(params.abortSignal?.aborted);
       let timedOut = false;
+      let timeoutStage: "startup" | "full" | undefined;
       const getAbortReason = (signal: AbortSignal): unknown =>
         "reason" in signal ? (signal as { reason?: unknown }).reason : undefined;
       const makeTimeoutAbortReason = (): Error => {
@@ -859,6 +1195,35 @@ export async function runEmbeddedAttempt(
         });
       };
 
+      const startupStallTimeoutMs = resolveStartupStallTimeoutMs({
+        provider: params.provider,
+        modelId: params.modelId,
+        timeoutMs: params.timeoutMs,
+      });
+      let startupStallTimer: NodeJS.Timeout | undefined;
+      let sawModelActivity = false;
+      const clearStartupStallTimer = () => {
+        if (startupStallTimer) {
+          clearTimeout(startupStallTimer);
+          startupStallTimer = undefined;
+        }
+      };
+      const markModelActivity = () => {
+        sawModelActivity = true;
+        clearStartupStallTimer();
+      };
+      const wrapWithModelActivity = <T extends unknown[]>(
+        handler: ((...args: T) => void | Promise<void>) | undefined,
+      ) => {
+        if (!handler) {
+          return undefined;
+        }
+        return async (...args: T): Promise<void> => {
+          markModelActivity();
+          await handler(...args);
+        };
+      };
+
       const subscription = subscribeEmbeddedPiSession({
         session: activeSession,
         runId: params.runId,
@@ -868,15 +1233,15 @@ export async function runEmbeddedAttempt(
         toolResultFormat: params.toolResultFormat,
         shouldEmitToolResult: params.shouldEmitToolResult,
         shouldEmitToolOutput: params.shouldEmitToolOutput,
-        onToolResult: params.onToolResult,
-        onReasoningStream: params.onReasoningStream,
-        onBlockReply: params.onBlockReply,
-        onBlockReplyFlush: params.onBlockReplyFlush,
+        onToolResult: wrapWithModelActivity(params.onToolResult),
+        onReasoningStream: wrapWithModelActivity(params.onReasoningStream),
+        onBlockReply: wrapWithModelActivity(params.onBlockReply),
+        onBlockReplyFlush: wrapWithModelActivity(params.onBlockReplyFlush),
         blockReplyBreak: params.blockReplyBreak,
         blockReplyChunking: params.blockReplyChunking,
-        onPartialReply: params.onPartialReply,
-        onAssistantMessageStart: params.onAssistantMessageStart,
-        onAgentEvent: params.onAgentEvent,
+        onPartialReply: wrapWithModelActivity(params.onPartialReply),
+        onAssistantMessageStart: wrapWithModelActivity(params.onAssistantMessageStart),
+        onAgentEvent: wrapWithModelActivity(params.onAgentEvent),
         enforceFinalTag: params.enforceFinalTag,
       });
 
@@ -912,6 +1277,7 @@ export async function runEmbeddedAttempt(
               `embedded run timeout: runId=${params.runId} sessionId=${params.sessionId} timeoutMs=${params.timeoutMs}`,
             );
           }
+          timeoutStage = timeoutStage ?? "full";
           abortRun(true);
           if (!abortWarnTimer) {
             abortWarnTimer = setTimeout(() => {
@@ -993,7 +1359,9 @@ export async function runEmbeddedAttempt(
         try {
           const availableTools = [...builtInTools, ...allCustomTools]
             .map((tool) => {
-              if (!tool || typeof tool !== "object") return "";
+              if (!tool || typeof tool !== "object") {
+                return "";
+              }
               const record = tool as { name?: unknown };
               return typeof record.name === "string" ? record.name.trim() : "";
             })
@@ -1046,6 +1414,40 @@ export async function runEmbeddedAttempt(
               });
             }
           }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const dreamContext = await loadLatestDreamContext(effectiveWorkspace);
+              if (dreamContext?.summary) {
+                effectivePrompt = [
+                  "<dream_context>",
+                  dreamContext.summary,
+                  "</dream_context>",
+                  "",
+                  effectivePrompt,
+                ].join("\n");
+                emitBrainReasoningEvent(params, {
+                  phase: "dream",
+                  label: "DREAM",
+                  summary: `injected prior dream context (${dreamContext.sourcePath})`,
+                  source: "proto33-t2.dream",
+                });
+              } else {
+                emitBrainReasoningEvent(params, {
+                  phase: "dream",
+                  label: "DREAM",
+                  summary: "no prior dream capsule found",
+                  source: "proto33-t2.dream",
+                });
+              }
+            } catch (dreamErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "dream",
+                label: "DREAM",
+                summary: `fail-open: ${String(dreamErr)}`,
+                source: "proto33-t2.dream",
+              });
+            }
+          }
           const highRiskGuard = maybeBuildHighRiskGuardContext(brainDecision.riskLevel);
           if (highRiskGuard) {
             effectivePrompt = `${highRiskGuard}\n\n${effectivePrompt}`;
@@ -1090,13 +1492,16 @@ export async function runEmbeddedAttempt(
               source: "proto33-r051.contract",
             });
           }
-          const sacredRecall = await buildBrainSacredRecallContext({
+          const sacredRecall = await buildSacredRecallContextForAttempt({
+            isHeartbeat: params.isHeartbeat === true,
+            input: {
             cfg: params.config,
             userMessage: params.prompt,
             sessionKey: params.sessionKey ?? params.sessionId,
             agentId: sessionAgentId,
             workspaceDir: effectiveWorkspace,
             maxResults: 3,
+            },
           });
           if (sacredRecall.contextText) {
             effectivePrompt = `${sacredRecall.contextText}\n\n${effectivePrompt}`;
@@ -1284,6 +1689,24 @@ export async function runEmbeddedAttempt(
             );
           }
 
+          if (startupStallTimeoutMs > 0 && !sawModelActivity && !aborted && !timedOut) {
+            startupStallTimer = setTimeout(
+              () => {
+                if (aborted || timedOut || sawModelActivity) {
+                  return;
+                }
+                timeoutStage = "startup";
+                if (!isProbeSession) {
+                  log.warn(
+                    `embedded run startup stall timeout: runId=${params.runId} sessionId=${params.sessionId} startupTimeoutMs=${startupStallTimeoutMs} timeoutMs=${params.timeoutMs}`,
+                  );
+                }
+                abortRun(true, makeTimeoutAbortReason());
+              },
+              Math.max(1, startupStallTimeoutMs),
+            );
+          }
+
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
           if (imageResult.images.length > 0) {
@@ -1294,21 +1717,28 @@ export async function runEmbeddedAttempt(
         } catch (err) {
           promptError = err;
         } finally {
+          clearStartupStallTimer();
           log.debug(
             `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
           );
         }
 
-        try {
-          await waitForCompactionRetry();
-        } catch (err) {
-          if (isRunnerAbortError(err)) {
-            if (!promptError) {
-              promptError = err;
+        if (!aborted && !timedOut) {
+          try {
+            await waitForCompactionRetry();
+          } catch (err) {
+            if (isRunnerAbortError(err)) {
+              if (!promptError) {
+                promptError = err;
+              }
+            } else {
+              throw err;
             }
-          } else {
-            throw err;
           }
+        } else {
+          log.debug(
+            `embedded run compaction wait skipped: runId=${params.runId} aborted=${aborted ? "yes" : "no"} timedOut=${timedOut ? "yes" : "no"}`,
+          );
         }
 
         // Append cache-TTL timestamp AFTER prompt + compaction retry completes.
@@ -1367,6 +1797,7 @@ export async function runEmbeddedAttempt(
           }
           restoreHighRiskToolset = undefined;
         }
+        clearStartupStallTimer();
         clearTimeout(abortTimer);
         if (abortWarnTimer) {
           clearTimeout(abortWarnTimer);
@@ -1383,25 +1814,48 @@ export async function runEmbeddedAttempt(
 
       // Prototype 33 R053 episodic write-path:
       // append significant user-assistant turns into an indexed journal.
-      if (!aborted && !timedOut && !promptError) {
-        const assistantText = extractAssistantText(lastAssistant);
-        if (assistantText) {
-          try {
-            const episodicResult = await appendBrainEpisodicJournal({
-              cfg: params.config,
-              agentId: params.agentId,
-              workspaceDir: effectiveWorkspace,
-              runId: params.runId,
-              sessionKey: params.sessionKey ?? params.sessionId,
-              userMessage: params.prompt,
-              assistantMessage: assistantText,
-            });
-            log.debug(
-              `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} kind=${episodicResult.primaryKind} path=${episodicResult.path} structured=${episodicResult.structuredPersisted ? "yes" : "no"} rotated=${episodicResult.structuredRotated ? "yes" : "no"} rotatedPruned=${episodicResult.structuredRotationPrunedFiles ?? 0} metadata=${episodicResult.metadataPersisted ? "yes" : "no"} compact=${episodicResult.compactionApplied ? "yes" : "no"} compactDeleted=${episodicResult.compactionDeletedRows ?? 0}`,
-            );
-          } catch (episodicErr) {
-            log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);
-          }
+      const assistantTextFromSnapshot = extractAssistantText(lastAssistant);
+      const assistantTextFromStream =
+        assistantTexts
+          .slice()
+          .toReversed()
+          .find((entry) => entry.trim().length > 0) ?? "";
+      const assistantText = assistantTextFromSnapshot || assistantTextFromStream;
+      const canPersistEpisodic = !aborted && !timedOut && !promptError;
+      if (canPersistEpisodic && assistantText) {
+        try {
+          const episodicResult = await appendBrainEpisodicJournal({
+            cfg: params.config,
+            agentId: params.agentId,
+            workspaceDir: effectiveWorkspace,
+            runId: params.runId,
+            sessionKey: params.sessionKey ?? params.sessionId,
+            userMessage: params.prompt,
+            assistantMessage: assistantText,
+          });
+          log.debug(
+            `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} kind=${episodicResult.primaryKind} path=${episodicResult.path} structured=${episodicResult.structuredPersisted ? "yes" : "no"} rotated=${episodicResult.structuredRotated ? "yes" : "no"} rotatedPruned=${episodicResult.structuredRotationPrunedFiles ?? 0} metadata=${episodicResult.metadataPersisted ? "yes" : "no"} compact=${episodicResult.compactionApplied ? "yes" : "no"} compactDeleted=${episodicResult.compactionDeletedRows ?? 0}`,
+          );
+        } catch (episodicErr) {
+          log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);
+        }
+      }
+      if (params.isHeartbeat) {
+        try {
+          const dreamResult = await appendDreamCapsule({
+            workspaceDir: effectiveWorkspace,
+            runId: params.runId,
+            sessionKey: params.sessionKey ?? params.sessionId,
+            heartbeatPrompt: params.prompt,
+            assistantMessage: assistantText,
+            timedOut,
+            promptError: Boolean(promptError),
+          });
+          log.debug(
+            `brain dream capsule: runId=${params.runId} written=${dreamResult.written ? "yes" : "no"} reason=${dreamResult.reason} path=${dreamResult.path}`,
+          );
+        } catch (dreamErr) {
+          log.warn(`brain dream capsule fail-open: ${String(dreamErr)}`);
         }
       }
 
@@ -1415,6 +1869,7 @@ export async function runEmbeddedAttempt(
       return {
         aborted,
         timedOut,
+        timeoutStage,
         promptError,
         sessionIdUsed,
         systemPromptReport,

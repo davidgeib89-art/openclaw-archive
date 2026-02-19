@@ -99,6 +99,7 @@ export type EmbeddedRunAttemptParams = {
 export type EmbeddedRunAttemptResult = {
   aborted: boolean;
   timedOut: boolean;
+  timeoutStage?: "startup" | "full";
   promptError: unknown;
   sessionIdUsed: string;
   systemPromptReport?: SessionSystemPromptReport;

@@ -61,7 +61,7 @@ const makeAttempt = (overrides: Partial<EmbeddedRunAttemptResult>): EmbeddedRunA
   ...overrides,
 });
 
-const makeConfig = (opts?: { fallbacks?: string[]; apiKey?: string }): OpenClawConfig =>
+const makeConfig = (opts?: { fallbacks?: string[]; apiKey?: string; modelId?: string }): OpenClawConfig =>
   ({
     agents: {
       defaults: {
@@ -78,7 +78,7 @@ const makeConfig = (opts?: { fallbacks?: string[]; apiKey?: string }): OpenClawC
           baseUrl: "https://example.com",
           models: [
             {
-              id: "mock-1",
+              id: opts?.modelId ?? "mock-1",
               name: "Mock 1",
               reasoning: false,
               input: ["text"],
@@ -169,6 +169,149 @@ describe("runEmbeddedPiAgent auth profile rotation", () => {
       ) as { usageStats?: Record<string, { lastUsed?: number }> };
       expect(typeof stored.usageStats?.["openai:p2"]?.lastUsed).toBe("number");
     } finally {
+      await fs.rm(agentDir, { recursive: true, force: true });
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("quick-retries startup timeouts on free models before profile rotation", async () => {
+    const previousRetryMax = process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX;
+    const previousRetryBackoff = process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS;
+    process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX = "1";
+    process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS = "1";
+
+    const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-agent-"));
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-workspace-"));
+    try {
+      await writeAuthStore(agentDir);
+
+      runEmbeddedAttemptMock
+        .mockResolvedValueOnce(
+          makeAttempt({
+            timedOut: true,
+            timeoutStage: "startup",
+            assistantTexts: [],
+            lastAssistant: undefined,
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeAttempt({
+            assistantTexts: ["ok"],
+            lastAssistant: buildAssistant({
+              stopReason: "stop",
+              content: [{ type: "text", text: "ok" }],
+            }),
+          }),
+        );
+
+      await runEmbeddedPiAgent({
+        sessionId: "session:test",
+        sessionKey: "agent:test:startup-quick-retry",
+        sessionFile: path.join(workspaceDir, "session.jsonl"),
+        workspaceDir,
+        agentDir,
+        config: makeConfig({ modelId: "mock-1:free" }),
+        prompt: "hello",
+        provider: "openai",
+        model: "mock-1:free",
+        authProfileId: "openai:p1",
+        authProfileIdSource: "auto",
+        timeoutMs: 5_000,
+        runId: "run:startup-quick-retry",
+      });
+
+      expect(runEmbeddedAttemptMock).toHaveBeenCalledTimes(2);
+
+      const stored = JSON.parse(
+        await fs.readFile(path.join(agentDir, "auth-profiles.json"), "utf-8"),
+      ) as {
+        usageStats?: Record<string, { lastUsed?: number; cooldownUntil?: number }>;
+      };
+      expect(stored.usageStats?.["openai:p2"]?.lastUsed).toBe(2);
+      expect(stored.usageStats?.["openai:p1"]?.cooldownUntil).toBeUndefined();
+    } finally {
+      if (previousRetryMax === undefined) {
+        delete process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX;
+      } else {
+        process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX = previousRetryMax;
+      }
+      if (previousRetryBackoff === undefined) {
+        delete process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS;
+      } else {
+        process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS = previousRetryBackoff;
+      }
+      await fs.rm(agentDir, { recursive: true, force: true });
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rotates profile on full timeout even for free models", async () => {
+    const previousRetryMax = process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX;
+    const previousRetryBackoff = process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS;
+    process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX = "1";
+    process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS = "1";
+
+    const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-agent-"));
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-workspace-"));
+    try {
+      await writeAuthStore(agentDir);
+
+      runEmbeddedAttemptMock
+        .mockResolvedValueOnce(
+          makeAttempt({
+            timedOut: true,
+            timeoutStage: "full",
+            assistantTexts: [],
+            lastAssistant: undefined,
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeAttempt({
+            assistantTexts: ["ok"],
+            lastAssistant: buildAssistant({
+              stopReason: "stop",
+              content: [{ type: "text", text: "ok" }],
+            }),
+          }),
+        );
+
+      await runEmbeddedPiAgent({
+        sessionId: "session:test",
+        sessionKey: "agent:test:full-timeout-rotate",
+        sessionFile: path.join(workspaceDir, "session.jsonl"),
+        workspaceDir,
+        agentDir,
+        config: makeConfig({ modelId: "mock-1:free" }),
+        prompt: "hello",
+        provider: "openai",
+        model: "mock-1:free",
+        authProfileId: "openai:p1",
+        authProfileIdSource: "auto",
+        timeoutMs: 5_000,
+        runId: "run:full-timeout-rotate",
+      });
+
+      expect(runEmbeddedAttemptMock).toHaveBeenCalledTimes(2);
+
+      const stored = JSON.parse(
+        await fs.readFile(path.join(agentDir, "auth-profiles.json"), "utf-8"),
+      ) as {
+        usageStats?: Record<string, { lastUsed?: number; cooldownUntil?: number }>;
+      };
+      expect(typeof stored.usageStats?.["openai:p2"]?.lastUsed).toBe("number");
+      expect(stored.usageStats?.["openai:p2"]?.lastUsed).not.toBe(2);
+      expect(typeof stored.usageStats?.["openai:p1"]?.cooldownUntil).toBe("number");
+    } finally {
+      if (previousRetryMax === undefined) {
+        delete process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX;
+      } else {
+        process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_MAX = previousRetryMax;
+      }
+      if (previousRetryBackoff === undefined) {
+        delete process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS;
+      } else {
+        process.env.OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS = previousRetryBackoff;
+      }
       await fs.rm(agentDir, { recursive: true, force: true });
       await fs.rm(workspaceDir, { recursive: true, force: true });
     }

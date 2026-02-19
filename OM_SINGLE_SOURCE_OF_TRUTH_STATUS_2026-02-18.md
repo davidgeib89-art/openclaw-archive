@@ -32,6 +32,7 @@ What is working:
 1. Decision layer classifies heartbeat turns as autonomous when sandbox is enabled.
 2. Episodic graph memory foundation exists.
 3. Sacred recall and subconscious pathways are implemented.
+4. Heartbeat recall now fail-opens with timeout guard (no hard stall before action).
 
 Current limitation:
 1. Live stability tuning has temporarily favored heartbeat continuity over full recall complexity.
@@ -59,11 +60,12 @@ Evidence:
 ### Vision: YELLOW
 What is working:
 1. Local image generation via ComfyUI skill is ready and producing files.
-2. Reflection loop is implemented in code (`comfyui-image` -> `image-describe`).
+2. Reflection loop is active in runtime (`comfyui-image` -> `image-describe`) and writes reflection artifacts.
+3. Local heuristic reflection fallback is active when no OpenRouter key is available.
 
 Current limitation:
-1. `image-describe` skill is currently disabled in runtime config.
-2. Vision description still depends on OpenRouter vision models (free fallback strategy), not fully local-only.
+1. Local fallback is deterministic but still shallow compared to full multimodal semantic vision.
+2. Remote free-model vision remains optional and should stay non-default for local-only mode.
 
 Evidence:
 1. `skills/comfyui-image.js`
@@ -86,41 +88,46 @@ Evidence:
 
 ## 5) Next 3 Steps (Priority)
 
-### Step 1: Vision Reflection Activation (Short)
+Current verification snapshot (2026-02-18, evening):
+1. Step 1 Vision Reflection E2E: DONE (image + reflection + artifact path, including no-key local fallback).
+2. Step 2 Dream Layer Validation: DONE (`DREAMS.md` writes + next cycle injects prior dream context).
+3. Step 3 Associative Index Recall Validation: DONE (routing verifier `PASS 3/3`, live `MEMORY_INDEX.md` updates).
+
+### Step A: Vision Quality Upgrade (Short)
 Goal:
-1. Activate image reflection in runtime flow safely and predictably.
+1. Increase semantic quality of local-only reflection.
 
 Tasks:
-1. Enable `image-describe` in `C:\Users\holyd\.openclaw\openclaw.json`.
-2. Keep free-model fallback chain and strict no-paid-model policy.
-3. Log reflection output into a persistent memory artifact.
+1. Add richer local features (palette clusters, edge density, composition zones).
+2. Merge generation prompt metadata into local reflection (intent vs result).
+3. Keep output schema stable for memory ingestion.
 
 Done when:
-1. "generate image" in chat returns image + structured reflection.
+1. Local fallback descriptions are diverse and specific across at least 5 distinct images.
 
-### Step 2: Dream Layer (Medium)
+### Step B: Live Recall Query Smoke (Short)
 Goal:
-1. Add continuity between active sessions.
+1. Confirm associative recall in live conversation, not only script verification.
 
 Tasks:
-1. Create `DREAMS.md` generation cycle from logs + soul context.
-2. Inject last dream summary into next heartbeat reasoning.
-3. Keep one-dream-per-cycle cap and snapshot logs.
+1. Ask one identity recall query and one project recall query in live channel.
+2. Confirm response behavior aligns with graph/index facts.
+3. Capture one evidence snippet in `OM_ACTIVITY.log`.
 
 Done when:
-1. Om references prior dream insight in a later heartbeat without user prompting.
+1. Two live recall prompts produce grounded responses from stored memory.
 
-### Step 3: Associative Memory Index (Medium)
+### Step C: Dream Diversity Guard (Medium)
 Goal:
-1. Build memory retrieval by meaning, not only chronology.
+1. Reduce repeated same-text mood loops during heartbeat autonomy.
 
 Tasks:
-1. Introduce `MEMORY_INDEX.md` with stable tags and references.
-2. Add lightweight write/update policy during reflection.
-3. Route identity/project/emotion queries through index-first lookup.
+1. Add lightweight anti-repeat check for last N mood/autonomy outputs.
+2. Force one novelty constraint per cycle (new angle, file, or format).
+3. Keep safety and snapshot behavior unchanged.
 
 Done when:
-1. Query like "What made you proud before?" returns a tagged prior event reliably.
+1. Three consecutive heartbeat runs produce non-duplicate creative deltas.
 
 ## 6) Non-Negotiables (Still Active)
 
@@ -145,4 +152,3 @@ Operator check:
 2. Snapshot writes still active?
 3. Image generation still works?
 4. Reflection still coherent?
-

@@ -159,6 +159,43 @@ const toNormalizedUsage = (usage: UsageAccumulator) => {
   };
 };
 
+const QUICK_TIMEOUT_RETRY_MAX_ENV = "OPENCLAW_AGENT_TIMEOUT_RETRY_MAX";
+const QUICK_TIMEOUT_RETRY_BACKOFF_BASE_ENV = "OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS";
+const QUICK_TIMEOUT_RETRY_DEFAULT_MAX = 6;
+const QUICK_TIMEOUT_RETRY_MAX_CAP = 12;
+const QUICK_TIMEOUT_RETRY_DEFAULT_BACKOFF_MS = 1_000;
+const QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS = 15_000;
+
+function isQuickTimeoutRetryEligible(provider: string, model: string): boolean {
+  const normalizedProvider = String(provider ?? "").toLowerCase();
+  const normalizedModel = String(model ?? "").toLowerCase();
+  return normalizedModel.includes(":free") || normalizedProvider === "openrouter";
+}
+
+function resolveQuickTimeoutRetryMax(): number {
+  const raw = process.env[QUICK_TIMEOUT_RETRY_MAX_ENV]?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return QUICK_TIMEOUT_RETRY_DEFAULT_MAX;
+  }
+  return Math.max(0, Math.min(QUICK_TIMEOUT_RETRY_MAX_CAP, parsed));
+}
+
+function resolveQuickTimeoutRetryBackoffBaseMs(): number {
+  const raw = process.env[QUICK_TIMEOUT_RETRY_BACKOFF_BASE_ENV]?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return QUICK_TIMEOUT_RETRY_DEFAULT_BACKOFF_MS;
+  }
+  return Math.min(QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS, Math.max(250, parsed));
+}
+
+function resolveQuickTimeoutRetryDelayMs(attempt: number, baseMs: number): number {
+  const exponent = Math.max(0, attempt - 1);
+  const delay = baseMs * 2 ** exponent;
+  return Math.min(QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS, Math.max(250, Math.floor(delay)));
+}
+
 export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
@@ -414,6 +451,9 @@ export async function runEmbeddedPiAgent(
       const usageAccumulator = createUsageAccumulator();
       let lastRunPromptUsage: ReturnType<typeof normalizeUsage> | undefined;
       let autoCompactionCount = 0;
+      const quickTimeoutRetryMax = resolveQuickTimeoutRetryMax();
+      const quickTimeoutRetryBackoffBaseMs = resolveQuickTimeoutRetryBackoffBaseMs();
+      let quickTimeoutRetryCount = 0;
       try {
         while (true) {
           attemptedThinking.add(thinkLevel);
@@ -481,7 +521,8 @@ export async function runEmbeddedPiAgent(
             enforceFinalTag: params.enforceFinalTag,
           });
 
-          const { aborted, promptError, timedOut, sessionIdUsed, lastAssistant } = attempt;
+          const { aborted, promptError, timedOut, timeoutStage, sessionIdUsed, lastAssistant } =
+            attempt;
           const lastAssistantUsage = normalizeUsage(lastAssistant?.usage as UsageLike);
           const attemptUsage = attempt.attemptUsage ?? lastAssistantUsage;
           mergeUsageIntoAccumulator(usageAccumulator, attemptUsage);
@@ -774,6 +815,10 @@ export async function runEmbeddedPiAgent(
             continue;
           }
 
+          if (!timedOut) {
+            quickTimeoutRetryCount = 0;
+          }
+
           const authFailure = isAuthAssistantError(lastAssistant);
           const rateLimitFailure = isRateLimitAssistantError(lastAssistant);
           const billingFailure = isBillingAssistantError(lastAssistant);
@@ -805,6 +850,28 @@ export async function runEmbeddedPiAgent(
           const shouldRotate = (!aborted && failoverFailure) || timedOut;
 
           if (shouldRotate) {
+            const canQuickRetrySameProfile =
+              timedOut &&
+              timeoutStage === "startup" &&
+              quickTimeoutRetryCount < quickTimeoutRetryMax &&
+              isQuickTimeoutRetryEligible(provider, modelId);
+            if (canQuickRetrySameProfile) {
+              quickTimeoutRetryCount += 1;
+              const retryDelayMs = resolveQuickTimeoutRetryDelayMs(
+                quickTimeoutRetryCount,
+                quickTimeoutRetryBackoffBaseMs,
+              );
+              if (!isProbeSession) {
+                log.warn(
+                  `Model startup stalled before first stream activity; quick retry ${quickTimeoutRetryCount}/${quickTimeoutRetryMax} in ${retryDelayMs}ms (${provider}/${modelId}).`,
+                );
+              }
+              if (retryDelayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+              }
+              continue;
+            }
+
             if (lastProfileId) {
               const reason =
                 timedOut || assistantFailoverReason === "timeout"
@@ -831,6 +898,7 @@ export async function runEmbeddedPiAgent(
 
             const rotated = await advanceAuthProfile();
             if (rotated) {
+              quickTimeoutRetryCount = 0;
               continue;
             }
 
