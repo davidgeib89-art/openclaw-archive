@@ -5,7 +5,7 @@ Purpose: One page that answers "Where are we, what works, what is missing, what 
 
 ## 1) Current Position
 
-As of 2026-02-18, Om is in early autonomy with active heartbeat behavior.
+As of 2026-02-19, Om is in early autonomy with active heartbeat behavior.
 
 Ampel status:
 1. Body: GREEN
@@ -93,7 +93,16 @@ Current verification snapshot (2026-02-18, evening):
 2. Step 2 Dream Layer Validation: DONE (`DREAMS.md` writes + next cycle injects prior dream context).
 3. Step 3 Associative Index Recall Validation: DONE (routing verifier `PASS 3/3`, live `MEMORY_INDEX.md` updates).
 
+T1/T2/T3 closure snapshot (2026-02-19):
+1. T1 Vision Quality Upgrade: DONE (local reflection schema remained stable across 5 local generations).
+2. T2 Live Recall Smoke: DONE (grounded identity + project recalls in live flow; evidence in `OM_ACTIVITY.log`).
+3. T3 Dream Diversity Guard: DONE at dream-output level (3 consecutive heartbeat runs wrote non-duplicate normalized dream insights with novelty deltas).
+4. Residual risk: first `OM-REPLY` opening line can still repeat across runs, even when dream capsule diversity is enforced.
+
 ### Step A: Vision Quality Upgrade (Short)
+Status:
+1. DONE (2026-02-19)
+
 Goal:
 1. Increase semantic quality of local-only reflection.
 
@@ -106,6 +115,9 @@ Done when:
 1. Local fallback descriptions are diverse and specific across at least 5 distinct images.
 
 ### Step B: Live Recall Query Smoke (Short)
+Status:
+1. DONE (2026-02-19; runIds `dd5b230f-aef9-422d-bc48-e4812370adcc` and `cb2e21dd-5cb1-45c5-9c32-3428df98418c`)
+
 Goal:
 1. Confirm associative recall in live conversation, not only script verification.
 
@@ -118,6 +130,9 @@ Done when:
 1. Two live recall prompts produce grounded responses from stored memory.
 
 ### Step C: Dream Diversity Guard (Medium)
+Status:
+1. DONE (2026-02-19; runIds `4091dabe-d0f9-4fc1-bf33-cb89d3993f10`, `d55fa227-f901-4b7e-94ae-ca441d239c5e`, `a036a305-7fa4-45a4-b6c9-75e87e724c0a`)
+
 Goal:
 1. Reduce repeated same-text mood loops during heartbeat autonomy.
 
