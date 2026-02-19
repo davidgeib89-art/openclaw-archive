@@ -85,3 +85,15 @@ Voice character tips:
 - Dramatic: Use `[sings]` or `[shouts]` sparingly
 
 Default voice for Clawd: `lj2rcrvANS3gaWWnczSX` (or just `-v Clawd`)
+
+## Emotional Voice Mapping (MOOD -> VoiceEmotionConfig)
+
+When mood context is available from `knowledge/sacred/MOOD.md`, align delivery before generating audio:
+
+- `grounded`: slow + low energy (`speed=0.88`, `rate=-12%`, `pitch=-2Hz`, `volume=+0%`)
+- `calm`: slightly slower (`speed=0.95`, `rate=-6%`, `pitch=-1Hz`, `volume=+2%`)
+- `neutral`: default (`speed=1.0`, `rate=+0%`, `pitch=+0Hz`, `volume=+0%`)
+- `uplifted`: slightly brighter (`speed=1.05`, `rate=+4%`, `pitch=+1Hz`, `volume=+4%`)
+- `energized`: high intensity (`speed=1.12`, `rate=+10%`, `pitch=+3Hz`, `volume=+10%`)
+
+Use this mapping to avoid flat delivery and keep voice aligned with current emotional state.

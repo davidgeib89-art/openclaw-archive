@@ -36,6 +36,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
   const state: EmbeddedPiSubscribeState = {
     assistantTexts: [],
     toolMetas: [],
+    toolExecutionCounts: {
+      total: 0,
+      successful: 0,
+      failed: 0,
+    },
     toolMetaById: new Map(),
     toolSummaryById: new Set(),
     lastToolError: undefined,
@@ -82,6 +87,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
 
   const assistantTexts = state.assistantTexts;
   const toolMetas = state.toolMetas;
+  const toolExecutionCounts = state.toolExecutionCounts;
   const toolMetaById = state.toolMetaById;
   const toolSummaryById = state.toolSummaryById;
   const messagingToolSentTexts = state.messagingToolSentTexts;
@@ -564,6 +570,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
   const resetForCompactionRetry = () => {
     assistantTexts.length = 0;
     toolMetas.length = 0;
+    toolExecutionCounts.total = 0;
+    toolExecutionCounts.successful = 0;
+    toolExecutionCounts.failed = 0;
     toolMetaById.clear();
     toolSummaryById.clear();
     state.lastToolError = undefined;
@@ -601,10 +610,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     resolveCompactionRetry,
     maybeResolveCompactionWait,
     recordAssistantUsage,
-    incrementCompactionCount,
-    getUsageTotals,
-    getCompactionCount: () => compactionCount,
-  };
+      incrementCompactionCount,
+      getUsageTotals,
+      getCompactionCount: () => compactionCount,
+      getToolExecutionCounts: () => ({ ...toolExecutionCounts }),
+    };
 
   const unsubscribe = params.session.subscribe(createEmbeddedPiSessionEventHandler(ctx));
 
@@ -622,6 +632,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     getLastToolError: () => (state.lastToolError ? { ...state.lastToolError } : undefined),
     getUsageTotals,
     getCompactionCount: () => compactionCount,
+    getToolExecutionCounts: () => ({ ...toolExecutionCounts }),
     waitForCompactionRetry: () => {
       if (state.compactionInFlight || state.pendingCompactionRetry > 0) {
         ensureCompactionPromise();

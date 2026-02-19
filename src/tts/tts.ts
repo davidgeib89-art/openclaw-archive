@@ -156,6 +156,11 @@ export type ResolvedTtsModelOverrides = {
 export type TtsDirectiveOverrides = {
   ttsText?: string;
   provider?: TtsProvider;
+  edge?: {
+    pitch?: string;
+    rate?: string;
+    volume?: string;
+  };
   openai?: {
     voice?: string;
     model?: string;
@@ -567,6 +572,7 @@ export async function textToSpeech(params: {
             outputPath: audioPath,
             config: {
               ...config.edge,
+              ...params.overrides?.edge,
               outputFormat,
             },
             timeoutMs: config.timeoutMs,

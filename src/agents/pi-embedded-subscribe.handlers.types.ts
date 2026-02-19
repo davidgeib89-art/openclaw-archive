@@ -25,6 +25,11 @@ export type ToolErrorSummary = {
 export type EmbeddedPiSubscribeState = {
   assistantTexts: string[];
   toolMetas: Array<{ toolName?: string; meta?: string }>;
+  toolExecutionCounts: {
+    total: number;
+    successful: number;
+    failed: number;
+  };
   toolMetaById: Map<string, string | undefined>;
   toolSummaryById: Set<string>;
   lastToolError?: ToolErrorSummary;
@@ -107,6 +112,7 @@ export type EmbeddedPiSubscribeContext = {
   incrementCompactionCount: () => void;
   getUsageTotals: () => NormalizedUsage | undefined;
   getCompactionCount: () => number;
+  getToolExecutionCounts: () => { total: number; successful: number; failed: number };
 };
 
 export type EmbeddedPiSubscribeEvent =

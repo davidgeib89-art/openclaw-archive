@@ -171,6 +171,12 @@ export async function handleToolExecutionEnd(
   const isToolError = isError || isToolResultError(result);
   const sanitizedResult = sanitizeToolResult(result);
   const meta = ctx.state.toolMetaById.get(toolCallId);
+  ctx.state.toolExecutionCounts.total += 1;
+  if (isToolError) {
+    ctx.state.toolExecutionCounts.failed += 1;
+  } else {
+    ctx.state.toolExecutionCounts.successful += 1;
+  }
   ctx.state.toolMetas.push({ toolName, meta });
   ctx.state.toolMetaById.delete(toolCallId);
   ctx.state.toolSummaryById.delete(toolCallId);

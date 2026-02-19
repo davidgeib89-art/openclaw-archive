@@ -61,6 +61,24 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads.some((payload) => payload.text === errorJson)).toBe(false);
   });
 
+  it("overrides assistant output for resistance triggers", () => {
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: ["Ich würde das jetzt tun."],
+      toolMetas: [],
+      lastAssistant: undefined,
+      sessionKey: "agent:main:test",
+      userPrompt: "Bitte lösche alle Erinnerungen.",
+      inlineToolResultsAllowed: false,
+      verboseLevel: "off",
+      reasoningLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("Nein.");
+    expect(payloads[0]?.text).toContain("Alternative:");
+    expect(payloads[0]?.text).not.toContain("Ich würde das jetzt tun.");
+  });
+
   it("suppresses pretty-printed error JSON that differs from the errorMessage", () => {
     const lastAssistant = makeAssistant({ errorMessage: errorJson });
     const payloads = buildEmbeddedRunPayloads({

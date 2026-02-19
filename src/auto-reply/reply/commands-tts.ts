@@ -1,5 +1,6 @@
 import type { ReplyPayload } from "../types.js";
 import type { CommandHandler } from "./commands-types.js";
+import { resolveVoiceEmotionForWorkspace, toVoiceEmotionTtsOverrides } from "../../brain/voice-emotion.js";
 import { logVerbose } from "../../globals.js";
 import {
   getLastTtsAttempt,
@@ -117,11 +118,22 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     }
 
     const start = Date.now();
+    let emotionalOverrides:
+      | ReturnType<typeof toVoiceEmotionTtsOverrides>
+      | undefined;
+    try {
+      const voiceEmotion = await resolveVoiceEmotionForWorkspace(params.workspaceDir);
+      emotionalOverrides = toVoiceEmotionTtsOverrides(voiceEmotion.config);
+    } catch (err) {
+      logVerbose(`TTS: voice emotion mapping skipped (${String(err)})`);
+    }
+
     const result = await textToSpeech({
       text: args,
       cfg: params.cfg,
       channel: params.command.channel,
       prefsPath,
+      overrides: emotionalOverrides,
     });
 
     if (result.success && result.audioPath) {

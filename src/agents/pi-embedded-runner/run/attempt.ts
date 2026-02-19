@@ -14,6 +14,7 @@ import {
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
+import { updateEnergy } from "../../../brain/energy.js";
 import {
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
@@ -1256,6 +1257,7 @@ export async function runEmbeddedAttempt(
         getLastToolError,
         getUsageTotals,
         getCompactionCount,
+        getToolExecutionCounts = () => ({ total: 0, successful: 0, failed: 0 }),
       } = subscription;
 
       const queueHandle: EmbeddedPiQueueHandle = {
@@ -1857,6 +1859,39 @@ export async function runEmbeddedAttempt(
         } catch (dreamErr) {
           log.warn(`brain dream capsule fail-open: ${String(dreamErr)}`);
         }
+      }
+
+      try {
+        const toolCounts = getToolExecutionCounts();
+        const energyResult = await updateEnergy({
+          workspaceDir: effectiveWorkspace,
+          runId: params.runId,
+          sessionKey: params.sessionKey ?? params.sessionId,
+          toolStats: {
+            total: toolCounts.total,
+            successful: toolCounts.successful,
+            failed: toolCounts.failed,
+          },
+        });
+        emitBrainReasoningEvent(params, {
+          phase: "energy",
+          label: "ENERGY",
+          summary:
+            `level=${energyResult.snapshot.level}; mode=${energyResult.snapshot.mode}; ` +
+            `dream=${energyResult.snapshot.dreamMode ? "yes" : "no"}; ` +
+            `initiative=${energyResult.snapshot.suggestOwnTasks ? "yes" : "no"}; ` +
+            `tools=${toolCounts.total}/${toolCounts.successful}/${toolCounts.failed}; ` +
+            `path=${energyResult.path}`,
+          source: "proto33-r060.energy",
+        });
+      } catch (energyErr) {
+        emitBrainReasoningEvent(params, {
+          phase: "energy",
+          label: "ENERGY",
+          summary: `fail-open: ${String(energyErr)}`,
+          source: "proto33-r060.energy",
+        });
+        log.warn(`brain energy fail-open: ${String(energyErr)}`);
       }
 
       const toolMetasNormalized = toolMetas

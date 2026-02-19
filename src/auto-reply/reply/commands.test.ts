@@ -10,6 +10,7 @@ import {
 } from "../../agents/subagent-registry.js";
 import * as internalHooks from "../../hooks/internal-hooks.js";
 import { clearPluginCommands, registerPluginCommand } from "../../plugins/commands.js";
+import * as tts from "../../tts/tts.js";
 import { resetBashChatCommandForTests } from "./bash-command.js";
 import { buildCommandContext, handleCommands } from "./commands.js";
 import { parseInlineDirectives } from "./directive-handling.js";
@@ -430,5 +431,36 @@ describe("handleCommands /tts", () => {
     const result = await handleCommands(params);
     expect(result.shouldContinue).toBe(false);
     expect(result.reply?.text).toContain("TTS status");
+  });
+
+  it("applies emotional voice overrides from MOOD.md for /tts audio", async () => {
+    const moodDir = path.join(testWorkspaceDir, "knowledge", "sacred");
+    await fs.mkdir(moodDir, { recursive: true });
+    await fs.writeFile(path.join(moodDir, "MOOD.md"), "calm focused creative", "utf-8");
+
+    const textToSpeechSpy = vi.spyOn(tts, "textToSpeech").mockResolvedValue({
+      success: true,
+      audioPath: "/tmp/test-voice.mp3",
+      provider: "edge",
+      outputFormat: "mp3",
+      voiceCompatible: false,
+    });
+
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+      messages: { tts: { prefsPath: path.join(testWorkspaceDir, "tts.json") } },
+    } as OpenClawConfig;
+    const params = buildParams("/tts audio Hallo Welt, das ist ein Test.", cfg);
+    const result = await handleCommands(params);
+
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.mediaUrl).toBe("/tmp/test-voice.mp3");
+    expect(textToSpeechSpy).toHaveBeenCalledTimes(1);
+    const calledWith = textToSpeechSpy.mock.calls[0]?.[0];
+    expect(calledWith?.overrides?.edge?.rate).toBeTruthy();
+    expect(calledWith?.overrides?.edge?.pitch).toBeTruthy();
+    expect(calledWith?.overrides?.edge?.volume).toBeTruthy();
+    expect(calledWith?.overrides?.elevenlabs?.voiceSettings?.speed).toBeTypeOf("number");
   });
 });
