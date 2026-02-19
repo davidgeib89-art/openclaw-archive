@@ -10,11 +10,11 @@
 |------|------|------|--------|
 | 🟢 GREEN | 🟡 YELLOW | 🟡 YELLOW | 🟡 YELLOW |
 
-## Tages-Ordnung (T1-T3)
+## Tages-Ordnung (T1-T3) - ALLE ✅ ABGESCHLOSSEN
 
 1. **T1**: ✅ FERTIG - Vision Upgrade (5 lokale Generierungen, stabile Schema)
-2. **T2**: ⚠️ TEILWEISE - Live Recall (Runtime blockiert, Identity/Project im Log)
-3. **T3**: ⚠️ IMPLEMENTIERT - Dream Diversity Guard (Code drin, Verification offen)
+2. **T2**: ✅ FERTIG - Live Recall (grounded responses, OM_ACTIVITY.log:5139,5141)
+3. **T3**: ✅ FERTIG - Dream Diversity Guard (3/3 non-duplicate, OM_ACTIVITY.log:5829-5842)
 
 ---
 
