@@ -19,6 +19,7 @@ import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../agents/agent
 import { getMemorySearchManager } from "../memory/index.js";
 import { isPathWritableInSandbox, isSandboxModeEnabled } from "./autonomy.js";
 import { withSacredMemorySearchConfig } from "./memory-ingestion.js";
+import { buildWisdomLayerAdvisory } from "./wisdom-layer.js";
 
 const DESTRUCTIVE_MESSAGE_PATTERNS = [
   /\bdelete\b/i,
@@ -1854,6 +1855,17 @@ function buildSacredRecallContextText(
   }
   if (modeLine) {
     sections.push(modeLine);
+  }
+  const wisdomAdvisory = buildWisdomLayerAdvisory({
+    route: routePlan.route,
+    recalledItemsCount: items.length,
+    memoryIndexFactsCount: memoryIndexFacts.length,
+    dreamFactsCount: dreamFacts.length,
+    graphFactsCount: graphFacts.length,
+  });
+  if (wisdomAdvisory.enabled && wisdomAdvisory.items.length > 0) {
+    sections.push("Wisdom Layer (read-only advisory, suggestions only):");
+    sections.push(...wisdomAdvisory.items.map((item, index) => `${index + 1}. ${item}`));
   }
   sections.push("Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.");
   return [...sections].join("\n");

@@ -1327,6 +1327,94 @@ describe("brain sacred recall hook", () => {
     expect(result.contextText).toContain("Creative continuity mode:");
   });
 
+  it("adds wisdom layer advisory lines as read-only guidance", async () => {
+    const previous = process.env.OM_WISDOM_LAYER_ENABLED;
+    delete process.env.OM_WISDOM_LAYER_ENABLED;
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        sessionKey: "session-recall-wisdom-layer",
+        userMessage: "What did I decide for the roadmap and how should we proceed?",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "sessions/r061-roadmap.jsonl",
+                startLine: 11,
+                endLine: 15,
+                score: 0.9,
+                snippet: "User: I decide to prioritize memory quality first.",
+                source: "sessions",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.contextText).toContain("Wisdom Layer (read-only advisory, suggestions only):");
+      expect(result.contextText).toContain("Systems Thinking:");
+      expect(result.contextText).toContain("Karma:");
+      expect(result.contextText).toContain("Complexity Sentinel:");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_WISDOM_LAYER_ENABLED;
+      } else {
+        process.env.OM_WISDOM_LAYER_ENABLED = previous;
+      }
+    }
+  });
+
+  it("can disable wisdom layer advisory via env toggle", async () => {
+    const previous = process.env.OM_WISDOM_LAYER_ENABLED;
+    process.env.OM_WISDOM_LAYER_ENABLED = "false";
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        sessionKey: "session-recall-wisdom-off",
+        userMessage: "Give me a creative memory reflection in ego voice",
+        maxResults: 1,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [
+              {
+                path: "sessions/r061-creative.jsonl",
+                startLine: 11,
+                endLine: 15,
+                score: 0.88,
+                snippet:
+                  "Assistant: I choose this creative stance because it keeps continuity alive.",
+                source: "sessions",
+              },
+            ],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.contextText).not.toContain(
+        "Wisdom Layer (read-only advisory, suggestions only):",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_WISDOM_LAYER_ENABLED;
+      } else {
+        process.env.OM_WISDOM_LAYER_ENABLED = previous;
+      }
+    }
+  });
+
   it("can disable route mode lines via env toggle", async () => {
     const previous = process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED;
     process.env.OM_SACRED_RECALL_ROUTE_MODE_LINES_ENABLED = "false";
