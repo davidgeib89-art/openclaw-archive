@@ -12,9 +12,9 @@
 
 ## Tages-Ordnung (T1-T3)
 
-1. **T1**: Vision Quality Upgrade - reichhaltigere lokale Reflection
-2. **T2**: Live Recall Smoke - echte Queries im Live-Flow
-3. **T3**: Dream Diversity Guard - Anti-Repeat Protection
+1. **T1**: ✅ FERTIG - Vision Upgrade (5 lokale Generierungen, stabile Schema)
+2. **T2**: ⚠️ TEILWEISE - Live Recall (Runtime blockiert, Identity/Project im Log)
+3. **T3**: ⚠️ IMPLEMENTIERT - Dream Diversity Guard (Code drin, Verification offen)
 
 ---
 
