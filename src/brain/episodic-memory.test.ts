@@ -57,6 +57,10 @@ describe("brain episodic memory write path", () => {
   const previousStructuredRotateEnabledEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED;
   const previousStructuredRotateMaxBytesEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_BYTES;
   const previousStructuredRotateMaxFilesEnv = process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES;
+  const previousActiveForgettingEnabledEnv = process.env.OM_ACTIVE_FORGETTING_ENABLED;
+  const previousActiveForgettingWindowEnv = process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS;
+  const previousActiveForgettingThresholdEnv = process.env.OM_ACTIVE_FORGETTING_THRESHOLD;
+  const previousActiveForgettingMaxScanRowsEnv = process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS;
   let tmpDir: string | undefined;
 
   afterEach(async () => {
@@ -124,6 +128,26 @@ describe("brain episodic memory write path", () => {
       delete process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES;
     } else {
       process.env.OM_EPISODIC_STRUCTURED_ROTATE_MAX_FILES = previousStructuredRotateMaxFilesEnv;
+    }
+    if (previousActiveForgettingEnabledEnv === undefined) {
+      delete process.env.OM_ACTIVE_FORGETTING_ENABLED;
+    } else {
+      process.env.OM_ACTIVE_FORGETTING_ENABLED = previousActiveForgettingEnabledEnv;
+    }
+    if (previousActiveForgettingWindowEnv === undefined) {
+      delete process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS;
+    } else {
+      process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS = previousActiveForgettingWindowEnv;
+    }
+    if (previousActiveForgettingThresholdEnv === undefined) {
+      delete process.env.OM_ACTIVE_FORGETTING_THRESHOLD;
+    } else {
+      process.env.OM_ACTIVE_FORGETTING_THRESHOLD = previousActiveForgettingThresholdEnv;
+    }
+    if (previousActiveForgettingMaxScanRowsEnv === undefined) {
+      delete process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS;
+    } else {
+      process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS = previousActiveForgettingMaxScanRowsEnv;
     }
   });
 
@@ -435,6 +459,66 @@ describe("brain episodic memory write path", () => {
 
     expect(result.persisted).toBe(true);
     expect(result.reason).toBe("persisted");
+  });
+
+  it("evaluates forgetting in 48h dry-run mode without deleting entries", async () => {
+    tmpDir = await makeTmpDir("episodic-journal-");
+    process.env.OM_ACTIVE_FORGETTING_ENABLED = "true";
+    process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS = "48";
+    process.env.OM_ACTIVE_FORGETTING_THRESHOLD = "0.62";
+    process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS = "200";
+
+    const first = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-forget-1",
+      sessionKey: "agent:main:main",
+      userMessage: "I prefer tea while coding.",
+      assistantMessage: "I choose tea as our default coding beverage.",
+      now: () => new Date("2026-02-10T07:00:00.000Z"),
+    });
+    const second = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-forget-2",
+      sessionKey: "agent:main:main",
+      userMessage: "My name is Omega and this is important to me.",
+      assistantMessage: "I will remember this identity marker clearly.",
+      now: () => new Date("2026-02-12T07:00:00.000Z"),
+    });
+    const third = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-ep-forget-3",
+      sessionKey: "agent:main:main",
+      userMessage: "I prefer one clear step for today.",
+      assistantMessage: "I choose one clear step and keep it focused.",
+      now: () => new Date("2026-02-19T07:00:00.000Z"),
+    });
+
+    expect(first.persisted).toBe(true);
+    expect(second.persisted).toBe(true);
+    expect(third.persisted).toBe(true);
+    expect(third.forgetting?.dryRun).toBe(true);
+    expect(third.forgetting?.observationWindowHours).toBe(48);
+    expect(third.forgetting?.reason).toBe("evaluated");
+    expect(third.forgetting?.evaluatedCount).toBeGreaterThanOrEqual(3);
+    expect(third.forgetting?.candidatesCount).toBeGreaterThanOrEqual(1);
+    expect(third.forgetting?.sampleCandidateEntryIds).toContain(first.entryId);
+
+    const db = new DatabaseSync(third.metadataDbPath!);
+    const count = db.prepare("SELECT COUNT(*) AS count FROM episodic_entries").get() as {
+      count: number;
+    };
+    const ids = db
+      .prepare("SELECT entry_id FROM episodic_entries ORDER BY created_at ASC")
+      .all() as Array<{ entry_id: string }>;
+    db.close();
+
+    expect(count.count).toBe(3);
+    expect(ids.map((row) => row.entry_id)).toContain(first.entryId);
+    expect(ids.map((row) => row.entry_id)).toContain(second.entryId);
+    expect(ids.map((row) => row.entry_id)).toContain(third.entryId);
   });
 
   it("applies metadata compaction policy when enabled", async () => {

@@ -4,6 +4,11 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import {
+  runActiveForgettingDryRun,
+  type ActiveForgettingDryRunSummary,
+} from "./forgetting.js";
+import { evaluateSalience } from "./salience.js";
 
 const DEFAULT_EPISODIC_JOURNAL_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.md";
 const DEFAULT_EPISODIC_STRUCTURED_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.jsonl";
@@ -57,7 +62,7 @@ const MEMORY_INDEX_HEADER = [
   "",
 ].join("\n");
 
-type EpisodicSignal = "preference" | "decision" | "identity" | "goal" | "long_turn";
+type EpisodicSignal = "preference" | "decision" | "identity" | "goal" | "long_turn" | "emotion";
 type EpisodicKind = "identity" | "preference" | "decision" | "goal" | "creative" | "general";
 
 type EpisodicScore = {
@@ -115,6 +120,7 @@ export type BrainEpisodicWriteResult = {
   graphConflictsResolved?: number;
   memoryIndexPath?: string;
   memoryIndexUpdated?: boolean;
+  forgetting?: ActiveForgettingDryRunSummary;
   reason: string;
 };
 
@@ -146,24 +152,6 @@ type SemanticRelationshipEntry = {
   createdAt: number;
 };
 
-const PREFERENCE_PATTERNS = [
-  /\b(i like|i love|i prefer|my favorite|prefer)\b/i,
-  /\b(ich mag|ich liebe|ich bevorzuge|mein lieblings)\b/i,
-];
-const DECISION_PATTERNS = [
-  /\b(i choose|i decide|i will|i commit)\b/i,
-  /\b(ich entscheide|ich werde|ich verpflichte)\b/i,
-];
-const IDENTITY_PATTERNS = [
-  /\b(my name is|i am)\b/i,
-  /\b(my (?:secret )?(?:codename|code\s*name|alias) is|i go by)\b/i,
-  /\b(ich hei[sß]e|ich bin)\b/i,
-  /\b(mein(?:en)? (?:codename|alias) ist)\b/i,
-];
-const GOAL_PATTERNS = [
-  /\b(goal|roadmap|milestone|next step|plan)\b/i,
-  /\b(ziel|fahrplan|meilenstein|naechster schritt|nächster schritt|plan)\b/i,
-];
 const HEARTBEAT_PROMPT_PATTERNS = [
   /read (?:agenda|heartbeat)\.md if it exists/i,
   /if nothing needs attention, reply heartbeat_ok/i,
@@ -194,36 +182,14 @@ function matchesAny(patterns: readonly RegExp[], value: string): boolean {
 }
 
 function scoreTurnSignificance(userMessage: string, assistantMessage: string): EpisodicScore {
-  const signals = new Set<EpisodicSignal>();
-  let score = 0;
-  const user = normalizeTurnText(userMessage);
-  const assistant = normalizeTurnText(assistantMessage);
-  const combined = `${user}\n${assistant}`;
-
-  if (matchesAny(PREFERENCE_PATTERNS, combined)) {
-    score += 2;
-    signals.add("preference");
-  }
-  if (matchesAny(DECISION_PATTERNS, combined)) {
-    score += 2;
-    signals.add("decision");
-  }
-  if (matchesAny(IDENTITY_PATTERNS, user)) {
-    score += 2;
-    signals.add("identity");
-  }
-  if (matchesAny(GOAL_PATTERNS, combined)) {
-    score += 1;
-    signals.add("goal");
-  }
-  if (user.length >= 120 || assistant.length >= 200) {
-    score += 1;
-    signals.add("long_turn");
-  }
-
+  const salience = evaluateSalience({
+    userMessage,
+    assistantMessage,
+    ageDays: 0,
+  });
   return {
-    score,
-    signals: Array.from(signals),
+    score: salience.score,
+    signals: salience.signals as EpisodicSignal[],
   };
 }
 
@@ -1241,6 +1207,12 @@ export async function appendBrainEpisodicJournal(
       relationships: relationshipsForIndex,
     }),
   });
+  const forgetting = runActiveForgettingDryRun({
+    metadataDbPath,
+    runId: input.runId,
+    sessionKey: input.sessionKey,
+    now,
+  });
 
   return {
     persisted: true,
@@ -1265,6 +1237,7 @@ export async function appendBrainEpisodicJournal(
     graphConflictsResolved: persistedStructured.graphConflictsResolved,
     memoryIndexPath,
     memoryIndexUpdated,
+    forgetting,
     reason: "persisted",
   };
 }
