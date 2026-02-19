@@ -1838,8 +1838,11 @@ export async function runEmbeddedAttempt(
           const forgettingSummary = episodicResult.forgetting
             ? `${episodicResult.forgetting.candidatesCount}/${episodicResult.forgetting.evaluatedCount}`
             : "n/a";
+          const episodicIndexSummary = episodicResult.episodicIndex
+            ? `${episodicResult.episodicIndex.counts.shortTermActive}/${episodicResult.episodicIndex.counts.shortTermWindow}/${episodicResult.episodicIndex.counts.longTermCandidates}`
+            : "n/a";
           log.debug(
-            `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} kind=${episodicResult.primaryKind} path=${episodicResult.path} structured=${episodicResult.structuredPersisted ? "yes" : "no"} rotated=${episodicResult.structuredRotated ? "yes" : "no"} rotatedPruned=${episodicResult.structuredRotationPrunedFiles ?? 0} metadata=${episodicResult.metadataPersisted ? "yes" : "no"} compact=${episodicResult.compactionApplied ? "yes" : "no"} compactDeleted=${episodicResult.compactionDeletedRows ?? 0} forgetting=${forgettingSummary}`,
+            `brain episodic journal: runId=${params.runId} persisted=${episodicResult.persisted} reason=${episodicResult.reason} score=${episodicResult.score} kind=${episodicResult.primaryKind} path=${episodicResult.path} structured=${episodicResult.structuredPersisted ? "yes" : "no"} rotated=${episodicResult.structuredRotated ? "yes" : "no"} rotatedPruned=${episodicResult.structuredRotationPrunedFiles ?? 0} metadata=${episodicResult.metadataPersisted ? "yes" : "no"} compact=${episodicResult.compactionApplied ? "yes" : "no"} compactDeleted=${episodicResult.compactionDeletedRows ?? 0} forgetting=${forgettingSummary} episodicIndex=${episodicIndexSummary}`,
           );
         } catch (episodicErr) {
           log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);

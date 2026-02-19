@@ -61,6 +61,11 @@ describe("brain episodic memory write path", () => {
   const previousActiveForgettingWindowEnv = process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS;
   const previousActiveForgettingThresholdEnv = process.env.OM_ACTIVE_FORGETTING_THRESHOLD;
   const previousActiveForgettingMaxScanRowsEnv = process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS;
+  const previousEpisodicIndexEnabledEnv = process.env.OM_EPISODIC_INDEX_ENABLED;
+  const previousEpisodicIndexPathEnv = process.env.OM_EPISODIC_INDEX_PATH;
+  const previousEpisodicIndexActiveDaysEnv = process.env.OM_EPISODIC_INDEX_ACTIVE_DAYS;
+  const previousEpisodicIndexWindowDaysEnv = process.env.OM_EPISODIC_INDEX_WINDOW_DAYS;
+  const previousEpisodicIndexLongTermMinScoreEnv = process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE;
   let tmpDir: string | undefined;
 
   afterEach(async () => {
@@ -149,6 +154,31 @@ describe("brain episodic memory write path", () => {
     } else {
       process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS = previousActiveForgettingMaxScanRowsEnv;
     }
+    if (previousEpisodicIndexEnabledEnv === undefined) {
+      delete process.env.OM_EPISODIC_INDEX_ENABLED;
+    } else {
+      process.env.OM_EPISODIC_INDEX_ENABLED = previousEpisodicIndexEnabledEnv;
+    }
+    if (previousEpisodicIndexPathEnv === undefined) {
+      delete process.env.OM_EPISODIC_INDEX_PATH;
+    } else {
+      process.env.OM_EPISODIC_INDEX_PATH = previousEpisodicIndexPathEnv;
+    }
+    if (previousEpisodicIndexActiveDaysEnv === undefined) {
+      delete process.env.OM_EPISODIC_INDEX_ACTIVE_DAYS;
+    } else {
+      process.env.OM_EPISODIC_INDEX_ACTIVE_DAYS = previousEpisodicIndexActiveDaysEnv;
+    }
+    if (previousEpisodicIndexWindowDaysEnv === undefined) {
+      delete process.env.OM_EPISODIC_INDEX_WINDOW_DAYS;
+    } else {
+      process.env.OM_EPISODIC_INDEX_WINDOW_DAYS = previousEpisodicIndexWindowDaysEnv;
+    }
+    if (previousEpisodicIndexLongTermMinScoreEnv === undefined) {
+      delete process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE;
+    } else {
+      process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE = previousEpisodicIndexLongTermMinScoreEnv;
+    }
   });
 
   it("persists significant turns into append-only episodic journal", async () => {
@@ -176,6 +206,8 @@ describe("brain episodic memory write path", () => {
     expect(result.structuredPersisted).toBe(true);
     expect(result.metadataPersisted).toBe(true);
     expect(result.memoryIndexUpdated).toBe(true);
+    expect(result.episodicIndex?.updated).toBe(true);
+    expect(result.episodicIndex?.path).toContain(path.join("memory", "EPISODIC_INDEX.md"));
     expect(result.memoryIndexPath).toContain(path.join("memory", "MEMORY_INDEX.md"));
     expect(result.structuredPath).toContain("EPISODIC_JOURNAL.jsonl");
     expect(result.metadataDbPath).toContain(path.join("logs", "brain", "episodic-memory.sqlite"));
@@ -467,6 +499,7 @@ describe("brain episodic memory write path", () => {
     process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS = "48";
     process.env.OM_ACTIVE_FORGETTING_THRESHOLD = "0.62";
     process.env.OM_ACTIVE_FORGETTING_MAX_SCAN_ROWS = "200";
+    process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE = "2";
 
     const first = await appendBrainEpisodicJournal({
       cfg: makeCfg(),
@@ -475,7 +508,7 @@ describe("brain episodic memory write path", () => {
       sessionKey: "agent:main:main",
       userMessage: "I prefer tea while coding.",
       assistantMessage: "I choose tea as our default coding beverage.",
-      now: () => new Date("2026-02-10T07:00:00.000Z"),
+      now: () => new Date("2025-12-10T07:00:00.000Z"),
     });
     const second = await appendBrainEpisodicJournal({
       cfg: makeCfg(),
@@ -505,6 +538,9 @@ describe("brain episodic memory write path", () => {
     expect(third.forgetting?.evaluatedCount).toBeGreaterThanOrEqual(3);
     expect(third.forgetting?.candidatesCount).toBeGreaterThanOrEqual(1);
     expect(third.forgetting?.sampleCandidateEntryIds).toContain(first.entryId);
+    expect(third.episodicIndex?.updated).toBe(true);
+    expect(third.episodicIndex?.counts.shortTermActive).toBeGreaterThanOrEqual(1);
+    expect(third.episodicIndex?.counts.longTermCandidates).toBeGreaterThanOrEqual(1);
 
     const db = new DatabaseSync(third.metadataDbPath!);
     const count = db.prepare("SELECT COUNT(*) AS count FROM episodic_entries").get() as {

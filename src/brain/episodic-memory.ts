@@ -5,6 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import {
+  updateEpisodicIndex,
+  type EpisodicIndexSnapshot,
+} from "./episodic-index.js";
+import {
   runActiveForgettingDryRun,
   type ActiveForgettingDryRunSummary,
 } from "./forgetting.js";
@@ -121,6 +125,7 @@ export type BrainEpisodicWriteResult = {
   memoryIndexPath?: string;
   memoryIndexUpdated?: boolean;
   forgetting?: ActiveForgettingDryRunSummary;
+  episodicIndex?: EpisodicIndexSnapshot;
   reason: string;
 };
 
@@ -1213,6 +1218,13 @@ export async function appendBrainEpisodicJournal(
     sessionKey: input.sessionKey,
     now,
   });
+  const episodicIndex = await updateEpisodicIndex({
+    workspaceDir: input.workspaceDir,
+    metadataDbPath,
+    runId: input.runId,
+    sessionKey: input.sessionKey,
+    now,
+  });
 
   return {
     persisted: true,
@@ -1238,6 +1250,7 @@ export async function appendBrainEpisodicJournal(
     memoryIndexPath,
     memoryIndexUpdated,
     forgetting,
+    episodicIndex,
     reason: "persisted",
   };
 }
