@@ -6,6 +6,47 @@
 
 ---
 
+## GATEWAY START (WINDOWS POWERSHELL)
+
+Hinweis: In PowerShell funktionieren Linux-Operatoren wie `||`, `nohup`, `&` nicht wie in Bash.
+Fuer dieses Repo den Gateway ueber `pnpm openclaw ...` starten.
+
+### Variante A - Hintergrund (CLI bleibt frei)
+
+```powershell
+cd C:\Users\holyd\openclaw
+$env:OM_AUTONOMY_SANDBOX="true"
+$env:OM_SACRED_RECALL_ENABLED="true"
+$env:OM_SACRED_RECALL_INCLUDE_SESSIONS="true"
+$env:OM_SACRED_RECALL_TIMEOUT_MS="8000"
+$env:OM_HEARTBEAT_RECALL_TIMEOUT_MS="5000"
+$log="$env:TEMP\openclaw-gateway.log"
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "openclaw gateway run|scripts/run-node\.mjs.*gateway" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Process -FilePath "$env:APPDATA\npm\pnpm.cmd" -WorkingDirectory "C:\Users\holyd\openclaw" -ArgumentList @("openclaw","gateway","run","--bind","loopback","--port","18789","--force") -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+```
+
+### Variante B - Vordergrund (blockiert die aktuelle CLI)
+
+```powershell
+cd C:\Users\holyd\openclaw
+$env:OM_AUTONOMY_SANDBOX="true"
+$env:OM_SACRED_RECALL_ENABLED="true"
+$env:OM_SACRED_RECALL_INCLUDE_SESSIONS="true"
+$env:OM_SACRED_RECALL_TIMEOUT_MS="8000"
+$env:OM_HEARTBEAT_RECALL_TIMEOUT_MS="5000"
+pnpm openclaw gateway run --bind loopback --port 18789 --force
+```
+
+### Stoppen und pruefen
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "openclaw gateway run|scripts/run-node\.mjs.*gateway" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-NetTCPConnection -LocalPort 18789 -State Listen
+Get-Content $env:TEMP\openclaw-gateway.log -Tail 80
+```
+
+---
+
 ## PROBLEM
 
 Sacred Recall timeout nach 20s → fail-open
