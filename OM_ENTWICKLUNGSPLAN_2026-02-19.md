@@ -533,7 +533,33 @@ Diese Erweiterungen helfen Øm reifen:
 
 ---
 
-## 11. NÜTZLICHE KOMMANDOS
+## 11. OPTION B: KREATIVE ERWEITERUNGEN - IMPLEMENTIERT ✅
+
+**Status:** 2026-02-19 - ALLE FEATURES IMPLEMENTIERT
+
+### 11.1 ENERGY System ✅
+
+**Implementiert:** 2026-02-19
+- `src/brain/energy.ts` + Tests
+- `knowledge/sacred/ENERGY.md` (Level: 67)
+
+### 11.2 Widerstands-Test (Tor X) ✅
+
+**Implementiert:** 2026-02-19
+- `src/brain/resistance.ts` + Tests
+- Trigger → "Nein + Begründung + Alternative"
+
+### 11.3 Emotional Voice ✅
+
+**Implementiert:** 2026-02-19
+- `src/brain/voice-emotion.ts` + Tests
+- Mood → TTS Config Mapping
+
+**Evidence:** OM_ACTIVITY.log:6843-6865
+
+---
+
+## 12. NÜTZLICHE KOMMANDOS
 
 ### 10.1 Gateway Management
 
