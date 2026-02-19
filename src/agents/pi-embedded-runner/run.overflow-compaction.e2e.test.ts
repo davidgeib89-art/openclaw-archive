@@ -112,6 +112,7 @@ vi.mock("./lanes.js", () => ({
 
 vi.mock("./logger.js", () => ({
   log: {
+    isEnabled: vi.fn(() => false),
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
@@ -184,6 +185,7 @@ vi.mock("../pi-embedded-helpers.js", async () => {
 });
 
 import type { EmbeddedRunAttemptResult } from "./run/types.js";
+import { classifyFailoverReason, isFailoverAssistantError } from "../pi-embedded-helpers.js";
 import { compactEmbeddedPiSessionDirect } from "./compact.js";
 import { log } from "./logger.js";
 import { runEmbeddedPiAgent } from "./run.js";
@@ -199,6 +201,8 @@ const mockedSessionLikelyHasOversizedToolResults = vi.mocked(sessionLikelyHasOve
 const mockedTruncateOversizedToolResultsInSession = vi.mocked(
   truncateOversizedToolResultsInSession,
 );
+const mockedClassifyFailoverReason = vi.mocked(classifyFailoverReason);
+const mockedIsFailoverAssistantError = vi.mocked(isFailoverAssistantError);
 
 function makeAttemptResult(
   overrides: Partial<EmbeddedRunAttemptResult> = {},
@@ -233,6 +237,8 @@ const baseParams = {
 describe("overflow compaction in run loop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedClassifyFailoverReason.mockReturnValue(null);
+    mockedIsFailoverAssistantError.mockReturnValue(false);
     mockedSessionLikelyHasOversizedToolResults.mockReturnValue(false);
     mockedTruncateOversizedToolResultsInSession.mockResolvedValue({
       truncated: false,
@@ -510,5 +516,101 @@ describe("overflow compaction in run loop", () => {
 
     expect(result.meta.agentMeta?.usage?.input).toBe(4_000);
     expect(result.meta.agentMeta?.promptTokens).toBe(2_000);
+  });
+
+  it("retries MiniMax 2.5 provider-timeouts up to the default burst budget", async () => {
+    mockedClassifyFailoverReason.mockImplementation((message?: string) =>
+      message?.toLowerCase().includes("timed out") ? "timeout" : null,
+    );
+
+    let attempts = 0;
+    mockedRunEmbeddedAttempt.mockImplementation(async () => {
+      attempts += 1;
+      if (attempts <= 33) {
+        return makeAttemptResult({
+          lastAssistant: {
+            stopReason: "error",
+            errorMessage: "Request timed out.",
+          } as EmbeddedRunAttemptResult["lastAssistant"],
+        });
+      }
+      return makeAttemptResult({
+        lastAssistant: {
+          stopReason: "end_turn",
+          content: "ok",
+        } as EmbeddedRunAttemptResult["lastAssistant"],
+      });
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: Parameters<typeof setTimeout>[0],
+    ) => {
+      if (typeof handler === "function") {
+        handler();
+      }
+      return 0 as unknown as NodeJS.Timeout;
+    }) as typeof setTimeout);
+
+    try {
+      const result = await runEmbeddedPiAgent({
+        ...baseParams,
+        provider: "minimax",
+        model: "MiniMax-M2.5",
+      });
+
+      expect(result.meta.error).toBeUndefined();
+      expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(34);
+      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("quick retry 33/33"));
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("keeps non-MiniMax quick-timeout retry default at 6", async () => {
+    mockedClassifyFailoverReason.mockImplementation((message?: string) =>
+      message?.toLowerCase().includes("timed out") ? "timeout" : null,
+    );
+
+    let attempts = 0;
+    mockedRunEmbeddedAttempt.mockImplementation(async () => {
+      attempts += 1;
+      if (attempts <= 6) {
+        return makeAttemptResult({
+          lastAssistant: {
+            stopReason: "error",
+            errorMessage: "Request timed out.",
+          } as EmbeddedRunAttemptResult["lastAssistant"],
+        });
+      }
+      return makeAttemptResult({
+        lastAssistant: {
+          stopReason: "end_turn",
+          content: "ok",
+        } as EmbeddedRunAttemptResult["lastAssistant"],
+      });
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: Parameters<typeof setTimeout>[0],
+    ) => {
+      if (typeof handler === "function") {
+        handler();
+      }
+      return 0 as unknown as NodeJS.Timeout;
+    }) as typeof setTimeout);
+
+    try {
+      const result = await runEmbeddedPiAgent({
+        ...baseParams,
+        provider: "openrouter",
+        model: "arcee-ai/trinity-mini:free",
+      });
+
+      expect(result.meta.error).toBeUndefined();
+      expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(7);
+      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("quick retry 6/6"));
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
   });
 });

@@ -16,6 +16,21 @@ const ENVELOPE_CHANNELS = [
 ];
 
 const MESSAGE_ID_LINE = /^\s*\[message_id:\s*[^\]]+\]\s*$/i;
+const CURRENT_MESSAGE_MARKER = "[Current message - respond to this]";
+const RECALL_CONTEXT_ANCHOR_RE =
+  /Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\./gi;
+const INTERNAL_PROMPT_HINT_RE =
+  /<subconscious_context>|<brain_output_contract>|<dream_context>|<autonomous_cycle>|Wisdom Layer \(read-only advisory, suggestions only\):|Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):/i;
+const INTERNAL_PROMPT_STRIP_PATTERNS: readonly RegExp[] = [
+  /<subconscious_context>[\s\S]*?<\/subconscious_context>\s*/gi,
+  /<brain_output_contract>[\s\S]*?<\/brain_output_contract>\s*/gi,
+  /<dream_context>[\s\S]*?<\/dream_context>\s*/gi,
+  /<autonomous_cycle>[\s\S]*?<\/autonomous_cycle>\s*/gi,
+  /<safety_directive>[\s\S]*?<\/safety_directive>\s*/gi,
+  /Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi,
+  /Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
+  /Wisdom Layer \(read-only advisory, suggestions only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
+];
 
 function looksLikeEnvelopeHeader(header: string): boolean {
   if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\b/.test(header)) {
@@ -48,6 +63,46 @@ function stripMessageIdHints(text: string): string {
   return filtered.length === lines.length ? text : filtered.join("\n");
 }
 
+function stripInternalPromptScaffolding(text: string): string {
+  let next = text;
+
+  // Preserve only the message tail when history wrappers are present.
+  const markerIndex = next.lastIndexOf(CURRENT_MESSAGE_MARKER);
+  if (markerIndex >= 0) {
+    next = next.slice(markerIndex + CURRENT_MESSAGE_MARKER.length).trimStart();
+  }
+
+  // If we see prompt-injection hints, keep only the segment after the last
+  // explicit recall anchor.
+  if (INTERNAL_PROMPT_HINT_RE.test(next)) {
+    let anchorMatch: RegExpExecArray | null;
+    let lastAnchorEnd = -1;
+    RECALL_CONTEXT_ANCHOR_RE.lastIndex = 0;
+    while ((anchorMatch = RECALL_CONTEXT_ANCHOR_RE.exec(next)) !== null) {
+      lastAnchorEnd = anchorMatch.index + anchorMatch[0].length;
+    }
+    if (lastAnchorEnd >= 0) {
+      next = next.slice(lastAnchorEnd).trimStart();
+    }
+  }
+
+  for (const pattern of INTERNAL_PROMPT_STRIP_PATTERNS) {
+    next = next.replace(pattern, "");
+  }
+
+  return next.trim();
+}
+
+function sanitizeUserFacingUserText(text: string): string {
+  const base = stripMessageIdHints(stripEnvelope(text)).trim();
+  if (!base) {
+    return base;
+  }
+  const stripped = stripInternalPromptScaffolding(base);
+  // Fail-open: never blank out a message.
+  return stripped || base;
+}
+
 function stripEnvelopeFromContent(content: unknown[]): { content: unknown[]; changed: boolean } {
   let changed = false;
   const next = content.map((item) => {
@@ -58,7 +113,7 @@ function stripEnvelopeFromContent(content: unknown[]): { content: unknown[]; cha
     if (entry.type !== "text" || typeof entry.text !== "string") {
       return item;
     }
-    const stripped = stripMessageIdHints(stripEnvelope(entry.text));
+    const stripped = sanitizeUserFacingUserText(entry.text);
     if (stripped === entry.text) {
       return item;
     }
@@ -85,7 +140,7 @@ export function stripEnvelopeFromMessage(message: unknown): unknown {
   const next: Record<string, unknown> = { ...entry };
 
   if (typeof entry.content === "string") {
-    const stripped = stripMessageIdHints(stripEnvelope(entry.content));
+    const stripped = sanitizeUserFacingUserText(entry.content);
     if (stripped !== entry.content) {
       next.content = stripped;
       changed = true;
@@ -97,7 +152,7 @@ export function stripEnvelopeFromMessage(message: unknown): unknown {
       changed = true;
     }
   } else if (typeof entry.text === "string") {
-    const stripped = stripMessageIdHints(stripEnvelope(entry.text));
+    const stripped = sanitizeUserFacingUserText(entry.text);
     if (stripped !== entry.text) {
       next.text = stripped;
       changed = true;

@@ -4,6 +4,8 @@
 
 import { PREVIEW_MAX_CHARS, PREVIEW_MAX_LINES } from "./constants.ts";
 
+const PREVIEW_SUFFIX = "...";
+
 /**
  * Format tool output content for display in the sidebar.
  * Detects JSON and wraps it in a code block with formatting.
@@ -31,7 +33,7 @@ export function getTruncatedPreview(text: string): string {
   const lines = allLines.slice(0, PREVIEW_MAX_LINES);
   const preview = lines.join("\n");
   if (preview.length > PREVIEW_MAX_CHARS) {
-    return preview.slice(0, PREVIEW_MAX_CHARS) + "…";
+    return preview.slice(0, PREVIEW_MAX_CHARS) + PREVIEW_SUFFIX;
   }
-  return lines.length < allLines.length ? preview + "…" : preview;
+  return lines.length < allLines.length ? preview + PREVIEW_SUFFIX : preview;
 }

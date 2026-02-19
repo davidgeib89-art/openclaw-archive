@@ -39,4 +39,31 @@ describe("stripEnvelopeFromMessage", () => {
     const result = stripEnvelopeFromMessage(input) as { content?: string };
     expect(result.content).toBe("note\n[message_id: 123]");
   });
+
+  test("extracts original user message from injected recall scaffolding", () => {
+    const input = {
+      role: "user",
+      content:
+        '<subconscious_context>{"status":"ok"}</subconscious_context>\n\n' +
+        "Hier ist relevantes Wissen aus deiner Vergangenheit (Top-3, read-only):\n" +
+        "1. foo\n2. bar\n" +
+        "Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.\n\n" +
+        "Hi Om, sag mir kurz wer du bist.",
+    };
+    const result = stripEnvelopeFromMessage(input) as { content?: string };
+    expect(result.content).toBe("Hi Om, sag mir kurz wer du bist.");
+  });
+
+  test("keeps only current message after history marker", () => {
+    const input = {
+      role: "user",
+      content:
+        "[Chat messages since your last reply - for context]\n" +
+        "User: old\n\n" +
+        "[Current message - respond to this]\n" +
+        "This is the real message.",
+    };
+    const result = stripEnvelopeFromMessage(input) as { content?: string };
+    expect(result.content).toBe("This is the real message.");
+  });
 });

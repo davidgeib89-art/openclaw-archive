@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import { PREVIEW_MAX_CHARS, PREVIEW_MAX_LINES } from "./constants.ts";
 import { formatToolOutputForSidebar, getTruncatedPreview } from "./tool-helpers.ts";
 
 describe("tool-helpers", () => {
@@ -86,34 +87,36 @@ describe("tool-helpers", () => {
     });
 
     it("truncates text longer than max chars", () => {
-      const input = "a".repeat(150);
+      const input = "a".repeat(PREVIEW_MAX_CHARS + 86);
       const result = getTruncatedPreview(input);
 
-      expect(result.length).toBe(101); // 100 chars + ellipsis
-      expect(result.endsWith("…")).toBe(true);
+      expect(result.length).toBe(PREVIEW_MAX_CHARS + 3);
+      expect(result.endsWith("...")).toBe(true);
     });
 
     it("truncates to max lines", () => {
       const input = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
       const result = getTruncatedPreview(input);
+      const expectedLines = input.split("\n").slice(0, PREVIEW_MAX_LINES).join("\n");
 
-      // Should only show first 2 lines (PREVIEW_MAX_LINES = 2)
-      expect(result).toBe("Line 1\nLine 2…");
+      expect(result).toBe(expectedLines + "...");
     });
 
     it("adds ellipsis when lines are truncated", () => {
       const input = "Line 1\nLine 2\nLine 3";
       const result = getTruncatedPreview(input);
 
-      expect(result.endsWith("…")).toBe(true);
+      expect(result.endsWith("...")).toBe(true);
     });
 
     it("does not add ellipsis when all lines fit", () => {
-      const input = "Line 1\nLine 2";
+      const input = Array.from({ length: PREVIEW_MAX_LINES }, (_, index) => `Line ${index + 1}`).join(
+        "\n",
+      );
       const result = getTruncatedPreview(input);
 
-      expect(result).toBe("Line 1\nLine 2");
-      expect(result.endsWith("…")).toBe(false);
+      expect(result).toBe(input);
+      expect(result.endsWith("...")).toBe(false);
     });
 
     it("handles single line within limits", () => {
@@ -129,13 +132,11 @@ describe("tool-helpers", () => {
     });
 
     it("truncates by chars even within line limit", () => {
-      // Two lines but very long content
-      const longLine = "x".repeat(80);
-      const input = `${longLine}\n${longLine}`;
+      const input = "x".repeat(PREVIEW_MAX_CHARS + 40);
       const result = getTruncatedPreview(input);
 
-      expect(result.length).toBe(101); // 100 + ellipsis
-      expect(result.endsWith("…")).toBe(true);
+      expect(result.length).toBe(PREVIEW_MAX_CHARS + 3);
+      expect(result.endsWith("...")).toBe(true);
     });
   });
 });

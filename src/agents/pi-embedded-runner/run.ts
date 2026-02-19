@@ -162,38 +162,76 @@ const toNormalizedUsage = (usage: UsageAccumulator) => {
 const QUICK_TIMEOUT_RETRY_MAX_ENV = "OPENCLAW_AGENT_TIMEOUT_RETRY_MAX";
 const QUICK_TIMEOUT_RETRY_BACKOFF_BASE_ENV = "OPENCLAW_AGENT_TIMEOUT_RETRY_BACKOFF_MS";
 const QUICK_TIMEOUT_RETRY_DEFAULT_MAX = 6;
-const QUICK_TIMEOUT_RETRY_MAX_CAP = 12;
+const QUICK_TIMEOUT_RETRY_MINIMAX_M25_DEFAULT_MAX = 33;
+const QUICK_TIMEOUT_RETRY_MAX_CAP = 60;
 const QUICK_TIMEOUT_RETRY_DEFAULT_BACKOFF_MS = 1_000;
+const QUICK_TIMEOUT_RETRY_MINIMAX_M25_DEFAULT_BACKOFF_MS = 250;
+const QUICK_TIMEOUT_RETRY_MINIMAX_M25_BACKOFF_MAX_MS = 2_000;
 const QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS = 15_000;
+
+function isMiniMaxM25Model(provider: string, model: string): boolean {
+  const normalizedProvider = String(provider ?? "").toLowerCase();
+  const normalizedModel = String(model ?? "").toLowerCase();
+  const providerLooksMiniMax =
+    normalizedProvider.includes("minimax") || normalizedModel.includes("minimax");
+  if (!providerLooksMiniMax) {
+    return false;
+  }
+  return (
+    normalizedModel.includes("m2.5") ||
+    normalizedModel.includes("m2_5") ||
+    normalizedModel.includes("2.5")
+  );
+}
 
 function isQuickTimeoutRetryEligible(provider: string, model: string): boolean {
   const normalizedProvider = String(provider ?? "").toLowerCase();
   const normalizedModel = String(model ?? "").toLowerCase();
+  if (isMiniMaxM25Model(provider, model)) {
+    return true;
+  }
   return normalizedModel.includes(":free") || normalizedProvider === "openrouter";
 }
 
-function resolveQuickTimeoutRetryMax(): number {
+function resolveQuickTimeoutRetryDefaultMax(provider: string, model: string): number {
+  if (isMiniMaxM25Model(provider, model)) {
+    return QUICK_TIMEOUT_RETRY_MINIMAX_M25_DEFAULT_MAX;
+  }
+  return QUICK_TIMEOUT_RETRY_DEFAULT_MAX;
+}
+
+function resolveQuickTimeoutRetryMax(provider: string, model: string): number {
   const raw = process.env[QUICK_TIMEOUT_RETRY_MAX_ENV]?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   if (!Number.isFinite(parsed)) {
-    return QUICK_TIMEOUT_RETRY_DEFAULT_MAX;
+    return resolveQuickTimeoutRetryDefaultMax(provider, model);
   }
   return Math.max(0, Math.min(QUICK_TIMEOUT_RETRY_MAX_CAP, parsed));
 }
 
-function resolveQuickTimeoutRetryBackoffBaseMs(): number {
+function resolveQuickTimeoutRetryBackoffBaseMs(provider: string, model: string): number {
   const raw = process.env[QUICK_TIMEOUT_RETRY_BACKOFF_BASE_ENV]?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    if (isMiniMaxM25Model(provider, model)) {
+      return QUICK_TIMEOUT_RETRY_MINIMAX_M25_DEFAULT_BACKOFF_MS;
+    }
     return QUICK_TIMEOUT_RETRY_DEFAULT_BACKOFF_MS;
   }
   return Math.min(QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS, Math.max(250, parsed));
 }
 
-function resolveQuickTimeoutRetryDelayMs(attempt: number, baseMs: number): number {
+function resolveQuickTimeoutRetryBackoffCapMs(provider: string, model: string): number {
+  if (isMiniMaxM25Model(provider, model)) {
+    return QUICK_TIMEOUT_RETRY_MINIMAX_M25_BACKOFF_MAX_MS;
+  }
+  return QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS;
+}
+
+function resolveQuickTimeoutRetryDelayMs(attempt: number, baseMs: number, capMs: number): number {
   const exponent = Math.max(0, attempt - 1);
   const delay = baseMs * 2 ** exponent;
-  return Math.min(QUICK_TIMEOUT_RETRY_BACKOFF_MAX_MS, Math.max(250, Math.floor(delay)));
+  return Math.min(capMs, Math.max(250, Math.floor(delay)));
 }
 
 export async function runEmbeddedPiAgent(
@@ -451,8 +489,12 @@ export async function runEmbeddedPiAgent(
       const usageAccumulator = createUsageAccumulator();
       let lastRunPromptUsage: ReturnType<typeof normalizeUsage> | undefined;
       let autoCompactionCount = 0;
-      const quickTimeoutRetryMax = resolveQuickTimeoutRetryMax();
-      const quickTimeoutRetryBackoffBaseMs = resolveQuickTimeoutRetryBackoffBaseMs();
+      const quickTimeoutRetryMax = resolveQuickTimeoutRetryMax(provider, modelId);
+      const quickTimeoutRetryBackoffBaseMs = resolveQuickTimeoutRetryBackoffBaseMs(
+        provider,
+        modelId,
+      );
+      const quickTimeoutRetryBackoffCapMs = resolveQuickTimeoutRetryBackoffCapMs(provider, modelId);
       let quickTimeoutRetryCount = 0;
       try {
         while (true) {
@@ -815,10 +857,6 @@ export async function runEmbeddedPiAgent(
             continue;
           }
 
-          if (!timedOut) {
-            quickTimeoutRetryCount = 0;
-          }
-
           const authFailure = isAuthAssistantError(lastAssistant);
           const rateLimitFailure = isRateLimitAssistantError(lastAssistant);
           const billingFailure = isBillingAssistantError(lastAssistant);
@@ -826,6 +864,11 @@ export async function runEmbeddedPiAgent(
           const assistantFailoverReason = classifyFailoverReason(lastAssistant?.errorMessage ?? "");
           const cloudCodeAssistFormatError = attempt.cloudCodeAssistFormatError;
           const imageDimensionError = parseImageDimensionError(lastAssistant?.errorMessage ?? "");
+          const timeoutLikeFailure = timedOut || assistantFailoverReason === "timeout";
+
+          if (!timeoutLikeFailure) {
+            quickTimeoutRetryCount = 0;
+          }
 
           if (imageDimensionError && lastProfileId) {
             const details = [
@@ -847,12 +890,17 @@ export async function runEmbeddedPiAgent(
           }
 
           // Treat timeout as potential rate limit (Antigravity hangs on rate limit)
-          const shouldRotate = (!aborted && failoverFailure) || timedOut;
+          const shouldRotate = (!aborted && (failoverFailure || timeoutLikeFailure)) || timedOut;
 
           if (shouldRotate) {
+            const quickRetryReason =
+              assistantFailoverReason === "timeout"
+                ? "provider-timeout"
+                : timedOut && timeoutStage === "startup"
+                  ? "startup-stall"
+                  : null;
             const canQuickRetrySameProfile =
-              timedOut &&
-              timeoutStage === "startup" &&
+              quickRetryReason !== null &&
               quickTimeoutRetryCount < quickTimeoutRetryMax &&
               isQuickTimeoutRetryEligible(provider, modelId);
             if (canQuickRetrySameProfile) {
@@ -860,10 +908,11 @@ export async function runEmbeddedPiAgent(
               const retryDelayMs = resolveQuickTimeoutRetryDelayMs(
                 quickTimeoutRetryCount,
                 quickTimeoutRetryBackoffBaseMs,
+                quickTimeoutRetryBackoffCapMs,
               );
               if (!isProbeSession) {
                 log.warn(
-                  `Model startup stalled before first stream activity; quick retry ${quickTimeoutRetryCount}/${quickTimeoutRetryMax} in ${retryDelayMs}ms (${provider}/${modelId}).`,
+                  `Model timeout (${quickRetryReason}); quick retry ${quickTimeoutRetryCount}/${quickTimeoutRetryMax} in ${retryDelayMs}ms (${provider}/${modelId}).`,
                 );
               }
               if (retryDelayMs > 0) {
