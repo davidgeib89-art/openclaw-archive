@@ -5,6 +5,7 @@ import { createAgentSession, SessionManager, SettingsManager } from "@mariozechn
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { BrainHomeostasisTelemetry } from "../../../brain/types.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import {
@@ -14,8 +15,8 @@ import {
   createBrainRitualOutputContract,
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
-import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import { updateEnergy } from "../../../brain/energy.js";
+import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import {
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
@@ -218,6 +219,96 @@ function summarizeSessionContext(messages: AgentMessage[]): {
     totalTextChars,
     totalImageBlocks,
     maxMessageTextChars,
+  };
+}
+
+const HOMEOSTASIS_CHARS_PER_TOKEN_ESTIMATE = 4;
+const HOMEOSTASIS_RECENT_MESSAGES = 24;
+const HOMEOSTASIS_ERROR_MARKERS = ["error", "failed", "timeout", "blocked", "invalid", "refused"];
+
+function extractMessageTextForTelemetry(message: AgentMessage): string {
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const typedBlock = block as { text?: unknown };
+    if (typeof typedBlock.text === "string") {
+      parts.push(typedBlock.text);
+    }
+  }
+  return parts.join("\n");
+}
+
+function countRecentToolErrors(messages: AgentMessage[]): number {
+  let count = 0;
+  const recent = messages.slice(-HOMEOSTASIS_RECENT_MESSAGES);
+  for (const message of recent) {
+    const role = typeof message.role === "string" ? message.role.toLowerCase() : "";
+    const text = extractMessageTextForTelemetry(message).toLowerCase();
+    if (!text) {
+      continue;
+    }
+    const hasErrorMarker = HOMEOSTASIS_ERROR_MARKERS.some((marker) => text.includes(marker));
+    if (!hasErrorMarker) {
+      continue;
+    }
+    const toolSignal =
+      role === "tool" ||
+      text.includes("tool result") ||
+      text.includes("[tool") ||
+      text.includes("tool ");
+    if (toolSignal) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function estimateContextWindowUsagePercent(params: {
+  messages: AgentMessage[];
+  promptText: string;
+  contextWindowTokens: number | undefined;
+}): number {
+  const contextWindow =
+    typeof params.contextWindowTokens === "number" && Number.isFinite(params.contextWindowTokens)
+      ? Math.max(1, Math.round(params.contextWindowTokens))
+      : 0;
+  if (contextWindow <= 0) {
+    return 0;
+  }
+  const messageSummary = summarizeSessionContext(params.messages);
+  const totalChars = Math.max(0, messageSummary.totalTextChars + params.promptText.length);
+  const estimatedTokens = Math.max(0, Math.ceil(totalChars / HOMEOSTASIS_CHARS_PER_TOKEN_ESTIMATE));
+  const usage = Math.round((estimatedTokens / contextWindow) * 100);
+  return Math.min(100, Math.max(0, usage));
+}
+
+function buildHomeostasisTelemetry(params: {
+  startedAtMs: number;
+  messages: AgentMessage[];
+  promptText: string;
+  contextWindowTokens: number | undefined;
+  recentToolErrorCountFloor?: number;
+}): BrainHomeostasisTelemetry {
+  const currentLatencyMs = Math.max(0, Math.round(Date.now() - params.startedAtMs));
+  const recentToolErrors = countRecentToolErrors(params.messages);
+  const floorFromRuntime = Math.max(0, Math.round(params.recentToolErrorCountFloor ?? 0));
+  return {
+    current_latency_ms: currentLatencyMs,
+    context_window_usage_percent: estimateContextWindowUsagePercent({
+      messages: params.messages,
+      promptText: params.promptText,
+      contextWindowTokens: params.contextWindowTokens,
+    }),
+    recent_tool_error_count: Math.max(recentToolErrors, floorFromRuntime),
   };
 }
 
@@ -547,7 +638,11 @@ function resolveStartupStallTimeoutMs(params: {
     return 0;
   }
 
-  const capped = Math.min(timeoutMs, STARTUP_STALL_TIMEOUT_MAX_MS, Math.max(1, hardTimeoutMs - 1_000));
+  const capped = Math.min(
+    timeoutMs,
+    STARTUP_STALL_TIMEOUT_MAX_MS,
+    Math.max(1, hardTimeoutMs - 1_000),
+  );
   return capped > 0 ? capped : 0;
 }
 
@@ -607,7 +702,10 @@ async function appendDreamCapsule(params: {
   now?: Date;
 }): Promise<{ written: boolean; path: string; reason: string }> {
   const sourcePath = path.join(params.workspaceDir, DREAMS_RELATIVE_PATH);
-  const assistant = normalizeDreamText(stripHeartbeatAckArtifacts(params.assistantMessage ?? ""), 420);
+  const assistant = normalizeDreamText(
+    stripHeartbeatAckArtifacts(params.assistantMessage ?? ""),
+    420,
+  );
   let insight = assistant;
   let reason = "persisted";
 
@@ -659,7 +757,10 @@ async function appendDreamCapsule(params: {
   }
 
   const actionHintSource = assistant || insight;
-  const actionHintBase = normalizeDreamText(actionHintSource.split(/[.!?]/)[0] ?? actionHintSource, 120);
+  const actionHintBase = normalizeDreamText(
+    actionHintSource.split(/[.!?]/)[0] ?? actionHintSource,
+    120,
+  );
   const actionHint = normalizeDreamText(
     actionHintBase
       ? `${actionHintBase}. Novelty delta: ${noveltyDelta}`
@@ -688,6 +789,7 @@ async function appendDreamCapsule(params: {
 export async function runEmbeddedAttempt(
   params: EmbeddedRunAttemptParams,
 ): Promise<EmbeddedRunAttemptResult> {
+  const runStartedAt = Date.now();
   const resolvedWorkspace = resolveUserPath(params.workspaceDir);
   const prevCwd = process.cwd();
   const runAbortController = new AbortController();
@@ -1512,12 +1614,12 @@ export async function runEmbeddedAttempt(
           const sacredRecall = await buildSacredRecallContextForAttempt({
             isHeartbeat: params.isHeartbeat === true,
             input: {
-            cfg: params.config,
-            userMessage: params.prompt,
-            sessionKey: params.sessionKey ?? params.sessionId,
-            agentId: sessionAgentId,
-            workspaceDir: effectiveWorkspace,
-            maxResults: 3,
+              cfg: params.config,
+              userMessage: params.prompt,
+              sessionKey: params.sessionKey ?? params.sessionId,
+              agentId: sessionAgentId,
+              workspaceDir: effectiveWorkspace,
+              maxResults: 3,
             },
           });
           if (sacredRecall.contextText) {
@@ -1562,12 +1664,22 @@ export async function runEmbeddedAttempt(
 
           // Prototype 33 R027-B subconscious advisory injection:
           // inject compact local context only when result is valid and parse-safe.
+          const subconsciousHomeostasis =
+            params.isHeartbeat === true
+              ? buildHomeostasisTelemetry({
+                  startedAtMs: promptStartedAt,
+                  messages: activeSession.messages,
+                  promptText: effectivePrompt,
+                  contextWindowTokens: params.model.contextWindow,
+                })
+              : undefined;
           const subconsciousResult = await runBrainSubconsciousObserver({
             cfg: params.config,
             userMessage: params.prompt,
             sessionKey: params.sessionKey ?? params.sessionId,
             agentId: sessionAgentId,
             agentDir,
+            homeostasis: subconsciousHomeostasis,
           });
           emitBrainReasoningEvent(params, {
             phase: "subconscious",
@@ -1596,6 +1708,7 @@ export async function runEmbeddedAttempt(
                 sessionKey: params.sessionKey ?? params.sessionId,
                 modelRef: subconsciousResult.modelRef,
                 timeoutMs: subconsciousResult.timeoutMs,
+                homeostasis: subconsciousHomeostasis,
               },
               subconsciousResult,
               {
@@ -1839,8 +1952,19 @@ export async function runEmbeddedAttempt(
           .find((entry) => entry.trim().length > 0) ?? "";
       const assistantText = assistantTextFromSnapshot || assistantTextFromStream;
       const canPersistEpisodic = !aborted && !timedOut && !promptError;
+      const toolCounts = getToolExecutionCounts();
       if (canPersistEpisodic && assistantText) {
         try {
+          const episodicHomeostasis =
+            params.isHeartbeat === true
+              ? buildHomeostasisTelemetry({
+                  startedAtMs: runStartedAt,
+                  messages: messagesSnapshot,
+                  promptText: params.prompt,
+                  contextWindowTokens: params.model.contextWindow,
+                  recentToolErrorCountFloor: toolCounts.failed,
+                })
+              : undefined;
           const episodicResult = await appendBrainEpisodicJournal({
             cfg: params.config,
             agentId: params.agentId,
@@ -1849,6 +1973,7 @@ export async function runEmbeddedAttempt(
             sessionKey: params.sessionKey ?? params.sessionId,
             userMessage: params.prompt,
             assistantMessage: assistantText,
+            snapshotTelemetry: episodicHomeostasis,
           });
           const forgettingSummary = episodicResult.forgetting
             ? `${episodicResult.forgetting.candidatesCount}/${episodicResult.forgetting.evaluatedCount}`
@@ -1883,7 +2008,6 @@ export async function runEmbeddedAttempt(
       }
 
       try {
-        const toolCounts = getToolExecutionCounts();
         const energyResult = await updateEnergy({
           workspaceDir: effectiveWorkspace,
           runId: params.runId,

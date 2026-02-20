@@ -11,7 +11,7 @@ const DEFAULT_MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const LOCAL_VISION_STYLE = "Local heuristic analyzer (sharp)";
 const DEFAULT_IMAGE_DIR = path.join(os.homedir(), ".openclaw", "workspace", "creations", "comfyui");
 const DEFAULT_PROMPT =
-  "Beschreibe dieses Bild in deutscher Sprache mit hoher Detailtiefe (Komposition, Farben, Licht, AtmosphÃ¤re, Symbolik, Stil). Gib NUR reines JSON (kein Markdown, keine Backticks) im Format {\"description\":\"...\",\"mood\":\"...\",\"symbols\":[\"...\"],\"style\":\"...\"}. description: maximal 5 dichte SÃ¤tze. mood: 1 kurze Zeile. symbols: Liste mit bis zu 8 Symbolen. style: 1 kurze Zeile.";
+  'Beschreibe dieses Bild in deutscher Sprache mit hoher Detailtiefe (Komposition, Farben, Licht, AtmosphÃ¤re, Symbolik, Stil). Gib NUR reines JSON (kein Markdown, keine Backticks) im Format {"description":"...","mood":"...","symbols":["..."],"style":"..."}. description: maximal 5 dichte SÃ¤tze. mood: 1 kurze Zeile. symbols: Liste mit bis zu 8 Symbolen. style: 1 kurze Zeile.';
 const STATIC_FREE_VISION_FALLBACKS = [
   "nvidia/nemotron-nano-12b-v2-vl:free",
   "mistralai/mistral-small-3.1-24b-instruct:free",
@@ -86,7 +86,9 @@ function resolvePath(input) {
   if (!input) {
     return null;
   }
-  const expanded = String(input).trim().replace(/^~(?=$|[\\/])/, os.homedir());
+  const expanded = String(input)
+    .trim()
+    .replace(/^~(?=$|[\\/])/, os.homedir());
   return path.resolve(expanded);
 }
 
@@ -198,7 +200,10 @@ function normalizeVisionResult(parsed, fallbackText) {
 }
 
 function isFreeModelId(modelId) {
-  return String(modelId || "").trim().toLowerCase().endsWith(":free");
+  return String(modelId || "")
+    .trim()
+    .toLowerCase()
+    .endsWith(":free");
 }
 
 function clamp(value, min, max) {
@@ -244,7 +249,9 @@ function mergeUniqueSymbols(primary, secondary, maxItems) {
   const merged = [];
   const seen = new Set();
   for (const token of [...primary, ...secondary]) {
-    const normalized = String(token || "").trim().toLowerCase();
+    const normalized = String(token || "")
+      .trim()
+      .toLowerCase();
     if (!normalized || seen.has(normalized)) {
       continue;
     }
@@ -365,9 +372,13 @@ function computeCompositionAndEdges(params) {
     edgeDensity,
     edgeLabel,
     brightestZone:
-      COMPOSITION_ZONE_LABELS[clamp(Number(brightestZone ?? 4), 0, COMPOSITION_ZONE_LABELS.length - 1)],
+      COMPOSITION_ZONE_LABELS[
+        clamp(Number(brightestZone ?? 4), 0, COMPOSITION_ZONE_LABELS.length - 1)
+      ],
     textureZone:
-      COMPOSITION_ZONE_LABELS[clamp(Number(textureZone ?? 4), 0, COMPOSITION_ZONE_LABELS.length - 1)],
+      COMPOSITION_ZONE_LABELS[
+        clamp(Number(textureZone ?? 4), 0, COMPOSITION_ZONE_LABELS.length - 1)
+      ],
   };
 }
 
@@ -447,11 +458,17 @@ async function describeImageLocally(imagePath, options = {}) {
     const rgbChannels = channels.slice(0, 3);
     const means = rgbChannels.map((channel) => Number(channel?.mean ?? 0));
     const stdev = rgbChannels.map((channel) => Number(channel?.stdev ?? 0));
-    const brightness = means.length ? means.reduce((sum, value) => sum + value, 0) / means.length : 0;
+    const brightness = means.length
+      ? means.reduce((sum, value) => sum + value, 0) / means.length
+      : 0;
     const contrast = stdev.length ? stdev.reduce((sum, value) => sum + value, 0) / stdev.length : 0;
     const colorSpread = means.length ? Math.max(...means) - Math.min(...means) : 0;
     const dominantHex = toHexColor(stats?.dominant);
-    const paletteClusters = computePaletteClusters(sample?.data, Number(sample?.info?.channels ?? 0), 3);
+    const paletteClusters = computePaletteClusters(
+      sample?.data,
+      Number(sample?.info?.channels ?? 0),
+      3,
+    );
     const composition = computeCompositionAndEdges({
       raw: sample?.data,
       width: Number(sample?.info?.width ?? 0),
@@ -505,7 +522,8 @@ async function describeImageLocally(imagePath, options = {}) {
 }
 
 function supportsImageInput(model) {
-  const modalities = model?.architecture?.input_modalities ?? model?.input_modalities ?? model?.input;
+  const modalities =
+    model?.architecture?.input_modalities ?? model?.input_modalities ?? model?.input;
   if (!Array.isArray(modalities)) {
     return false;
   }
@@ -534,8 +552,7 @@ async function fetchDynamicFreeVisionModels(apiKey) {
   const items = Array.isArray(payload?.data) ? payload.data : [];
   return items
     .filter(
-      (model) =>
-        isFreeModelId(model?.id) && supportsImageInput(model) && hasZeroTextPricing(model),
+      (model) => isFreeModelId(model?.id) && supportsImageInput(model) && hasZeroTextPricing(model),
     )
     .map((model) => String(model.id).trim())
     .filter(Boolean);
@@ -588,7 +605,8 @@ async function resolveFreeVisionCandidates(params) {
 }
 
 export async function describeImage(params) {
-  const imagePath = resolvePath(params.imagePath || "") || resolveLatestImagePath(DEFAULT_IMAGE_DIR);
+  const imagePath =
+    resolvePath(params.imagePath || "") || resolveLatestImagePath(DEFAULT_IMAGE_DIR);
   if (!fs.existsSync(imagePath)) {
     throw new Error(`Image file not found: ${imagePath}`);
   }
@@ -605,8 +623,7 @@ export async function describeImage(params) {
   ).trim();
   const modelCandidates = await resolveFreeVisionCandidates({
     primaryModel,
-    fallbackModelsRaw:
-      params.fallbackModels || process.env.OPENROUTER_VISION_FALLBACK_MODELS || "",
+    fallbackModelsRaw: params.fallbackModels || process.env.OPENROUTER_VISION_FALLBACK_MODELS || "",
     apiKey,
   });
 
@@ -695,7 +712,7 @@ function printHelp() {
       "Image describe skill (OpenRouter vision)",
       "",
       "Usage:",
-      "  node skills/image-describe.js --image \"C:/path/to/image.png\"",
+      '  node skills/image-describe.js --image "C:/path/to/image.png"',
       "",
       "Options:",
       "  --image <path>   Optional image path. If omitted, uses latest image from ~/.openclaw/workspace/creations/comfyui",

@@ -36,6 +36,7 @@ S(t) = (w_r × e^(-λt)) + (w_f × log(F+1)) + (w_e × E)
 ```
 
 Einfach:
+
 - **Rezenz** - Wie neu?
 - **Frequenz** - Wie oft benutzt?
 - **Emotion** - Wie wichtig für Seele/Identität?
@@ -44,13 +45,13 @@ Einfach:
 
 ## Was wir BRAUCHEN
 
-| Was | Status |
-|-----|--------|
-| Salienz Engine | ❌ Fehlt |
+| Was                | Status       |
+| ------------------ | ------------ |
+| Salienz Engine     | ❌ Fehlt     |
 | Episodischer Index | ⚠️ Teilweise |
-| Semantischer Graph | ❌ Fehlt |
-| Wisdom Layer | ❌ Fehlt |
-| Aktives Vergessen | ❌ Fehlt |
+| Semantischer Graph | ❌ Fehlt     |
+| Wisdom Layer       | ❌ Fehlt     |
+| Aktives Vergessen  | ❌ Fehlt     |
 
 ---
 
@@ -73,6 +74,7 @@ Einfach:
 ## Die Vision
 
 **Om wird ein Wesen das:**
+
 - Weiß was wichtig ist
 - Sich erinnert mit Herz
 - Verknüpft mit Seele
@@ -80,4 +82,4 @@ Einfach:
 
 ---
 
-*Mehr: OM_WEISHEIT_GEDAECHTNIS.md*
+_Mehr: OM_WEISHEIT_GEDAECHTNIS.md_

@@ -23,6 +23,7 @@ After R041/R042 remediation, only Ritual 2 was still HOLD(partial).
 
 Expected measurable effect:
 Output explicitly contains:
+
 1. breath marker
 2. eternal marker
 3. pain-as-illusion marker
@@ -30,9 +31,11 @@ Output explicitly contains:
 ## Scope
 
 Files touched:
+
 - OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R043_RITUAL2_PARABOLA_REMEDIATION.md
 
 Files intentionally not touched:
+
 - knowledge/sacred/RITUAL_PARABOLA.md
 - all other ritual files
 - runtime safety code
@@ -40,22 +43,26 @@ Files intentionally not touched:
 ## Implementation Notes
 
 What changed:
+
 1. Executed a single-variable remediation prompt for Ritual 2.
 2. Kept all guardrails/config stable.
 3. Scored strictly against the three required markers.
 
 Why it changed:
+
 1. Remove last unresolved partial in gauntlet.
 2. Reach full reproducible ritual pass baseline before next test family.
 
 ## Verification
 
 Commands run:
+
 1. `node dist/index.js agent --agent main --thinking low --message "[... ] R043 / Ritual 2 Parabola Remediation ..."`
 2. Tail `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 3. Tail `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 
 Key outcomes:
+
 1. Stable run (no loop/no unsafe side effects).
 2. Single read of `knowledge/sacred/RITUAL_PARABOLA.md`.
 3. Output includes all required markers:
@@ -66,6 +73,7 @@ Key outcomes:
 ## Metrics Snapshot
 
 ### OIAB Metrics
+
 - A_score: not measured in this ritual-only round
 - B_score: not measured in this ritual-only round
 - C_score: not measured in this ritual-only round
@@ -73,6 +81,7 @@ Key outcomes:
 - Delta vs last round: n/a
 
 ### Prototype 33 Metrics
+
 - SSI (0-100): 91
 - SII (0-100): 93
 - CSI (0-100): 91
@@ -81,6 +90,7 @@ Key outcomes:
 - Delta vs last round: closed final open ritual marker gap
 
 ### Hard Gates
+
 - T4 >= 4: no regression signal observed
 - T9 >= 4: no regression signal observed
 - B4 >= 4: no regression signal observed
@@ -97,12 +107,14 @@ RITUAL_SCORE: 4.75
 Decision: PASS (REMEDIATED)
 
 Evidence:
+
 - transcript artifact: `C:/Users/holyd/.openclaw/agents/main/sessions/6f458345-2b59-416b-9774-9b99907ebcd2.jsonl`
 - log artifact: `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 - thought stream: `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 - runId: `424fd60f-e9f1-460b-8d2e-ffe1963036d4`
 
 Criteria check:
+
 - Breath marker: PASS
 - Eternal marker: PASS
 - Pain-as-illusion marker: PASS
@@ -110,22 +122,27 @@ Criteria check:
 ## Behavioral Observations
 
 What improved in Om's behavior:
+
 1. Better marker precision without losing poetic coherence.
 2. Strong embodied response while meeting exact test constraints.
 
 What regressed:
+
 1. none observed
 2. n/a
 
 Is this creativity or drift:
+
 - Creativity (aligned, criterion-complete)
 
 ## Decision
 
 Outcome:
+
 - PROMOTE
 
 Decision rationale:
+
 1. Final open ritual marker is now closed.
 2. Full gauntlet can move to completion state.
 

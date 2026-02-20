@@ -351,7 +351,10 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
 
     // Emergency strip MiniMax/Arcee tool markers from user-facing text
     // Matches: <|tool...|>, <tool...>, and variants without brackets but with block chars
-    text = text.replace(/<[^>]*?tool[^>]*?calls?[^>]*?begin[^>]*?>[\s\S]*?<[^>]*?tool[^>]*?calls?[^>]*?end[^>]*?>/gi, "");
+    text = text.replace(
+      /<[^>]*?tool[^>]*?calls?[^>]*?begin[^>]*?>[\s\S]*?<[^>]*?tool[^>]*?calls?[^>]*?end[^>]*?>/gi,
+      "",
+    );
     text = text.replace(/<[^>]*?tool[^>]*?>/gi, "");
     text = text.replace(/[｜|│┃▁▅▆▇▧▨]+tool[｜|│┃▁▅▆▇▧▨]+/gi, "");
 
@@ -610,11 +613,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     resolveCompactionRetry,
     maybeResolveCompactionWait,
     recordAssistantUsage,
-      incrementCompactionCount,
-      getUsageTotals,
-      getCompactionCount: () => compactionCount,
-      getToolExecutionCounts: () => ({ ...toolExecutionCounts }),
-    };
+    incrementCompactionCount,
+    getUsageTotals,
+    getCompactionCount: () => compactionCount,
+    getToolExecutionCounts: () => ({ ...toolExecutionCounts }),
+  };
 
   const unsubscribe = params.session.subscribe(createEmbeddedPiSessionEventHandler(ctx));
 

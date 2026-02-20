@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import * as heartbeatWake from "../infra/heartbeat-wake.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
+import * as heartbeatWake from "../infra/heartbeat-wake.js";
 import { handleHeartbeatTriggerHttpRequest } from "./heartbeat-trigger-http.js";
 
 async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }): Promise<void> {

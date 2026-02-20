@@ -269,7 +269,9 @@ describe("om-scaffolding read brake", () => {
       await (wrapped.execute as Function)(`call-${i + 1}`, args);
     }
 
-    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
+    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow(
+      "Energiebahnen sind hier gerade zu dicht",
+    );
     expect(execute).toHaveBeenCalledTimes(5);
   });
 
@@ -886,7 +888,11 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
         files?: Array<{ backupPath?: string; sourcePath?: string }>;
       };
       expect(latest.files?.[0]?.sourcePath).toContain("PHASE_E_EXEC_SMOKE.md");
-      const absoluteBackupPath = path.join(snapshotRoot, latest.id!, latest.files?.[0]?.backupPath!);
+      const absoluteBackupPath = path.join(
+        snapshotRoot,
+        latest.id!,
+        latest.files?.[0]?.backupPath!,
+      );
       expect(fs.readFileSync(absoluteBackupPath, "utf-8").trim()).toBe("before");
     } finally {
       if (previousSnapshotRoot === undefined) {

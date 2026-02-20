@@ -2,14 +2,7 @@
 name: image-describe
 description: Analyze a generated image via OpenRouter vision and return structured JSON (description, mood, symbols, style).
 user-invocable: true
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "eye",
-        "requires": { "bins": ["node"] },
-      },
-  }
+metadata: { "openclaw": { "emoji": "eye", "requires": { "bins": ["node"] } } }
 ---
 
 # Image Describe

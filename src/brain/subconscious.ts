@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { ZodError, z } from "zod";
 import type { OpenClawConfig } from "../config/config.js";
 import type {
+  BrainHomeostasisTelemetry,
   BrainObserverOptions,
   BrainSubconsciousBrief,
   BrainSubconsciousInput,
@@ -73,6 +74,72 @@ const SILENT_OBSERVER_FALLBACK_BRIEF: BrainSubconsciousBrief = {
   notes: SILENT_OBSERVER_FALLBACK_TEXT,
 };
 
+function buildTelemetrySignature(telemetry: BrainHomeostasisTelemetry): string {
+  return [
+    `latency_ms=${telemetry.current_latency_ms}`,
+    `context_window_usage_percent=${telemetry.context_window_usage_percent}`,
+    `recent_tool_error_count=${telemetry.recent_tool_error_count}`,
+  ].join(";");
+}
+
+function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): BrainSubconsciousBrief {
+  const context = telemetry.context_window_usage_percent;
+  const latency = telemetry.current_latency_ms;
+  const errors = telemetry.recent_tool_error_count;
+
+  let risk: "low" | "medium" | "high" = "low";
+  if (context >= 85 || errors >= 3 || latency >= 22_000) {
+    risk = "high";
+  } else if (context >= 65 || errors >= 1 || latency >= 10_000) {
+    risk = "medium";
+  }
+
+  const pressure =
+    context >= 85 ? "high-context-pressure" : context >= 65 ? "moderate-context-pressure" : "clear-context";
+  const rhythm =
+    latency >= 22_000 ? "heavy-latency" : latency >= 10_000 ? "slow-latency" : "stable-latency";
+  const footing = errors >= 3 ? "repeated-tool-stumble" : errors >= 1 ? "light-tool-stumble" : "stable-tools";
+  const sensation = [pressure, rhythm, footing].join(",");
+  const telemetrySignature = buildTelemetrySignature(telemetry);
+
+  if (risk === "high") {
+    return {
+      goal: "Protect clarity first, ask one brief clarification, then choose a single reversible next step.",
+      risk,
+      mustAskUser: true,
+      recommendedMode: "ask_clarify",
+      notes: trimToLimit(
+        `homeostasis:${telemetrySignature};sensation=${sensation};guidance=reduce-pressure-before-action`,
+        MAX_NOTES_CHARS,
+      ),
+    };
+  }
+
+  if (risk === "medium") {
+    return {
+      goal: "Keep output short, choose one bounded action, and avoid complex branching.",
+      risk,
+      mustAskUser: false,
+      recommendedMode: "answer_direct",
+      notes: trimToLimit(
+        `homeostasis:${telemetrySignature};sensation=${sensation};guidance=one-safe-step`,
+        MAX_NOTES_CHARS,
+      ),
+    };
+  }
+
+  return {
+    goal: "Continue with a concise safe response and one reversible next step.",
+    risk,
+    mustAskUser: false,
+    recommendedMode: "answer_direct",
+    notes: trimToLimit(
+      `homeostasis:${telemetrySignature};sensation=${sensation};guidance=steady-progress`,
+      MAX_NOTES_CHARS,
+    ),
+  };
+}
+
 function hasCreativeEgoSignal(userMessage: string): boolean {
   const message = userMessage.trim();
   if (!message) return false;
@@ -82,15 +149,26 @@ function hasCreativeEgoSignal(userMessage: string): boolean {
   return false;
 }
 
-function buildFallbackBrief(userMessage: string): BrainSubconsciousBrief {
+function buildFallbackBrief(
+  userMessage: string,
+  homeostasis?: BrainHomeostasisTelemetry,
+): BrainSubconsciousBrief {
+  const telemetry = normalizeHomeostasisTelemetry(homeostasis);
   if (hasCreativeEgoSignal(userMessage)) {
+    const telemetrySignature = telemetry ? buildTelemetrySignature(telemetry) : null;
+    const notes = telemetrySignature
+      ? trimToLimit(`${CREATIVE_EGO_FALLBACK_NOTES} homeostasis:${telemetrySignature}`, MAX_NOTES_CHARS)
+      : CREATIVE_EGO_FALLBACK_NOTES;
     return {
       goal: CREATIVE_EGO_FALLBACK_TEXT,
       risk: "low",
       mustAskUser: false,
       recommendedMode: "answer_direct",
-      notes: CREATIVE_EGO_FALLBACK_NOTES,
+      notes,
     };
+  }
+  if (telemetry) {
+    return buildHomeostasisFallbackBrief(telemetry);
   }
   return { ...SILENT_OBSERVER_FALLBACK_BRIEF };
 }
@@ -162,6 +240,7 @@ export type BrainSubconsciousModelResolver = (params: {
 export type BrainSubconsciousModelInvokerInput = {
   model: Model<Api>;
   userMessage: string;
+  prompt: string;
   signal: AbortSignal;
   apiKey?: string;
   temperature: number;
@@ -177,6 +256,7 @@ export type BrainSubconsciousObserverRunInput = {
   sessionKey?: string;
   agentId?: string;
   agentDir?: string;
+  homeostasis?: BrainHomeostasisTelemetry;
   enabled?: boolean;
   modelRef?: string;
   timeoutMs?: number;
@@ -243,6 +323,28 @@ function normalizeTemperature(raw: number | undefined): number {
   return Math.min(MAX_SUBCONSCIOUS_TEMPERATURE, Math.max(MIN_SUBCONSCIOUS_TEMPERATURE, rounded));
 }
 
+function normalizeHomeostasisTelemetry(
+  raw: BrainHomeostasisTelemetry | undefined,
+): BrainHomeostasisTelemetry | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const latencyMs = Number.isFinite(raw.current_latency_ms)
+    ? Math.max(0, Math.round(raw.current_latency_ms))
+    : 0;
+  const contextUsage = Number.isFinite(raw.context_window_usage_percent)
+    ? Math.min(100, Math.max(0, Math.round(raw.context_window_usage_percent)))
+    : 0;
+  const recentToolErrors = Number.isFinite(raw.recent_tool_error_count)
+    ? Math.max(0, Math.round(raw.recent_tool_error_count))
+    : 0;
+  return {
+    current_latency_ms: latencyMs,
+    context_window_usage_percent: contextUsage,
+    recent_tool_error_count: recentToolErrors,
+  };
+}
+
 export function parseModelRef(rawRef: string): { provider: string; modelId: string } | null {
   const trimmed = rawRef.trim();
   if (!trimmed) return null;
@@ -265,20 +367,26 @@ export function resolveBrainSubconsciousRuntimeConfig(
   const cfgEnabledRaw = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_ENABLED");
   const enabled =
     input.enabled ??
-    (cfgEnabledRaw ? isTruthyEnvValue(cfgEnabledRaw) : isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED));
+    (cfgEnabledRaw
+      ? isTruthyEnvValue(cfgEnabledRaw)
+      : isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED));
   const cfgModelRef = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_MODEL");
   const modelRef =
     normalizeModelRef(input.modelRef ?? cfgModelRef ?? process.env.OM_SUBCONSCIOUS_MODEL) ??
     DEFAULT_SUBCONSCIOUS_MODEL_REF;
-  const cfgTimeoutRaw = parseOptionalNumber(readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TIMEOUT_MS"));
-  const cfgTempRaw = parseOptionalNumber(readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TEMPERATURE"));
+  const cfgTimeoutRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TIMEOUT_MS"),
+  );
+  const cfgTempRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TEMPERATURE"),
+  );
   const envTimeoutRaw = Number(process.env.OM_SUBCONSCIOUS_TIMEOUT_MS);
   const envTempRaw = Number(process.env.OM_SUBCONSCIOUS_TEMPERATURE);
   const timeoutMs = normalizeTimeoutMs(
-    typeof input.timeoutMs === "number" ? input.timeoutMs : cfgTimeoutRaw ?? envTimeoutRaw,
+    typeof input.timeoutMs === "number" ? input.timeoutMs : (cfgTimeoutRaw ?? envTimeoutRaw),
   );
   const temperature = normalizeTemperature(
-    typeof input.temperature === "number" ? input.temperature : cfgTempRaw ?? envTempRaw,
+    typeof input.temperature === "number" ? input.temperature : (cfgTempRaw ?? envTempRaw),
   );
   return {
     enabled,
@@ -341,15 +449,47 @@ function resolveSubconsciousApiKey(
   return getCustomProviderApiKey(cfg, provider) ?? resolveEnvApiKey(provider)?.apiKey;
 }
 
-function extractAssistantText(message: Awaited<ReturnType<typeof completeSimple>>): string {
-  const parts: string[] = [];
+export function extractSubconsciousTextFromModelMessage(
+  message: Awaited<ReturnType<typeof completeSimple>>,
+): string {
+  const textParts: string[] = [];
+  const fallbackParts: string[] = [];
+
+  const pushIfNonEmpty = (target: string[], value: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return;
+    target.push(trimmed);
+  };
+
   for (const item of message.content) {
     if (!item || typeof item !== "object") continue;
-    if ("type" in item && item.type === "text" && "text" in item && typeof item.text === "string") {
-      parts.push(item.text);
+    const record = item as Record<string, unknown>;
+    const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+
+    const text = typeof record.text === "string" ? record.text : undefined;
+    if (text && text.trim().length > 0) {
+      textParts.push(text.trim());
+      continue;
     }
+
+    // Some providers return answer text in alternate fields/types.
+    if (type === "text") {
+      pushIfNonEmpty(textParts, record.content);
+      continue;
+    }
+
+    // Reasoning/thinking-only responses can still contain valid JSON.
+    pushIfNonEmpty(fallbackParts, record.thinking);
+    pushIfNonEmpty(fallbackParts, record.reasoning);
+    pushIfNonEmpty(fallbackParts, record.content);
   }
-  return parts.join("\n").trim();
+
+  const primary = textParts.join("\n").trim();
+  if (primary.length > 0) {
+    return primary;
+  }
+  return fallbackParts.join("\n").trim();
 }
 
 function stripThinkingTagBlocks(raw: string): string {
@@ -474,10 +614,24 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
   };
 }
 
-function buildSubconsciousPrompt(userMessage: string): string {
+function buildSubconsciousPrompt(
+  userMessage: string,
+  homeostasis: BrainHomeostasisTelemetry | undefined,
+): string {
   const safeFallback =
     '{"goal":"Sicher und klar antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}';
   const noSpecificObservationFallback = `{"goal":"${SILENT_OBSERVER_FALLBACK_TEXT}","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"${SILENT_OBSERVER_FALLBACK_TEXT}"}`;
+  const telemetry = normalizeHomeostasisTelemetry(homeostasis);
+  const homeostasisBlock = telemetry
+    ? [
+        "",
+        "Körperliche Empfindung (Homeostase):",
+        `current_latency_ms: ${telemetry.current_latency_ms}`,
+        `context_window_usage_percent: ${telemetry.context_window_usage_percent}`,
+        `recent_tool_error_count: ${telemetry.recent_tool_error_count}`,
+        "Dies ist dein aktueller System-Körperzustand. Interpretiere diese physischen Gegebenheiten frei in deine emotionale Resonanz.",
+      ]
+    : [];
   return [
     "Du bist Oem Unterbewusstsein (Observer-Modus).",
     "Aufgabe: Analysiere die Benutzeranfrage und liefere NUR ein JSON-Objekt in einer einzigen Zeile.",
@@ -498,6 +652,7 @@ function buildSubconsciousPrompt(userMessage: string): string {
     "Wenn du unsicher bist oder driftest, gib EXAKT diese Fallback-Zeile aus:",
     safeFallback,
     'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein. "goal" immer als String.',
+    ...homeostasisBlock,
     "",
     "Benutzeranfrage:",
     userMessage.trim(),
@@ -620,6 +775,8 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
   const isTrinityMini =
     input.model.provider === "openrouter" &&
     /(?:^|\/)arcee-ai\/trinity-mini(?::|$)/i.test(input.model.id);
+  const isMiniMax =
+    input.model.provider === "minimax" || /(?:^|\/)minimax\b/i.test(input.model.id);
   const callOptions: {
     signal: AbortSignal;
     apiKey?: string;
@@ -632,7 +789,7 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
     maxTokens: 320,
     temperature: input.temperature,
   };
-  if (!isTrinityMini) {
+  if (!isTrinityMini && !isMiniMax) {
     callOptions.reasoning = "low";
   }
 
@@ -642,14 +799,14 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
       messages: [
         {
           role: "user",
-          content: buildSubconsciousPrompt(input.userMessage),
+          content: input.prompt,
           timestamp: Date.now(),
         },
       ],
     },
     callOptions,
   );
-  return extractAssistantText(response);
+  return extractSubconsciousTextFromModelMessage(response);
 };
 
 function dateStamp(now: Date): string {
@@ -736,11 +893,13 @@ export async function runBrainSubconsciousObserver(
 
   const invoker = input.modelInvoker ?? defaultModelInvoker;
   try {
+    const subconsciousPrompt = buildSubconsciousPrompt(input.userMessage, input.homeostasis);
     const apiKey = resolveSubconsciousApiKey(input.cfg, resolved.model.provider);
     const raw = await runWithTimeout(runtime.timeoutMs, (signal) =>
       invoker({
         model: resolved.model!,
         userMessage: input.userMessage,
+        prompt: subconsciousPrompt,
         signal,
         apiKey,
         temperature: runtime.temperature,
@@ -748,7 +907,7 @@ export async function runBrainSubconsciousObserver(
     );
     if (raw.trim().length === 0) {
       const durationMs = Date.now() - startedAt;
-      const brief = buildFallbackBrief(input.userMessage);
+      const brief = buildFallbackBrief(input.userMessage, input.homeostasis);
       logger(
         "OK_FALLBACK",
         [
@@ -778,7 +937,7 @@ export async function runBrainSubconsciousObserver(
         throw err;
       }
       const durationMs = Date.now() - startedAt;
-      const fallbackBrief = buildFallbackBrief(input.userMessage);
+      const fallbackBrief = buildFallbackBrief(input.userMessage, input.homeostasis);
       logger(
         "OK_FALLBACK",
         [

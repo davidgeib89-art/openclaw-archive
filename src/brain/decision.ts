@@ -2189,7 +2189,13 @@ export async function buildBrainSacredRecallContext(
     maxFacts: DEFAULT_DREAM_FACT_LIMIT,
   });
   if (memoryIndexFacts.length + dreamFacts.length >= maxResults) {
-    const contextText = buildSacredRecallContextText([], routePlan, memoryIndexFacts, dreamFacts, []);
+    const contextText = buildSacredRecallContextText(
+      [],
+      routePlan,
+      memoryIndexFacts,
+      dreamFacts,
+      [],
+    );
     logger(
       "SACRED_RECALL",
       `route=${routePlan.route}; hits=0; idx=${memoryIndexFacts.length}; dreams=${dreamFacts.length}; graph=0; fallback=dreams`,
@@ -2472,8 +2478,10 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "3. Compare utility as: value-now + learning + novelty + reversibility - risk.",
     "4. You may choose any path freely. DRIFT is valid when you need non-goal-directed presence; NO_OP is valid when action confidence is low or safe actions are blocked.",
     "5. If DRIFT is chosen, no blocker report is required. You may read randomly, write one free line to DREAMS.md, generate one mood image prompt, or stay silent.",
-    "6. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
-    "7. If an action path is chosen, execute exactly one reversible step and then stop.",
+    "6. DRIFT has fail-open priority: no success-rate requirement applies, and DRIFT never blocks the system.",
+    "7. If a DRIFT action fails, switch to another lightweight DRIFT action or silent presence without escalating the failure.",
+    "8. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
+    "9. If an action path is chosen, execute exactly one reversible step and then stop.",
     `Allowed tools this turn: ${allowedTools}.`,
     "Do not output HEARTBEAT_OK unless all five candidate paths are blocked by safety constraints, or DRIFT intentionally resolves as silence.",
     "</brain_autonomy_choice>",

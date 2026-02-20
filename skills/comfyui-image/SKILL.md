@@ -2,14 +2,7 @@
 name: comfyui-image
 description: Generate an image via local ComfyUI (127.0.0.1:8188), then return the created file path.
 user-invocable: true
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "image",
-        "requires": { "bins": ["node"] },
-      },
-  }
+metadata: { "openclaw": { "emoji": "image", "requires": { "bins": ["node"] } } }
 ---
 
 # ComfyUI Image

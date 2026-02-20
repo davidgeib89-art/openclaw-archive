@@ -514,10 +514,7 @@ export class OpenClawApp extends LitElement {
     return authorization ? { Authorization: authorization } : {};
   }
 
-  private setHeartbeatTriggerMessage(
-    message: string,
-    kind: "info" | "success" | "error" = "info",
-  ) {
+  private setHeartbeatTriggerMessage(message: string, kind: "info" | "success" | "error" = "info") {
     if (this.heartbeatTriggerMessageTimer != null) {
       window.clearTimeout(this.heartbeatTriggerMessageTimer);
       this.heartbeatTriggerMessageTimer = null;

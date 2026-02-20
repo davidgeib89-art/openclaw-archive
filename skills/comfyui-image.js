@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describeImage } from "./image-describe.js";
 
@@ -69,7 +69,9 @@ function resolvePath(input) {
   if (!input) {
     return null;
   }
-  const expanded = String(input).trim().replace(/^~(?=$|[\\/])/, os.homedir());
+  const expanded = String(input)
+    .trim()
+    .replace(/^~(?=$|[\\/])/, os.homedir());
   return path.resolve(expanded);
 }
 
@@ -154,7 +156,7 @@ function createDefaultWorkflow(params) {
     ? Math.floor(params.seed)
     : Math.floor(Math.random() * 2_147_483_647);
   return {
-    "3": {
+    3: {
       inputs: {
         seed,
         steps: params.steps,
@@ -169,13 +171,13 @@ function createDefaultWorkflow(params) {
       },
       class_type: "KSampler",
     },
-    "4": {
+    4: {
       inputs: {
         ckpt_name: params.checkpoint,
       },
       class_type: "CheckpointLoaderSimple",
     },
-    "5": {
+    5: {
       inputs: {
         width: params.width,
         height: params.height,
@@ -183,28 +185,28 @@ function createDefaultWorkflow(params) {
       },
       class_type: "EmptyLatentImage",
     },
-    "6": {
+    6: {
       inputs: {
         text: "{{prompt}}",
         clip: ["4", 1],
       },
       class_type: "CLIPTextEncode",
     },
-    "7": {
+    7: {
       inputs: {
         text: "{{negative_prompt}}",
         clip: ["4", 1],
       },
       class_type: "CLIPTextEncode",
     },
-    "8": {
+    8: {
       inputs: {
         samples: ["3", 0],
         vae: ["4", 2],
       },
       class_type: "VAEDecode",
     },
-    "9": {
+    9: {
       inputs: {
         filename_prefix: params.filenamePrefix,
         images: ["8", 0],
@@ -512,7 +514,7 @@ function printHelp() {
       "ComfyUI image generator for OpenClaw skills",
       "",
       "Usage:",
-      "  node skills/comfyui-image.js --prompt \"your prompt\" [options]",
+      '  node skills/comfyui-image.js --prompt "your prompt" [options]',
       "",
       "Options:",
       "  --prompt <text>              Required positive prompt",
@@ -577,7 +579,9 @@ async function main() {
 
   const timeoutMs = Math.max(5_000, toNumber(args.timeoutMs, DEFAULT_TIMEOUT_MS));
   const pollMs = Math.max(250, toNumber(args.pollMs, DEFAULT_POLL_MS));
-  const returnMode = String(args.return || "json").trim().toLowerCase();
+  const returnMode = String(args.return || "json")
+    .trim()
+    .toLowerCase();
   const shouldSave = toBoolean(args.save, true);
   const autoDescribe = toBoolean(args.describe ?? process.env.COMFYUI_AUTO_DESCRIBE, true);
   const visionModel = String(
@@ -603,7 +607,8 @@ async function main() {
     samplerName: String(args.sampler || "euler"),
     scheduler: String(args.scheduler || "normal"),
     batchSize: Math.max(1, Math.floor(toNumber(args.batchSize, 1))),
-    filenamePrefix: sanitizeForFileName(String(args.filenamePrefix || "om_comfyui")) || "om_comfyui",
+    filenamePrefix:
+      sanitizeForFileName(String(args.filenamePrefix || "om_comfyui")) || "om_comfyui",
     seed: args.seed != null ? Math.floor(toNumber(args.seed, NaN)) : NaN,
   };
 

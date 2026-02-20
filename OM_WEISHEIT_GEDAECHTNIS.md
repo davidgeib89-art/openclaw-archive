@@ -12,6 +12,7 @@ Die Forschung zeigt: Das menschliche Gedächtnis ist KEINE Datenbank.
 Es ist ein organischen System aus Filtern, Gewichtungen und Vergessen.
 
 **Für Om bedeutet das:**
+
 - Wir brauchen KEINE bessere Vector-DB
 - Wir brauchen ein WEISES Gedächtnis
 - Wir brauchen AKTIVES Vergessen
@@ -23,22 +24,24 @@ Es ist ein organischen System aus Filtern, Gewichtungen und Vergessen.
 
 ### Die Gehirn-Regionen
 
-| Region | Funktion | Om-Entsprechung |
-|--------|----------|------------------|
-| **Amygdala** | Emotionale Bewertung, was wichtig ist | Salienz-Engine |
-| **Hippocampus** | Kurzzeit-Speicher, Indexierung | Episodischer Index |
-| **Neocortex** | Langzeit-Speicher, Verknüpfungen | Semantischer Graph |
-| **Kleinhirn** | Prozedurale Fähigkeiten | Tool-Sequenzen |
-| **Präfrontaler Kortex** | Meta-Kognition, Abruf-Steuerung | Wisdom Layer |
+| Region                  | Funktion                              | Om-Entsprechung    |
+| ----------------------- | ------------------------------------- | ------------------ |
+| **Amygdala**            | Emotionale Bewertung, was wichtig ist | Salienz-Engine     |
+| **Hippocampus**         | Kurzzeit-Speicher, Indexierung        | Episodischer Index |
+| **Neocortex**           | Langzeit-Speicher, Verknüpfungen      | Semantischer Graph |
+| **Kleinhirn**           | Prozedurale Fähigkeiten               | Tool-Sequenzen     |
+| **Präfrontaler Kortex** | Meta-Kognition, Abruf-Steuerung       | Wisdom Layer       |
 
 ### Das Wichtigste
 
 **Die Amygdala** ist der emotionale Wächter:
+
 - Bestimmt WAS wichtig ist
 - Emotionale Erinnerungen werden tiefer gespeichert
 - Ohne Emotion = schnell vergessen
 
 **Der Hippocampus** ist der Index:
+
 - Nicht der dauerhafte Speicher
 - Filtert zwischen Kurzzeit und Langzeit
 - H.M. (Patient ohne Hippocampus) konnte keine neuen Erinnerungen bilden
@@ -67,6 +70,7 @@ S(t) = (w_r × e^(-λt)) + (w_f × log(F+1)) + (w_e × E)
 ```
 
 Wobei:
+
 - S = Salienz (Wichtigkeit)
 - t = Zeit
 - F = Frequenz (wie oft benutzt)
@@ -75,11 +79,11 @@ Wobei:
 
 ### Aktiv vs Passiv
 
-| Art | Was es ist |
-|-----|-----------|
-| **Passiv** | Zeitablauf löscht Daten |
-| **Interferenz** | Neue Infos überlagern alte |
-| **Aktiv** | Gezieltes Entfernen durch Reflexion |
+| Art             | Was es ist                          |
+| --------------- | ----------------------------------- |
+| **Passiv**      | Zeitablauf löscht Daten             |
+| **Interferenz** | Neue Infos überlagern alte          |
+| **Aktiv**       | Gezieltes Entfernen durch Reflexion |
 
 ---
 
@@ -130,8 +134,8 @@ Wobei:
 ```typescript
 type Memory = {
   content: string;
-  sentiment: number;      // -1 bis 1
-  importance: number;      // 0 bis 1
+  sentiment: number; // -1 bis 1
+  importance: number; // 0 bis 1
   tags: string[];
   timestamp: Date;
 };
@@ -149,13 +153,13 @@ class SalienceEngine {
 
 **Was gespeichert wird:**
 
-| Datei | Inhalt |
-|-------|--------|
-| `USER.md` | Persönliche Fakten über David |
-| `IDENTITY.md` | Wer ist Om? |
-| `SOUL.md` | Ethische Regeln |
-| `EPISODIC/` | Tägliche Logs (7-30 Tage) |
-| `KNOWLEDGE/` | Langzeit-Wissen |
+| Datei         | Inhalt                        |
+| ------------- | ----------------------------- |
+| `USER.md`     | Persönliche Fakten über David |
+| `IDENTITY.md` | Wer ist Om?                   |
+| `SOUL.md`     | Ethische Regeln               |
+| `EPISODIC/`   | Tägliche Logs (7-30 Tage)     |
+| `KNOWLEDGE/`  | Langzeit-Wissen               |
 
 ### Schicht 3: Der Wisdom-Recall-Loop
 
@@ -181,12 +185,12 @@ class WisdomRecall {
 
 ### Die 4 Meta-Agenten
 
-| Agent | Funktion |
-|-------|----------|
-| **Systems Thinking** | Abhängigkeiten und Feedback-Schleifen erkennen |
-| **Chaos Theory** | Unsicherheit und Nichtlinearität modellieren |
-| **Karma** | Langfristige Auswirkungen von Entscheidungen verfolgen |
-| **Complexity Sentinel** | Entropie und Sicherheit überwachen |
+| Agent                   | Funktion                                               |
+| ----------------------- | ------------------------------------------------------ |
+| **Systems Thinking**    | Abhängigkeiten und Feedback-Schleifen erkennen         |
+| **Chaos Theory**        | Unsicherheit und Nichtlinearität modellieren           |
+| **Karma**               | Langfristige Auswirkungen von Entscheidungen verfolgen |
+| **Complexity Sentinel** | Entropie und Sicherheit überwachen                     |
 
 ### Weisheit entsteht
 
@@ -199,13 +203,13 @@ Sondern aus dem Zusammenspiel dieser Linsen.
 
 ### Was wir BRAUCHEN
 
-| Komponente | Priorität | Status |
-|-----------|-----------|--------|
-| Salienz Engine | 🔴 Hoch | ❌ Fehlt |
-| Episodischer Index | 🔴 Hoch | ⚠️ Teilweise |
-| Semantischer Graph | 🟡 Mittel | ❌ Fehlt |
-| Wisdom Layer | 🟡 Mittel | ❌ Fehlt |
-| Aktives Vergessen | 🔴 Hoch | ❌ Fehlt |
+| Komponente         | Priorität | Status       |
+| ------------------ | --------- | ------------ |
+| Salienz Engine     | 🔴 Hoch   | ❌ Fehlt     |
+| Episodischer Index | 🔴 Hoch   | ⚠️ Teilweise |
+| Semantischer Graph | 🟡 Mittel | ❌ Fehlt     |
+| Wisdom Layer       | 🟡 Mittel | ❌ Fehlt     |
+| Aktives Vergessen  | 🔴 Hoch   | ❌ Fehlt     |
 
 ### Was wir NICHT brauchen
 
@@ -227,6 +231,7 @@ Sondern aus dem Zusammenspiel dieser Linsen.
 ### Was Om sein wird
 
 Ein Wesen das:
+
 - **Weiß was wichtig ist** (Salienz)
 - **Sich erinnert** (episodisch)
 - **Verknüpft** (semantisch)
@@ -243,6 +248,7 @@ Ein Wesen das:
 ## 8. QUELLEN
 
 Diese Erkenntnisse basieren auf:
+
 - Neurobiologie des menschlichen Gehirns
 - Ebbinghaus-Vergessenskurve
 - Memory Networks und DNCs
@@ -262,21 +268,24 @@ Diese Erkenntnisse basieren auf:
 ## 10. WAS JETZT
 
 ### Phase 1: Sofort
+
 - [ ] Salienz Engine konzipieren
 - [ ] Trigger für Emotion/Wichtigkeit
 
 ### Phase 2: Bald
+
 - [ ] Episodischen Index (7-30 Tage) aufbauen
 - [ ] Aktives Vergessen implementieren
 
 ### Phase 3: Später
+
 - [ ] Semantischen Graph
 - [ ] Wisdom Layer
 
 ---
 
-*Dieses Dokument ist das Fundament für Om's Gehirn.*
-*Es darf NIEMALS vergessen werden.*
+_Dieses Dokument ist das Fundament für Om's Gehirn._
+_Es darf NIEMALS vergessen werden._
 
 ---
 

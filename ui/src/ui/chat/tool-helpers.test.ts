@@ -110,9 +110,10 @@ describe("tool-helpers", () => {
     });
 
     it("does not add ellipsis when all lines fit", () => {
-      const input = Array.from({ length: PREVIEW_MAX_LINES }, (_, index) => `Line ${index + 1}`).join(
-        "\n",
-      );
+      const input = Array.from(
+        { length: PREVIEW_MAX_LINES },
+        (_, index) => `Line ${index + 1}`,
+      ).join("\n");
       const result = getTruncatedPreview(input);
 
       expect(result).toBe(input);

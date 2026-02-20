@@ -126,8 +126,7 @@ export function evaluateSalience(input: EvaluateSalienceInput): SalienceEvaluati
   const frequencyCount = frequencySignals.length;
   const ageDays = clamp(input.ageDays ?? 0, 0, 3650);
   const recencyGate = frequencyCount > 0 || emotionValue >= 0.35 ? 1 : 0.05;
-  const recencyTerm =
-    SALIENCE_WEIGHTS.recency * recencyGate * Math.exp(-SALIENCE_LAMBDA * ageDays);
+  const recencyTerm = SALIENCE_WEIGHTS.recency * recencyGate * Math.exp(-SALIENCE_LAMBDA * ageDays);
   const frequencyNormalized = clamp(
     Math.log(frequencyCount + 1) / Math.log(MAX_FREQUENCY_FOR_NORMALIZATION),
     0,

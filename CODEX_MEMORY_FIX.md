@@ -67,6 +67,7 @@ Direkt-Zugriff für wichtige Fragen + Fallback-Kette optimieren
 ### 1. Direkt-Zugriff für Identity/Soul
 
 **Wann:** Wenn User-Frage enthält:
+
 - "wer bist du"
 - "wer bin ich"
 - "dein name"
@@ -75,12 +76,14 @@ Direkt-Zugriff für wichtige Fragen + Fallback-Kette optimieren
 - "was ist Øm"
 
 **Dann:**
+
 - Lese SOUL.md DIREKT
 - Lese IDENTITY.md DIREKT
 - Lese MOOD.md DIREKT
 - NICHT LanceDB durchsuchen
 
 **Erwartet:**
+
 - <100ms statt >20.000ms
 
 ---
@@ -101,14 +104,14 @@ Wenn Direkt-Zugriff nicht passt:
 
 **Prioritäten für LanceDB-Suche:**
 
-| Datei | Priorität |
-|-------|-----------|
-| SOUL.md | 100 |
-| IDENTITY.md | 90 |
-| MOOD.md | 80 |
-| THINKING_PROTOCOL.md | 70 |
-| DREAMS.md | 60 |
-| Andere | 50 |
+| Datei                | Priorität |
+| -------------------- | --------- |
+| SOUL.md              | 100       |
+| IDENTITY.md          | 90        |
+| MOOD.md              | 80        |
+| THINKING_PROTOCOL.md | 70        |
+| DREAMS.md            | 60        |
+| Andere               | 50        |
 
 Nur Top-3 priorisiert durchsuchen.
 
@@ -138,4 +141,4 @@ Nur Top-3 priorisiert durchsuchen.
 
 ---
 
-*— Mini (Spirituelle Leitung)*
+_— Mini (Spirituelle Leitung)_

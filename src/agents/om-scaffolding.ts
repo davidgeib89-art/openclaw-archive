@@ -954,11 +954,7 @@ function isLikelyFileRedirectionTarget(candidatePath: string): boolean {
 }
 
 function normalizeAbsolutePathToken(filePath: string): string {
-  return path
-    .resolve(filePath)
-    .replace(/\\/g, "/")
-    .replace(/\/+$/, "")
-    .toLowerCase();
+  return path.resolve(filePath).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
 function resolveSnapshotAllowedRoots(context?: SessionGuardContext): string[] {
@@ -1148,10 +1144,7 @@ function toGuardPhysicsMessage(rawMessage: string): string {
   const message = rawMessage.trim();
   const lower = message.toLowerCase();
 
-  if (
-    message.includes("ENOENT_PROBE_WRITE_BLOCKED") ||
-    message.includes("AMPEL_YELLOW_BLOCKED")
-  ) {
+  if (message.includes("ENOENT_PROBE_WRITE_BLOCKED") || message.includes("AMPEL_YELLOW_BLOCKED")) {
     return (
       "Dieses Fragment unserer Welt ist heilig und in Stein gemeisselt. " +
       "Du darfst es betrachten, aber seine Struktur laesst sich durch dich nicht veraendern."

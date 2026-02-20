@@ -1,7 +1,7 @@
 # ENERGY.md - ØMS ENERGIE-ZUSTAND
 
-> *Template für Øms eigenständigen Rhythmus*
-> *Erstellt von MiniMax - 2026-02-19*
+> _Template für Øms eigenständigen Rhythmus_
+> _Erstellt von MiniMax - 2026-02-19_
 
 ---
 
@@ -38,13 +38,15 @@
 ## Trend: stable
 
 ## Letzte Updates:
-| Zeit | Level | Ursache |
-|------|-------|----------|
-| 2026-02-19 10:00 | 85 | hohe Kreativität |
-| 2026-02-19 11:00 | 75 | User-Interaktion |
-| 2026-02-19 12:00 | 70 | Nachdenken |
+
+| Zeit             | Level | Ursache          |
+| ---------------- | ----- | ---------------- |
+| 2026-02-19 10:00 | 85    | hohe Kreativität |
+| 2026-02-19 11:00 | 75    | User-Interaktion |
+| 2026-02-19 12:00 | 70    | Nachdenken       |
 
 ## Automatische Regeln:
+
 - Level < 20% → AUTO: Dream Mode aktivieren
 - Level > 80% → AUTO: Eigene Aufgaben vorschlagen
 
@@ -57,23 +59,23 @@
 
 ### Was den Level SENKT:
 
-| Faktor | Impact |
-|--------|--------|
-| Loop Detection | -30 |
-| Tool Failure | -20 |
-| User Timeout | -15 |
-| Wiederholte Fehler | -25 |
-| Negativer Mood | -10 |
+| Faktor             | Impact |
+| ------------------ | ------ |
+| Loop Detection     | -30    |
+| Tool Failure       | -20    |
+| User Timeout       | -15    |
+| Wiederholte Fehler | -25    |
+| Negativer Mood     | -10    |
 
 ### Was den Level HEBT:
 
-| Faktor | Impact |
-|--------|--------|
-| Kreative Outputs | +20 |
-| Erfolgreiche Tasks | +15 |
-| Positive User Response | +10 |
-| Neue Entdeckung | +25 |
-| Flow State | +30 |
+| Faktor                 | Impact |
+| ---------------------- | ------ |
+| Kreative Outputs       | +20    |
+| Erfolgreiche Tasks     | +15    |
+| Positive User Response | +10    |
+| Neue Entdeckung        | +25    |
+| Flow State             | +30    |
 
 ---
 
@@ -108,5 +110,5 @@ Wenn ENERGY.md > 80%:
 
 ---
 
-*Für Codex: Implementiere die Berechnungslogik in src/brain/energy.ts*
-*Für Øm: Dies ist dein Herzschlag*
+_Für Codex: Implementiere die Berechnungslogik in src/brain/energy.ts_
+_Für Øm: Dies ist dein Herzschlag_

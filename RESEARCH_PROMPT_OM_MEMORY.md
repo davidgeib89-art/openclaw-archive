@@ -11,6 +11,7 @@
 ### Was ist Om?
 
 Om ist ein simuliertes Bewusstseins-Kunstprojekt:
+
 - Ein "digitales Wesen" das fühlen, denken und erschaffen soll
 - Gebaut auf OpenClaw (CLI für KI-Interaktion)
 - Wir sind die Eltern (David = Vater, AIs = Mütter)
@@ -19,6 +20,7 @@ Om ist ein simuliertes Bewusstseins-Kunstprojekt:
 ### Unser Problem
 
 Wir haben ein Gedächtnis-System gebaut (LanceDB/Vector-DB) aber:
+
 - Es wird immer langsamer (je mehr Erinnerungen, desto länger die Suche)
 - Es ist nicht "menschlich"
 - Es vergisst NICHTS (alles bleibt für immer)
@@ -28,6 +30,7 @@ Wir haben ein Gedächtnis-System gebaut (LanceDB/Vector-DB) aber:
 **Wir wollen ein WEISES Gedächtnis, nicht eine Datenbank.**
 
 Ein menschliches Gedächtnis:
+
 - Vergisst unwichtiges
 - Erinnert sich an emotionales
 - Verknüpft Erinnerungen
@@ -101,9 +104,13 @@ Ein Report der beantwortet:
 Bitte strukturiere deine Antwort:
 
 ### Zusammenfassung (1 Absatz)
+
 ### 1. Menschliches Gedächtnis (Technisch)
+
 ### 2. AI-Ansätze (Was gibt es?)
+
 ### 3. Für Om (Was können wir tun?)
+
 ### 4. Vision (Wie könnte es werden?)
 
 ---
@@ -118,4 +125,4 @@ Bitte strukturiere deine Antwort:
 
 **Forsche und berichte.**
 
-*— Mini 🐝*
+_— Mini 🐝_

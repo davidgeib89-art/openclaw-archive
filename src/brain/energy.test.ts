@@ -20,7 +20,6 @@ afterEach(async () => {
 describe("calculateEnergy", () => {
   it("enters dream mode below 20", () => {
     const snapshot = calculateEnergy({
-      moodText: "müde erschöpft überfordert",
       toolStats: { total: 6, successful: 0, failed: 6 },
     });
 
@@ -32,7 +31,6 @@ describe("calculateEnergy", () => {
 
   it("enables initiative mode above 80", () => {
     const snapshot = calculateEnergy({
-      moodText: "calm focused creative energized",
       toolStats: { total: 0, successful: 0, failed: 0 },
     });
 

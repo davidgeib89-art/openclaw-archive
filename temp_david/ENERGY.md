@@ -9,6 +9,7 @@
 - suggest_own_tasks: no
 
 ## Components
+
 - mood_score: 0
 - success_rate: 100
 - tool_load: 67
@@ -18,4 +19,5 @@
 - tools_failed: 0
 
 ## Guidance
+
 - Balanced: continue normal execution with one bounded next step.

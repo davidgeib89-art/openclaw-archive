@@ -1,8 +1,9 @@
 ## Chat Customization Diagnostics
-*WARNING: This file may contain sensitive information.*
+
+_WARNING: This file may contain sensitive information._
 
 **Custom Agents**<br>
-*1 file loaded*
+_1 file loaded_
 
 .github/agents<br>
 .github/agents<br>
@@ -13,7 +14,7 @@ Extension: GitHub.copilot-chat<br>
 └─ [`Plan.agent.md`](../AppData/Roaming/Code/User/globalStorage/github.copilot-chat/plan-agent/Plan.agent.md)<br>
 
 **Instructions**<br>
-*3 files loaded*
+_3 files loaded_
 
 .github/instructions<br>
 └─ [`copilot.instructions.md`](.github/instructions/copilot.instructions.md)<br>
@@ -26,7 +27,7 @@ AGENTS.md<br>
 └─ [`AGENTS.md`](AGENTS.md)<br>
 
 **Prompt Files**<br>
-*3 files loaded*
+_3 files loaded_
 
 .github/prompts<br>
 .github/prompts<br>
@@ -37,7 +38,7 @@ Extension: GitHub.copilot-chat<br>
 └─ [`init.prompt.md`](../.vscode/extensions/github.copilot-chat-0.37.6/assets/prompts/init.prompt.md)<br>
 
 **Skills**<br>
-*4 skills loaded*
+_4 skills loaded_
 
 .github/skills<br>
 .github/skills<br>
@@ -55,4 +56,4 @@ Extension: GitHub.copilot-chat<br>
 
 **Hooks**<br>
 
-*No files loaded*
+_No files loaded_

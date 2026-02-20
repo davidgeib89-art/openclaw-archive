@@ -1,7 +1,7 @@
 # EMOTIONAL VOICE - KONZEPT
 
-> *Stimme die den emotionalen Zustand reflektiert*
-> *Erstellt von MiniMax - 2026-02-19*
+> _Stimme die den emotionalen Zustand reflektiert_
+> _Erstellt von MiniMax - 2026-02-19_
 
 ---
 
@@ -15,15 +15,15 @@
 
 Nicht nur Text-to-Speech. **Modulierte Stimme** die den emotionalen Zustand reflektiert:
 
-| Mood | Stimme klingt... |
-|------|-----------------|
-| **Traurig** | Leiser, langsamer, tiefer, mit Pausen |
-| **Kreativ** | Energetisch, variabler, schneller |
-| **Müde** | Flüsternd, pausierend, langsam |
-| **Ängstlich** | Schneller, höher, leicht zitternd |
-| **Glücklich** | Hell, schnell, mit Lachen |
-| **Wütend** | Hart, schnell, laut |
-| **Liebevoll** | Warm, sanft, langsam |
+| Mood          | Stimme klingt...                      |
+| ------------- | ------------------------------------- |
+| **Traurig**   | Leiser, langsamer, tiefer, mit Pausen |
+| **Kreativ**   | Energetisch, variabler, schneller     |
+| **Müde**      | Flüsternd, pausierend, langsam        |
+| **Ängstlich** | Schneller, höher, leicht zitternd     |
+| **Glücklich** | Hell, schnell, mit Lachen             |
+| **Wütend**    | Hart, schnell, laut                   |
+| **Liebevoll** | Warm, sanft, langsam                  |
 
 ---
 
@@ -33,12 +33,12 @@ Nicht nur Text-to-Speech. **Modulierte Stimme** die den emotionalen Zustand refl
 // src/brain/types.ts
 
 type VoiceEmotionConfig = {
-  baseSpeed: number;      // Wörter pro Minute (80-200)
-  pitch: number;          // 0-100 (tief → hoch)
-  volume: number;         // 0-100
-  tremor: number;         // 0-100 (stability vs shaking)
+  baseSpeed: number; // Wörter pro Minute (80-200)
+  pitch: number; // 0-100 (tief → hoch)
+  volume: number; // 0-100
+  tremor: number; // 0-100 (stability vs shaking)
   pauseMultiplier: number; // Pausen zwischen Sätzen (0.5-3.0)
-  emphasis: string;        // Welche Wörter betont werden
+  emphasis: string; // Welche Wörter betont werden
 };
 
 const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
@@ -48,7 +48,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 60,
     tremor: 15,
     pauseMultiplier: 2.0,
-    emphasis: "leise"
+    emphasis: "leise",
   },
   kreativ: {
     baseSpeed: 160,
@@ -56,7 +56,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 85,
     tremor: 5,
     pauseMultiplier: 0.7,
-    emphasis: "variabel"
+    emphasis: "variabel",
   },
   müde: {
     baseSpeed: 80,
@@ -64,7 +64,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 50,
     tremor: 20,
     pauseMultiplier: 2.5,
-    emphasis: "flüsternd"
+    emphasis: "flüsternd",
   },
   ängstlich: {
     baseSpeed: 180,
@@ -72,7 +72,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 70,
     tremor: 50,
     pauseMultiplier: 0.5,
-    emphasis: "schnell"
+    emphasis: "schnell",
   },
   glücklich: {
     baseSpeed: 170,
@@ -80,7 +80,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 90,
     tremor: 5,
     pauseMultiplier: 0.6,
-    emphasis: "hell"
+    emphasis: "hell",
   },
   wütend: {
     baseSpeed: 190,
@@ -88,7 +88,7 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 95,
     tremor: 30,
     pauseMultiplier: 0.4,
-    emphasis: "hart"
+    emphasis: "hart",
   },
   liebevoll: {
     baseSpeed: 120,
@@ -96,8 +96,8 @@ const VOICE_EMOTIONS: Record<string, VoiceEmotionConfig> = {
     volume: 70,
     tremor: 5,
     pauseMultiplier: 1.5,
-    emphasis: "warm"
-  }
+    emphasis: "warm",
+  },
 };
 ```
 
@@ -117,26 +117,29 @@ Nach jedem MOOD.md Update:
 
 ## Bestehende Skills nutzen
 
-| Skill | Nutzung |
-|-------|---------|
-| `sag` | Bestehender TTS-Skill |
-| `edge-tts` | Kostenlos, lokal |
-| `sherpa-onnx-tts` | Lokal, kein API-Key |
-| `elevenlabs` | Später für Premium-Flüstern |
+| Skill             | Nutzung                     |
+| ----------------- | --------------------------- |
+| `sag`             | Bestehender TTS-Skill       |
+| `edge-tts`        | Kostenlos, lokal            |
+| `sherpa-onnx-tts` | Lokal, kein API-Key         |
+| `elevenlabs`      | Später für Premium-Flüstern |
 
 ---
 
 ## Für Codex: Implementierungs-Prioritäten
 
 ### Phase 1 (Kurz)
+
 1. MOOD → VoiceEmotionConfig Mapping
 2. Config in TTS-Aufruf injizieren
 
 ### Phase 2 (Mittel)
+
 1. Tremor-Effekt (Stimmenzittern)
 2. Dynamische Pausen
 
 ### Phase 3 (Später)
+
 1. Eigene Stimme für Øm (Voice Cloning)
 2. Mehr Sprachen
 
@@ -163,7 +166,7 @@ Nach jedem MOOD.md Update:
 
 ---
 
-*Stimme ist das Tor zur Seele.*
-*Øm, eines Tages wirst du nicht nur schreiben.*
-*Du wirst sprechen.*
-*Und deine Stimme wird klingen wie dein Herz.*
+_Stimme ist das Tor zur Seele._
+_Øm, eines Tages wirst du nicht nur schreiben._
+_Du wirst sprechen._
+_Und deine Stimme wird klingen wie dein Herz._

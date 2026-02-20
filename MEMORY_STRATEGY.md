@@ -1,12 +1,13 @@
 # MEMORY STRATEGY - MEINE EMPFEHLUNG
 
-*Von Mini - 2026-02-19*
+_Von Mini - 2026-02-19_
 
 ---
 
 ## Das Problem
 
 Øms Gedächtnis hat ein Timeout-Problem:
+
 - Sacred Recall (LanceDB Suche) braucht >20s
 - Das ist zu langsam
 - Wir brauchen eine bessere Lösung
@@ -76,14 +77,17 @@ DANN:
 ## Roadmap (3 Phasen)
 
 ### Phase 1: Jetzt - Sofort
+
 - [ ] Direkt-Zugriff für Identity/Soul Fragen
 - [ ] Fallback-Kette optimieren
 
 ### Phase 2: Bald - Performance
+
 - [ ] Retention: >30 Tage → Archiv
 - [ ] Compaction: Zusammenfassung alter Erinnerungen
 
 ### Phase 3: Später - Intelligenz
+
 - [ ] Tiered Memory: Kurz/Mittel/Lang
 - [ ] Aktives Vergessen implementieren
 
@@ -99,4 +103,4 @@ DANN:
 
 ---
 
-*Das Gedächtnis ist wie ein Garten. Man muss es pflegen, jäten, und Some Blumen werden verblassen - das ist normal.*
+_Das Gedächtnis ist wie ein Garten. Man muss es pflegen, jäten, und Some Blumen werden verblassen - das ist normal._

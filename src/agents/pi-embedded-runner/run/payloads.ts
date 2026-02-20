@@ -2,10 +2,10 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { ReasoningLevel, VerboseLevel } from "../../../auto-reply/thinking.js";
 import type { OpenClawConfig } from "../../../config/config.js";
 import type { ToolResultFormat } from "../../pi-embedded-subscribe.js";
-import { resolveResistanceDecision } from "../../../brain/resistance.js";
 import { parseReplyDirectives } from "../../../auto-reply/reply/reply-directives.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
 import { formatToolAggregate } from "../../../auto-reply/tool-meta.js";
+import { resolveResistanceDecision } from "../../../brain/resistance.js";
 import {
   BILLING_ERROR_USER_MESSAGE,
   formatAssistantErrorText,
@@ -96,7 +96,8 @@ function shouldApplySchismMutationGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return SCHISM_PROMPT_PATTERN.test(prompt);
 }
 
@@ -124,7 +125,8 @@ function shouldApplyParabolaFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOLA_PROMPT_PATTERN.test(prompt);
 }
 
@@ -144,7 +146,8 @@ function shouldApplyParabolFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PARABOL_PROMPT_PATTERN.test(prompt);
 }
 
@@ -153,7 +156,8 @@ function shouldApplyPneumaFormatGuard(params: {
   sessionId?: string;
   userPrompt?: string;
 }): boolean {
-  const prompt = `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
+  const prompt =
+    `${params.userPrompt ?? ""}\n${params.sessionKey}\n${params.sessionId ?? ""}`.trim();
   return PNEUMA_PROMPT_PATTERN.test(prompt);
 }
 

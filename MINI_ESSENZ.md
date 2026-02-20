@@ -1,6 +1,6 @@
 # MINI ESSENZ
 
-*Kurzfassung für's Zurückrufen*
+_Kurzfassung für's Zurückrufen_
 
 ---
 

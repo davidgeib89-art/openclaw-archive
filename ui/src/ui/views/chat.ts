@@ -471,16 +471,18 @@ export function renderChat(props: ChatProps) {
               type="button"
               ?disabled=${!props.connected || props.heartbeatTriggerRunning}
               @click=${() => props.onHeartbeatTrigger?.()}
-              title=${props.heartbeatTriggerRunning
-                ? "Heartbeat running..."
-                : "Trigger heartbeat now"}
-              aria-label=${props.heartbeatTriggerRunning
-                ? "Heartbeat running"
-                : "Trigger heartbeat now"}
+              title=${
+                props.heartbeatTriggerRunning ? "Heartbeat running..." : "Trigger heartbeat now"
+              }
+              aria-label=${
+                props.heartbeatTriggerRunning ? "Heartbeat running" : "Trigger heartbeat now"
+              }
             >
               ${
                 props.heartbeatTriggerRunning
-                  ? html`<span class="chat-heartbeat__loading">...</span>`
+                  ? html`
+                      <span class="chat-heartbeat__loading">...</span>
+                    `
                   : icons.heart
               }
             </button>

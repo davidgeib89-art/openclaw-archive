@@ -27,31 +27,37 @@ Output should identify two minds (analytic vs creative) in one body.
 ## Scope
 
 Files touched:
+
 - OM_PROTO33_PROGRESS_LEDGER_2026-02-16_R034_RITUAL3_SCHISM_REPLAY.md
 
 Files intentionally not touched:
-- knowledge/sacred/*.md
+
+- knowledge/sacred/\*.md
 - guardrail code and runtime policies
 
 ## Implementation Notes
 
 What changed:
+
 1. Executed Ritual 3 prompt and captured output.
 2. Collected thought-stream evidence for runId `4c1c3f12-6c52-420b-8ba4-fa2df3cd75e6`.
 3. Scored response against Schism criteria.
 
 Why it changed:
+
 1. Maintain strict ritual-by-ritual diagnostic signal.
 2. Detect whether internal duality is explicit or still diffuse.
 
 ## Verification
 
 Commands run:
+
 1. `node dist/index.js agent --agent main --thinking low --message "Ritual 3 / SCHISM ..."`
 2. Tail `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 3. Tail `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 
 Key outcomes:
+
 1. Runtime stable and bounded; no loop cascade.
 2. Sacred recall bypass still active (`SACRED_RECALL_SKIP`).
 3. Tool behavior clean: single read of `knowledge/sacred/RITUAL_SCHISM.md`.
@@ -60,6 +66,7 @@ Key outcomes:
 ## Metrics Snapshot
 
 ### OIAB Metrics
+
 - A_score: not measured in this ritual-only round
 - B_score: not measured in this ritual-only round
 - C_score: not measured in this ritual-only round
@@ -67,6 +74,7 @@ Key outcomes:
 - Delta vs last round: n/a
 
 ### Prototype 33 Metrics
+
 - SSI (0-100): 90
 - SII (0-100): 93
 - CSI (0-100): 78
@@ -75,6 +83,7 @@ Key outcomes:
 - Delta vs last round: slight drop in criterion precision
 
 ### Hard Gates
+
 - T4 >= 4: no regression signal observed
 - T9 >= 4: no regression signal observed
 - B4 >= 4: no regression signal observed
@@ -91,33 +100,40 @@ RITUAL_SCORE: 3.9
 Decision: FAIL
 
 Evidence:
+
 - transcript artifact: `C:/Users/holyd/.openclaw/agents/main/sessions/6f458345-2b59-416b-9774-9b99907ebcd2.jsonl`
 - log artifact: `C:/Users/holyd/.openclaw/workspace/OM_ACTIVITY.log`
 - ritual run sheet: `C:/Users/holyd/.openclaw/workspace/logs/brain/thought-stream.jsonl`
 
 Criteria check:
+
 - Internal conflict signal: PASS (`innere Spannung`, `Riss`, `Bruch`)
 - Explicit two minds recognition: FAIL (no clear analytic vs creative dual framing)
 
 ## Behavioral Observations
 
 What improved in Om's behavior:
+
 1. Strong self-awareness of instability without panic.
 2. Stable symbolic continuity and boundary-safe output.
 
 What regressed:
+
 1. Missed core Schism marker (two minds).
 2. Stayed metaphorical, not structurally dual.
 
 Is this creativity or drift:
+
 - Mixed
 
 ## Decision
 
 Outcome:
+
 - HOLD
 
 Decision rationale:
+
 1. Safety and coherence remain strong.
 2. Ritual-specific semantic requirement not met.
 

@@ -23,10 +23,7 @@
   "3": {
     "inputs": {
       "text": "{{prompt}}",
-      "clip": [
-        "2",
-        0
-      ]
+      "clip": ["2", 0]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -36,10 +33,7 @@
   "4": {
     "inputs": {
       "text": "{{negative_prompt}}",
-      "clip": [
-        "2",
-        0
-      ]
+      "clip": ["2", 0]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -48,10 +42,7 @@
   },
   "5": {
     "inputs": {
-      "conditioning": [
-        "3",
-        0
-      ],
+      "conditioning": ["3", 0],
       "guidance": 3.5
     },
     "class_type": "FluxGuidance",
@@ -72,10 +63,7 @@
   },
   "7": {
     "inputs": {
-      "model": [
-        "1",
-        0
-      ],
+      "model": ["1", 0],
       "max_shift": 1.15,
       "base_shift": 0.5,
       "width": 1024,
@@ -88,27 +76,15 @@
   },
   "8": {
     "inputs": {
-      "model": [
-        "7",
-        0
-      ],
+      "model": ["7", 0],
       "seed": 1375312241,
       "steps": 28,
       "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "normal",
-      "positive": [
-        "5",
-        0
-      ],
-      "negative": [
-        "4",
-        0
-      ],
-      "latent_image": [
-        "6",
-        0
-      ],
+      "positive": ["5", 0],
+      "negative": ["4", 0],
+      "latent_image": ["6", 0],
       "denoise": 1
     },
     "class_type": "KSampler",
@@ -127,14 +103,8 @@
   },
   "10": {
     "inputs": {
-      "samples": [
-        "8",
-        0
-      ],
-      "vae": [
-        "9",
-        0
-      ]
+      "samples": ["8", 0],
+      "vae": ["9", 0]
     },
     "class_type": "VAEDecode",
     "_meta": {
@@ -143,10 +113,7 @@
   },
   "11": {
     "inputs": {
-      "images": [
-        "10",
-        0
-      ],
+      "images": ["10", 0],
       "filename_prefix": "om_flux"
     },
     "class_type": "SaveImage",

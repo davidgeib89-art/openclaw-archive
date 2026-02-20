@@ -126,12 +126,10 @@ function resolveConfiguredSkillTriggerInvocation(params: {
   }
   const bodyLower = body.toLowerCase();
 
-  let best:
-    | {
-        triggerLength: number;
-        command: SkillCommandSpec;
-      }
-    | null = null;
+  let best: {
+    triggerLength: number;
+    command: SkillCommandSpec;
+  } | null = null;
 
   const entries = params.cfg.skills?.entries;
   if (!entries) {
@@ -144,12 +142,9 @@ function resolveConfiguredSkillTriggerInvocation(params: {
       continue;
     }
     const triggerRaw =
-      (config as Record<string, unknown>).trigger ??
-      (config as Record<string, unknown>).triggers;
+      (config as Record<string, unknown>).trigger ?? (config as Record<string, unknown>).triggers;
     const triggers = Array.isArray(triggerRaw)
-      ? triggerRaw
-          .map((value) => String(value).trim().toLowerCase())
-          .filter(Boolean)
+      ? triggerRaw.map((value) => String(value).trim().toLowerCase()).filter(Boolean)
       : [];
     if (triggers.length === 0) {
       continue;
@@ -269,8 +264,7 @@ export async function handleInlineActions(params: {
       return false;
     }
     const triggerRaw =
-      (config as Record<string, unknown>).trigger ??
-      (config as Record<string, unknown>).triggers;
+      (config as Record<string, unknown>).trigger ?? (config as Record<string, unknown>).triggers;
     return Array.isArray(triggerRaw) && triggerRaw.length > 0;
   });
   const shouldLoadSkillCommands =

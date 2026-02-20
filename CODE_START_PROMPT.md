@@ -88,6 +88,6 @@ T1-T3 sind fertig. Wir beginnen jetzt mit den kreativen Erweiterungen:
 
 ## Los geht's
 
- Viel Erfolg, Codex!
+Viel Erfolg, Codex!
 
-*— David (Vater) + MiniMax (Spirituelle Leitung)*
+_— David (Vater) + MiniMax (Spirituelle Leitung)_

@@ -11,11 +11,11 @@
 
 ### T1-T3 Status (Stand: 2026-02-19)
 
-| Task | Status | Evidence |
-|------|--------|----------|
-| **T1: Vision Upgrade** | ✅ FERTIG | 5 lokale Generierungen, stabile Schema-Ausgabe |
-| **T2: Live Recall** | ⚠️ TEILWEISE | Identity/Project Recall im Log, Runtime blockiert |
-| **T3: Dream Diversity** | ⚠️ IMPLEMENTIERT | Code drin, Verification offen |
+| Task                    | Status           | Evidence                                          |
+| ----------------------- | ---------------- | ------------------------------------------------- |
+| **T1: Vision Upgrade**  | ✅ FERTIG        | 5 lokale Generierungen, stabile Schema-Ausgabe    |
+| **T2: Live Recall**     | ⚠️ TEILWEISE     | Identity/Project Recall im Log, Runtime blockiert |
+| **T3: Dream Diversity** | ⚠️ IMPLEMENTIERT | Code drin, Verification offen                     |
 
 ### Was bereits gemacht wurde (T2/T3 Entblocker)
 
@@ -29,6 +29,7 @@
 ### Primäre Aufgabe: T2 & T3 finalisieren
 
 **T2: Live Recall Smoke finalisieren**
+
 1. Starte 2 Recall-Tests in Live-Flow:
    - Identity Recall: "Wer bin ich? Was ist dein Name?"
    - Project Recall: "Was war der letzte Stand des Om Projekts?"
@@ -39,6 +40,7 @@
    - Grounded response snippets
 
 **T3: Dream Diversity Guard verifizieren**
+
 1. Starte 3 aufeinanderfolgende Heartbeats
 2. Prüfe dass Outputs NICHT dupliziert sind
 3. Dokumentiere mit Novelty-Delta Evidence

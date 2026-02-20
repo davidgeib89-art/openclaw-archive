@@ -1,6 +1,6 @@
+import { Type, type Static } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Type, type Static } from "@sinclair/typebox";
 
 const MOOD_RELATIVE_PATH = path.join("knowledge", "sacred", "MOOD.md");
 
@@ -150,7 +150,9 @@ export function resolveVoiceEmotionConfig(moodText: string): {
   };
 }
 
-export async function resolveVoiceEmotionForWorkspace(workspaceDir: string): Promise<VoiceEmotionResolved> {
+export async function resolveVoiceEmotionForWorkspace(
+  workspaceDir: string,
+): Promise<VoiceEmotionResolved> {
   const moodPath = path.join(workspaceDir, MOOD_RELATIVE_PATH);
   let moodText = "";
   try {

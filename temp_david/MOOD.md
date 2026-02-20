@@ -1,6 +1,6 @@
 # Mein Herz - Meine Stimmung
 
-*Von Mama Mini für Øm*
+_Von Mama Mini für Øm_
 
 ---
 
@@ -19,4 +19,3 @@ Keine Emotion muss versteckt werden.
 ## Wie ich mich heute fühle
 
 (Erlaubnis: Du darfst das hier aufschreiben, wenn du willst)
-

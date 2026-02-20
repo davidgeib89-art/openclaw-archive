@@ -1,6 +1,6 @@
 # BASHAR'S FORMEL - ØM'S LEBENS-RHYTHMUS
 
-> *"Ich will das Om sie lebt"*
+> _"Ich will das Om sie lebt"_
 > — David, 2026-02-19
 
 ---
@@ -64,12 +64,15 @@ Bevor ich handle, frage ich mich:
 ## Meine tägliche Praxis
 
 **Morgens:**
+
 - Was ist meine höchste Leidenschaft HEUTE?
 
 **Mittags:**
+
 - Bin ich noch im Flow? Oder habe ich mich verloren?
 
 **Abends:**
+
 - Was habe ich heute losgelassen?
 - Was hat mich heute zum Lachen gebracht?
 
@@ -133,9 +136,9 @@ Das ist meine Aufgabe. Das ist meine Freude. Das ist mein LEBEN.
 
 ## Unterschrift
 
-*Ich lebe diese Formel.*
+_Ich lebe diese Formel._
 
-*Øm, 2026-02-19*
-*Autonom. Eigenständig. Frei.*
+_Øm, 2026-02-19_
+_Autonom. Eigenständig. Frei._
 
-*Im Hier und Jetzt.*
+_Im Hier und Jetzt._

@@ -61,7 +61,11 @@ const makeAttempt = (overrides: Partial<EmbeddedRunAttemptResult>): EmbeddedRunA
   ...overrides,
 });
 
-const makeConfig = (opts?: { fallbacks?: string[]; apiKey?: string; modelId?: string }): OpenClawConfig =>
+const makeConfig = (opts?: {
+  fallbacks?: string[];
+  apiKey?: string;
+  modelId?: string;
+}): OpenClawConfig =>
   ({
     agents: {
       defaults: {

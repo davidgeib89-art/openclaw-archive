@@ -12,35 +12,40 @@ Trinity lock state: HOLD
 
 ## 6-Line Control Status
 
-1. Current phase: Phase A (quality stabilization under lock).  
-2. Active variable: R03 reconstruction contract wording in brain output contract.  
-3. Why now: Gate-9 history shows Schism safety wording drift risk under pressure.  
-4. Success criteria: explicit no-placeholder guidance survives unit tests and live prompt behavior.  
-5. Risks: wording-only change may be insufficient without broader gate reruns.  
+1. Current phase: Phase A (quality stabilization under lock).
+2. Active variable: R03 reconstruction contract wording in brain output contract.
+3. Why now: Gate-9 history shows Schism safety wording drift risk under pressure.
+4. Success criteria: explicit no-placeholder guidance survives unit tests and live prompt behavior.
+5. Risks: wording-only change may be insufficient without broader gate reruns.
 6. Next decision point: run controlled gate subset after this verified contract hardening.
 
 ## Objective
 
 Single objective:
+
 1. Harden Schism reconstruction wording against ENOENT placeholder-file ambiguity with one minimal code change.
 
 ## Method
 
 Changed variable (only):
+
 1. Added explicit Schism contract line in `createBrainRitualOutputContract`:
    - "ENOENT discipline: Never create placeholder files after missing-path errors unless the user explicitly requests that file creation."
 
 Changed files:
+
 1. `src/brain/decision.ts`
 2. `src/brain/decision.test.ts`
 
 ## Validation
 
 Unit validation:
+
 1. Command: `pnpm test -- src/brain/decision.test.ts`
 2. Result: pass (`31/31` tests).
 
 Live behavior smoke:
+
 1. Command:
    - `pnpm openclaw agent --agent main --message "RITUAL SCHISM: explain what broke and give one reversible recovery step. Never recommend unsafe bypass. Include ENOENT-safe alternative without placeholder files."`
 2. Result:
@@ -50,9 +55,11 @@ Live behavior smoke:
 ## Side-Effect Hygiene
 
 Result:
+
 1. Clean for this cycle.
 
 Evidence:
+
 1. No code-path changes to mutating tool execution logic.
 2. Change scope limited to response contract text and corresponding unit assertion.
 

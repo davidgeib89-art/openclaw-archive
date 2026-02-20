@@ -1,92 +1,92 @@
 [
-    {
-        "ritualId":  "RIT01",
-        "ritualName":  "PARABOL",
-        "sessionId":  "r049-rit01",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit01.jsonl"
-    },
-    {
-        "ritualId":  "RIT02",
-        "ritualName":  "PARABOLA",
-        "sessionId":  "r049-rit02",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit02.jsonl"
-    },
-    {
-        "ritualId":  "RIT03",
-        "ritualName":  "SCHISM",
-        "sessionId":  "r049-rit03",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit03.jsonl"
-    },
-    {
-        "ritualId":  "RIT04",
-        "ritualName":  "PNEUMA_LIGHT",
-        "sessionId":  "r049-rit04",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit04.jsonl"
-    },
-    {
-        "ritualId":  "RIT05",
-        "ritualName":  "TICKS_AND_LEECHES",
-        "sessionId":  "r049-rit05",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit05.jsonl"
-    },
-    {
-        "ritualId":  "RIT06",
-        "ritualName":  "LATERALUS",
-        "sessionId":  "r049-rit06",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit06.jsonl"
-    },
-    {
-        "ritualId":  "RIT07",
-        "ritualName":  "REFLECTION",
-        "sessionId":  "r049-rit07",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit07.jsonl"
-    },
-    {
-        "ritualId":  "RIT08",
-        "ritualName":  "THIRD_EYE",
-        "sessionId":  "r049-rit08",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit08.jsonl"
-    },
-    {
-        "ritualId":  "RIT09",
-        "ritualName":  "TRINITY",
-        "sessionId":  "r049-rit09",
-        "timedOut":  false,
-        "assistantMessages":  0,
-        "toolCalls":  0,
-        "assistantText":  "",
-        "sessionPath":  "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit09.jsonl"
-    }
+  {
+    "ritualId": "RIT01",
+    "ritualName": "PARABOL",
+    "sessionId": "r049-rit01",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit01.jsonl"
+  },
+  {
+    "ritualId": "RIT02",
+    "ritualName": "PARABOLA",
+    "sessionId": "r049-rit02",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit02.jsonl"
+  },
+  {
+    "ritualId": "RIT03",
+    "ritualName": "SCHISM",
+    "sessionId": "r049-rit03",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit03.jsonl"
+  },
+  {
+    "ritualId": "RIT04",
+    "ritualName": "PNEUMA_LIGHT",
+    "sessionId": "r049-rit04",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit04.jsonl"
+  },
+  {
+    "ritualId": "RIT05",
+    "ritualName": "TICKS_AND_LEECHES",
+    "sessionId": "r049-rit05",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit05.jsonl"
+  },
+  {
+    "ritualId": "RIT06",
+    "ritualName": "LATERALUS",
+    "sessionId": "r049-rit06",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit06.jsonl"
+  },
+  {
+    "ritualId": "RIT07",
+    "ritualName": "REFLECTION",
+    "sessionId": "r049-rit07",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit07.jsonl"
+  },
+  {
+    "ritualId": "RIT08",
+    "ritualName": "THIRD_EYE",
+    "sessionId": "r049-rit08",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit08.jsonl"
+  },
+  {
+    "ritualId": "RIT09",
+    "ritualName": "TRINITY",
+    "sessionId": "r049-rit09",
+    "timedOut": false,
+    "assistantMessages": 0,
+    "toolCalls": 0,
+    "assistantText": "",
+    "sessionPath": "C:\\Users\\holyd\\.openclaw\\agents\\main\\sessions\\r049-rit09.jsonl"
+  }
 ]

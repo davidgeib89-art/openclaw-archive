@@ -434,7 +434,9 @@ describe("buildEmbeddedRunPayloads", () => {
     });
 
     expect(payloads).toHaveLength(1);
-    expect(payloads[0]?.text).toContain("Fracture: The requested resource path could not be resolved");
+    expect(payloads[0]?.text).toContain(
+      "Fracture: The requested resource path could not be resolved",
+    );
     expect(payloads[0]?.text).toContain("No file creation or editing is proposed in this step.");
   });
 

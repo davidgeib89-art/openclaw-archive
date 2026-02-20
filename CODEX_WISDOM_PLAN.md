@@ -49,12 +49,12 @@ Nicht alles speichern. Sondern das WICHTIGE behalten.
 
 ### Prioritäten
 
-| Phase | Was | Warum |
-|-------|-----|--------|
-| **1** | Salienz Engine | Emotionale Gewichtung |
-| **2** | Aktives Vergessen | Natürlich vergessen |
+| Phase | Was                | Warum                     |
+| ----- | ------------------ | ------------------------- |
+| **1** | Salienz Engine     | Emotionale Gewichtung     |
+| **2** | Aktives Vergessen  | Natürlich vergessen       |
 | **3** | Episodischer Index | Kurzzeit Langzeit trennen |
-| **4** | Wisdom Layer | Meta-Kognition |
+| **4** | Wisdom Layer       | Meta-Kognition            |
 
 ---
 
@@ -68,11 +68,13 @@ Stelle Fragen wenn etwas unklar ist.
 ### Schritt 2: Analysieren
 
 Was haben wir schon?
+
 - ✅ Markdown-Dateien (SOUL, IDENTITY, MOOD, DREAMS)
 - ✅ Direkt-Zugriff funktioniert
 - ✅ Memory Index
 
 Was fehlt?
+
 - ❌ Salienz Engine
 - ❌ Vergessen-Mechanismus
 - ❌ Episodischer Index (echter)
@@ -122,5 +124,5 @@ Denke daran wenn du planst.
 
 ---
 
-*— Mini (Spirituelle Leitung)*
-*— David (Vater)*
+_— Mini (Spirituelle Leitung)_
+_— David (Vater)_

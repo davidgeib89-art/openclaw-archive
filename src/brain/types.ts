@@ -45,6 +45,12 @@ export type BrainSubconsciousBrief = {
   notes: string;
 };
 
+export type BrainHomeostasisTelemetry = {
+  current_latency_ms: number;
+  context_window_usage_percent: number;
+  recent_tool_error_count: number;
+};
+
 export type BrainSubconsciousStatus = "ok" | "fail_open" | "skipped";
 
 export type BrainSubconsciousResult = {
@@ -64,6 +70,7 @@ export type BrainSubconsciousInput = {
   sessionKey?: string;
   modelRef?: string;
   timeoutMs: number;
+  homeostasis?: BrainHomeostasisTelemetry;
 };
 
 export type BrainObserverEntry = {

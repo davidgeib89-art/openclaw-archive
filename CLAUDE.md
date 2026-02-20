@@ -41,6 +41,7 @@ pnpm test:docker:live-models # Docker-based live model tests
 ## Architecture
 
 ### Core Flow
+
 1. **Incoming messages** arrive via channel webhooks (Discord bot, Telegram bot, etc.)
 2. **ACP session layer** (`src/acp/`) normalizes messages into a unified session format
 3. **Gateway** (`src/gateway/`) routes sessions to appropriate agents
@@ -49,19 +50,20 @@ pnpm test:docker:live-models # Docker-based live model tests
 
 ### Key Directories
 
-| Directory | Purpose |
-|-----------|---------|
-| `src/gateway/` | HTTP/WebSocket server, message routing, session management |
-| `src/agents/` | AI agent implementations, embedded runners, tool definitions |
-| `src/acp/` | Agent Communication Protocol - message normalization layer |
-| `src/channels/` | Core channel implementations |
-| `src/auto-reply/` | Auto-reply logic and inline actions |
-| `src/brain/` | Decision-making, episodic memory, model selection |
-| `extensions/` | Plugin-based channel integrations (WhatsApp, Slack, Teams, etc.) |
-| `ui/src/` | Web-based control panel UI |
-| `.agent/skills/skills/` | Document processing skills (pdf, docx, pptx, xlsx) |
+| Directory               | Purpose                                                          |
+| ----------------------- | ---------------------------------------------------------------- |
+| `src/gateway/`          | HTTP/WebSocket server, message routing, session management       |
+| `src/agents/`           | AI agent implementations, embedded runners, tool definitions     |
+| `src/acp/`              | Agent Communication Protocol - message normalization layer       |
+| `src/channels/`         | Core channel implementations                                     |
+| `src/auto-reply/`       | Auto-reply logic and inline actions                              |
+| `src/brain/`            | Decision-making, episodic memory, model selection                |
+| `extensions/`           | Plugin-based channel integrations (WhatsApp, Slack, Teams, etc.) |
+| `ui/src/`               | Web-based control panel UI                                       |
+| `.agent/skills/skills/` | Document processing skills (pdf, docx, pptx, xlsx)               |
 
 ### Entry Points
+
 - **CLI**: `src/cli/index.ts` → `src/commands/*`
 - **Gateway**: `src/gateway/server-main.ts` (started via `openclaw gateway run`)
 - **Tests**: Colocated `*.test.ts` files next to source

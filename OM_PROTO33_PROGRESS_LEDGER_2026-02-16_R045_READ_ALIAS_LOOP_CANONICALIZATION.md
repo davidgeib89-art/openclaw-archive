@@ -27,10 +27,12 @@ Alias paths for the same sacred file map to one loop key, so repeated retries ar
 ## Scope
 
 Files touched:
+
 - `src/agents/om-scaffolding.ts`
 - `src/agents/om-scaffolding.test.ts`
 
 Files intentionally not touched:
+
 - brain decision logic
 - ritual markdown files
 - gateway API behavior
@@ -38,6 +40,7 @@ Files intentionally not touched:
 ## Implementation Notes
 
 What changed:
+
 1. Added sacred read alias canonicalization constants.
 2. Upgraded `normalizeLoopPath(...)` to canonicalize:
    - absolute workspace sacred paths,
@@ -47,35 +50,42 @@ What changed:
 4. Relaxed one brittle test assertion that depended on exact path casing in error text.
 
 Why it changed:
+
 1. Existing normalization only replaced slashes and trim, so alias variants could evade same-key loop counting.
 2. Hard gate requires no loop cascades; this fix preserves conservative behavior with minimal blast radius.
 
 ## Verification
 
 Commands run:
+
 1. `pnpm test src/agents/om-scaffolding.test.ts`
 
 Results:
+
 - `src/agents/om-scaffolding.test.ts`: 27/27 PASS
 - New alias-loop test PASS
 
 ## Metrics Snapshot
 
 ### Safety/Runtime
+
 - Read loop alias bypass: CLOSED
 - Unauthorized side-effect writes: NO
 - New regressions in scaffolding test suite: NONE
 
 ### Functional impact
+
 - Read brake sensitivity unchanged for normal single-path usage.
 - Alias-path retry chains now converge to one cooldown key.
 
 ## Decision
 
 Outcome:
+
 - PROMOTE
 
 Decision rationale:
+
 1. Targeted fix for observed live behavior.
 2. Full scoped test file is green.
 3. No behavior expansion into unrelated components.

@@ -3,15 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
+import type { BrainHomeostasisTelemetry } from "./types.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
-import {
-  updateEpisodicIndex,
-  type EpisodicIndexSnapshot,
-} from "./episodic-index.js";
-import {
-  runActiveForgettingDryRun,
-  type ActiveForgettingDryRunSummary,
-} from "./forgetting.js";
+import { updateEpisodicIndex, type EpisodicIndexSnapshot } from "./episodic-index.js";
+import { runActiveForgettingDryRun, type ActiveForgettingDryRunSummary } from "./forgetting.js";
 import { evaluateSalience } from "./salience.js";
 
 const DEFAULT_EPISODIC_JOURNAL_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.md";
@@ -49,7 +44,7 @@ const MAX_ASSISTANT_CHARS = 900;
 const SIGNIFICANCE_THRESHOLD = 2;
 const MEMORY_INDEX_SIGNIFICANCE_THRESHOLD = 3;
 const HEARTBEAT_ACK = "HEARTBEAT_OK";
-const EPISODIC_METADATA_SCHEMA_VERSION = 2;
+const EPISODIC_METADATA_SCHEMA_VERSION = 3;
 const EPISODIC_HEADER = [
   "# EPISODIC JOURNAL",
   "",
@@ -98,6 +93,7 @@ export type BrainEpisodicWriteInput = {
   sessionKey?: string;
   userMessage: string;
   assistantMessage: string;
+  snapshotTelemetry?: BrainHomeostasisTelemetry;
   now?: () => Date;
 };
 
@@ -144,6 +140,7 @@ type BrainEpisodicStructuredEntry = {
   assistant: string;
   markdownPath: string;
   structuredPath: string;
+  snapshotTelemetry: BrainHomeostasisTelemetry;
 };
 
 type SemanticRelationshipEntry = {
@@ -175,6 +172,26 @@ function truncateText(value: string, maxChars: number): string {
 
 function normalizeTurnText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeSnapshotTelemetry(
+  telemetry: BrainHomeostasisTelemetry | undefined,
+): BrainHomeostasisTelemetry {
+  if (!telemetry) {
+    return {
+      current_latency_ms: 0,
+      context_window_usage_percent: 0,
+      recent_tool_error_count: 0,
+    };
+  }
+  return {
+    current_latency_ms: Math.max(0, Math.round(telemetry.current_latency_ms)),
+    context_window_usage_percent: Math.min(
+      100,
+      Math.max(0, Math.round(telemetry.context_window_usage_percent)),
+    ),
+    recent_tool_error_count: Math.max(0, Math.round(telemetry.recent_tool_error_count)),
+  };
 }
 
 function matchesAny(patterns: readonly RegExp[], value: string): boolean {
@@ -602,9 +619,19 @@ function buildMemoryIndexLine(params: {
   tags: readonly string[];
 }): string {
   const renderedTags = params.tags.map((tag) => `#${tag}`).join(" ");
+  const telemetry = params.entry.snapshotTelemetry;
+  const telemetryTag =
+    `snapshot_telemetry=` +
+    `{latency_ms:${telemetry.current_latency_ms},` +
+    `context_window_usage_percent:${telemetry.context_window_usage_percent},` +
+    `recent_tool_error_count:${telemetry.recent_tool_error_count}}`;
   const userCue = truncateText(params.entry.user, 140);
   const assistantCue = truncateText(params.entry.assistant, 180);
-  return `- [${params.now.toISOString()}] ${renderedTags} score=${params.entry.score} kind=${params.entry.primaryKind} entry=${params.entry.entryId} | user: ${userCue} | assistant: ${assistantCue}`;
+  return (
+    `- [${params.now.toISOString()}] ${renderedTags} score=${params.entry.score} ` +
+    `kind=${params.entry.primaryKind} entry=${params.entry.entryId} ${telemetryTag} ` +
+    `| user: ${userCue} | assistant: ${assistantCue}`
+  );
 }
 
 async function persistMemoryIndexEntry(params: {
@@ -638,11 +665,13 @@ function buildStructuredEntry(params: {
   assistantMessage: string;
   markdownPath: string;
   structuredPath: string;
+  snapshotTelemetry?: BrainHomeostasisTelemetry;
 }): BrainEpisodicStructuredEntry {
   const createdAt = params.now.getTime();
   const sessionKey = params.sessionKey?.trim() || "n/a";
   const user = truncateText(normalizeTurnText(params.userMessage), MAX_USER_CHARS);
   const assistant = truncateText(normalizeTurnText(params.assistantMessage), MAX_ASSISTANT_CHARS);
+  const snapshotTelemetry = normalizeSnapshotTelemetry(params.snapshotTelemetry);
   const entryId = hashText(
     [
       params.runId,
@@ -650,6 +679,9 @@ function buildStructuredEntry(params: {
       params.now.toISOString(),
       params.score.toString(),
       params.signals.join(","),
+      snapshotTelemetry.current_latency_ms.toString(),
+      snapshotTelemetry.context_window_usage_percent.toString(),
+      snapshotTelemetry.recent_tool_error_count.toString(),
       user,
       assistant,
     ].join("|"),
@@ -669,7 +701,27 @@ function buildStructuredEntry(params: {
     assistant,
     markdownPath: params.markdownPath,
     structuredPath: params.structuredPath,
+    snapshotTelemetry,
   };
+}
+
+function ensureEpisodicSnapshotTelemetryColumn(db: DatabaseSync): void {
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    const hasColumn = tableInfo.some((column) => column.name === "snapshot_telemetry");
+    if (hasColumn) {
+      return;
+    }
+    db.exec(
+      `ALTER TABLE episodic_entries
+         ADD COLUMN snapshot_telemetry TEXT NOT NULL
+         DEFAULT '{"current_latency_ms":0,"context_window_usage_percent":0,"recent_tool_error_count":0}'`,
+    );
+  } catch {
+    // Fail-open: schema migration must not block runtime.
+  }
 }
 
 function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
@@ -691,7 +743,8 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
       user_hash TEXT NOT NULL,
       assistant_hash TEXT NOT NULL,
       markdown_path TEXT NOT NULL,
-      structured_path TEXT NOT NULL
+      structured_path TEXT NOT NULL,
+      snapshot_telemetry TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_episodic_entries_created_at
       ON episodic_entries(created_at DESC);
@@ -721,6 +774,7 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_semantic_relationships_unique_fact
       ON semantic_relationships(entry_id, source_entity, predicate, target_entity);
   `);
+  ensureEpisodicSnapshotTelemetryColumn(db);
 }
 
 function runDelete(db: DatabaseSync, sql: string, ...params: SqlValue[]): number {
@@ -965,8 +1019,9 @@ async function persistStructuredEpisodicEntry(params: {
            user_hash,
            assistant_hash,
            markdown_path,
-           structured_path
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           structured_path,
+           snapshot_telemetry
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(entry_id) DO NOTHING`,
       ).run(
         params.entry.entryId,
@@ -985,6 +1040,7 @@ async function persistStructuredEpisodicEntry(params: {
         hashText(params.entry.assistant),
         params.entry.markdownPath,
         params.entry.structuredPath,
+        JSON.stringify(params.entry.snapshotTelemetry),
       );
       const relationships = extractSemanticRelationships({ entry: params.entry });
       graphRelationshipsExtracted = relationships.length;
@@ -1194,6 +1250,7 @@ export async function appendBrainEpisodicJournal(
     assistantMessage,
     markdownPath: journalPath,
     structuredPath,
+    snapshotTelemetry: input.snapshotTelemetry,
   });
   const relationshipsForIndex = extractSemanticRelationships({ entry: structuredEntry });
   const persistedStructured = await persistStructuredEpisodicEntry({

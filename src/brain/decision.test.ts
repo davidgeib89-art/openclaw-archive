@@ -215,8 +215,11 @@ describe("brain decision generator", () => {
       expect(contract).toContain("generate exactly five candidate paths");
       expect(contract).toContain("PLAY, LEARN, MAINTAIN, DRIFT, and NO_OP");
       expect(contract).toContain("If DRIFT is chosen, no blocker report is required");
+      expect(contract).toContain("DRIFT has fail-open priority");
       expect(contract).toContain("Allowed tools this turn");
-      expect(contract).toContain("Do not output HEARTBEAT_OK unless all five candidate paths are blocked");
+      expect(contract).toContain(
+        "Do not output HEARTBEAT_OK unless all five candidate paths are blocked",
+      );
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;

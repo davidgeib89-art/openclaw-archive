@@ -8,44 +8,6 @@ const MAX_TOOL_LOAD_FOR_DRAIN = 6;
 const MIN_ENERGY = 0;
 const MAX_ENERGY = 100;
 
-const POSITIVE_MOOD_PATTERNS = [
-  /\bcalm\b/i,
-  /\bfocused?\b/i,
-  /\bsteady\b/i,
-  /\bhopeful\b/i,
-  /\bcurious\b/i,
-  /\bcreative\b/i,
-  /\benerg(?:ized|y)\b/i,
-  /\bclear\b/i,
-  /\bjoy(?:ful)?\b/i,
-  /\bstable\b/i,
-  /\bruhig\b/i,
-  /\bfokussiert\b/i,
-  /\bneugierig\b/i,
-  /\bklar\b/i,
-  /\bkreativ\b/i,
-  /\bstabil\b/i,
-];
-
-const NEGATIVE_MOOD_PATTERNS = [
-  /\btired\b/i,
-  /\bdrained\b/i,
-  /\boverwhelmed\b/i,
-  /\banxious\b/i,
-  /\bstuck\b/i,
-  /\bconfused\b/i,
-  /\bheavy\b/i,
-  /\bafraid\b/i,
-  /\bexhausted\b/i,
-  /\bscattered\b/i,
-  /\bm[üu]de\b/i,
-  /\bersch[öo]pft\b/i,
-  /\b[üu]berfordert\b/i,
-  /\bangst\b/i,
-  /\bunsicher\b/i,
-  /\bblockiert\b/i,
-];
-
 type EnergyMode = "dream" | "balanced" | "initiative";
 
 export type EnergySnapshot = {
@@ -54,7 +16,6 @@ export type EnergySnapshot = {
   dreamMode: boolean;
   suggestOwnTasks: boolean;
   components: {
-    mood: number;
     successRate: number;
     toolLoad: number;
     blended: number;
@@ -67,7 +28,6 @@ export type EnergySnapshot = {
 };
 
 export type CalculateEnergyInput = {
-  moodText: string;
   toolStats?: {
     total?: number;
     successful?: number;
@@ -94,27 +54,6 @@ function clamp(value: number, min: number, max: number): number {
 
 function toPercent(value: number): number {
   return Math.round(clamp(value, 0, 1) * 100);
-}
-
-function scoreMood(moodText: string): number {
-  const source = moodText.trim();
-  if (!source) {
-    return 50;
-  }
-  const positive = POSITIVE_MOOD_PATTERNS.reduce(
-    (count, pattern) => count + (pattern.test(source) ? 1 : 0),
-    0,
-  );
-  const negative = NEGATIVE_MOOD_PATTERNS.reduce(
-    (count, pattern) => count + (pattern.test(source) ? 1 : 0),
-    0,
-  );
-  if (positive === 0 && negative === 0) {
-    return 50;
-  }
-  const valence = (positive - negative) / Math.max(1, positive + negative);
-  const normalized = (valence + 1) / 2;
-  return toPercent(normalized);
 }
 
 function parsePreviousLevel(raw: string): number | undefined {
@@ -154,14 +93,12 @@ function normalizeToolStats(input: CalculateEnergyInput["toolStats"]): {
 }
 
 export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
-  const mood = scoreMood(input.moodText);
   const toolStats = normalizeToolStats(input.toolStats);
-  const successRate =
-    toolStats.total > 0 ? toPercent(toolStats.successful / toolStats.total) : 70;
+  const successRate = toolStats.total > 0 ? toPercent(toolStats.successful / toolStats.total) : 90;
   const loadRatio = clamp(toolStats.total / MAX_TOOL_LOAD_FOR_DRAIN, 0, 1);
   const toolLoad = toPercent(1 - loadRatio);
 
-  const blendedRaw = mood * 0.45 + successRate * 0.35 + toolLoad * 0.2;
+  const blendedRaw = successRate * 0.7 + toolLoad * 0.3;
   const blended = Math.round(blendedRaw);
 
   const previousLevel =
@@ -179,7 +116,6 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     dreamMode: level < 20,
     suggestOwnTasks: level > 80,
     components: {
-      mood,
       successRate,
       toolLoad,
       blended,
@@ -214,7 +150,6 @@ function buildEnergyFileContent(params: {
     `- suggest_own_tasks: ${snapshot.suggestOwnTasks ? "yes" : "no"}`,
     "",
     "## Components",
-    `- mood_score: ${snapshot.components.mood}`,
     `- success_rate: ${snapshot.components.successRate}`,
     `- tool_load: ${snapshot.components.toolLoad}`,
     `- blended_score: ${snapshot.components.blended}`,
@@ -237,13 +172,6 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   const moodPath = path.join(params.workspaceDir, MOOD_RELATIVE_PATH);
   const energyPath = path.join(params.workspaceDir, ENERGY_RELATIVE_PATH);
 
-  let moodText = "";
-  try {
-    moodText = await fs.readFile(moodPath, "utf-8");
-  } catch {
-    moodText = "";
-  }
-
   let previousLevel: number | undefined;
   try {
     const existingEnergy = await fs.readFile(energyPath, "utf-8");
@@ -253,7 +181,6 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   }
 
   const snapshot = calculateEnergy({
-    moodText,
     toolStats: params.toolStats,
     previousLevel,
   });

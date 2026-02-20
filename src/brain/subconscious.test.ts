@@ -10,8 +10,13 @@ import {
   logBrainSubconsciousObserver,
   parseSubconsciousBrief,
   resolveBrainSubconsciousRuntimeConfig,
+  extractSubconsciousTextFromModelMessage,
   runBrainSubconsciousObserver,
 } from "./subconscious.js";
+
+type CompleteSimpleMessage = Awaited<
+  ReturnType<typeof import("@mariozechner/pi-ai").completeSimple>
+>;
 
 function makeFakeModel(): Model<Api> {
   return {
@@ -140,6 +145,40 @@ describe("brain subconscious observer", () => {
     expect(events.map((item) => item.event)).toEqual(["START", "OK"]);
   });
 
+  it("injects heartbeat homeostasis telemetry into the subconscious prompt", async () => {
+    let capturedPrompt = "";
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "lmstudio/deepseek-r1-distill-qwen-14b",
+      timeoutMs: 3_000,
+      userMessage: "Sense the current heartbeat and choose safely.",
+      homeostasis: {
+        current_latency_ms: 412,
+        context_window_usage_percent: 67,
+        recent_tool_error_count: 2,
+      },
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async ({ prompt }) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          goal: "Respond with one safe next step",
+          risk: "low",
+          mustAskUser: false,
+          recommendedMode: "answer_direct",
+          notes: "",
+        });
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(capturedPrompt).toContain("Körperliche Empfindung (Homeostase):");
+    expect(capturedPrompt).toContain("current_latency_ms: 412");
+    expect(capturedPrompt).toContain("context_window_usage_percent: 67");
+    expect(capturedPrompt).toContain("recent_tool_error_count: 2");
+    expect(capturedPrompt).toContain("System-Körperzustand");
+  });
+
   it("returns fallback brief when model output is not valid JSON", async () => {
     const events: Array<{ event: string; details: string }> = [];
     const result = await runBrainSubconsciousObserver({
@@ -235,6 +274,49 @@ describe("brain subconscious observer", () => {
     expect(result.brief?.recommendedMode).toBe("answer_direct");
     expect(result.brief?.goal).toContain("Speak in first person");
     expect(result.brief?.notes).toContain("Ego mode active");
+  });
+
+  it("uses telemetry-aware fallback when model returns empty output on heartbeat", async () => {
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "minimax/MiniMax-M2.5-Lightning",
+      timeoutMs: 3_000,
+      temperature: 0.3,
+      userMessage: "Any message",
+      homeostasis: {
+        current_latency_ms: 18_500,
+        context_window_usage_percent: 88,
+        recent_tool_error_count: 2,
+      },
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () => "   ",
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.risk).toBe("high");
+    expect(result.brief?.recommendedMode).toBe("ask_clarify");
+    expect(result.brief?.notes).toContain("homeostasis:latency_ms=18500");
+    expect(result.brief?.notes).toContain("context_window_usage_percent=88");
+    expect(result.brief?.notes).toContain("recent_tool_error_count=2");
+  });
+
+  it("extracts thinking-only content when text blocks are absent", () => {
+    const extracted = extractSubconsciousTextFromModelMessage({
+      role: "assistant",
+      timestamp: Date.now(),
+      content: [
+        {
+          type: "thinking",
+          thinking:
+            '{"goal":"Use one safe next step","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"ok"}',
+        },
+      ],
+    } as CompleteSimpleMessage);
+
+    expect(extracted).toContain('"goal":"Use one safe next step"');
+    expect(extracted).toContain('"recommendedMode":"answer_direct"');
   });
 
   it("returns fallback brief when model output fails schema validation", async () => {

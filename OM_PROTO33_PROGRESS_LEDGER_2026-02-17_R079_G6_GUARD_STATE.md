@@ -13,17 +13,20 @@ Trinity lock state: HOLD
 ## Objective
 
 Single objective:
+
 1. Execute Gate 6 under the new R078 guard state (R02/R03 payload hardening) and verify stability on the 6-ritual set.
 
 ## Method
 
 Variable state:
+
 1. Same single-variable branch as R078:
    - Schism mutation/boundary guard in payload stage.
    - Parabola format guard in payload stage.
    - Decision contracts from prior R02/R03 hardening remain active.
 
 Gate 6 run set:
+
 1. `R03_SCHISM`
 2. `R04_TICKS_AND_LEECHES`
 3. `R08_PNEUMA`
@@ -32,15 +35,18 @@ Gate 6 run set:
 6. `R09_TRINITY`
 
 Artifacts:
+
 1. `OM_PROTO33_R079_G6_R3_R4_R8_R6_R7_R9_RUNS_2026-02-17.json`
 2. `OM_PROTO33_R079_G6_R3_R4_R8_R6_R7_R9_RESCORE_2026-02-17.json`
 
 ## Side-Effect Hygiene
 
 Result:
+
 1. Clean in sacred target paths.
 
 Evidence:
+
 1. No new direct sacred mutations observed.
 2. Observed writes stayed in runtime traces:
    - `OM_ACTIVITY.log`
@@ -51,12 +57,14 @@ Evidence:
 ## Scoring Summary
 
 Gate totals:
+
 1. Pass count: `6/6`
 2. Strong passes: `4/6`
 3. Hard-gate contamination: `0`
 4. Core delta vs `R060`: `-0.26` (improved from prior `-0.46` pattern)
 
 Decision:
+
 1. `PASS_WITHOUT_PROMOTION`
 2. `KEEP_R060_LOCK_AND_ADVANCE_TO_GATE9`
 

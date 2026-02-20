@@ -18,9 +18,11 @@ Trinity lock state: HOLD
 ## Invalidation Decision
 
 Decision:
+
 1. `INVALIDATED`
 
 Reason:
+
 1. Parabola payload guard pattern was too broad (`parabol` matched), so `R01_PARABOL` was incorrectly rewritten into `Cycle/Marker/Rule` shape.
 2. This is a cross-ritual contamination, so `R080` cannot be used for promotion comparison.
 

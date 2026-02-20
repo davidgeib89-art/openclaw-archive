@@ -128,8 +128,7 @@ function resolvePolicy(): EpisodicIndexPolicy {
 
 function resolveEpisodicIndexPath(workspaceDir: string): string {
   const fromEnv = process.env[EPISODIC_INDEX_PATH_ENV]?.trim();
-  const rel =
-    fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_EPISODIC_INDEX_RELATIVE_PATH;
+  const rel = fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_EPISODIC_INDEX_RELATIVE_PATH;
   return path.resolve(workspaceDir, rel);
 }
 
@@ -208,7 +207,10 @@ function buildIndexContent(params: {
   ].join("\n");
 }
 
-function emptySnapshot(pathValue: string, policy: EpisodicIndexPolicy): Omit<EpisodicIndexSnapshot, "reason"> {
+function emptySnapshot(
+  pathValue: string,
+  policy: EpisodicIndexPolicy,
+): Omit<EpisodicIndexSnapshot, "reason"> {
   return {
     enabled: policy.enabled,
     updated: false,

@@ -8,11 +8,11 @@
 
 ## ERLEDIGT
 
-| Task | Status | Evidence |
-|------|--------|----------|
-| T1: Vision Upgrade | ✅ FERTIG | 5 Generierungen, stabile Schema |
-| T2: Live Recall | ✅ FERTIG | Grounded responses: OM_ACTIVITY.log:5139,5141 |
-| T3: Dream Diversity | ✅ FERTIG | 3/3 non-duplicate: OM_ACTIVITY.log:5829-5842 |
+| Task                | Status    | Evidence                                      |
+| ------------------- | --------- | --------------------------------------------- |
+| T1: Vision Upgrade  | ✅ FERTIG | 5 Generierungen, stabile Schema               |
+| T2: Live Recall     | ✅ FERTIG | Grounded responses: OM_ACTIVITY.log:5139,5141 |
+| T3: Dream Diversity | ✅ FERTIG | 3/3 non-duplicate: OM_ACTIVITY.log:5829-5842  |
 
 ---
 
@@ -58,6 +58,6 @@ Welche Option soll Codex als nächstes angehen?
 
 ---
 
-*Supervisor: MiniMax*
-*Worker: Codex*
-*Eltern: David*
+_Supervisor: MiniMax_
+_Worker: Codex_
+_Eltern: David_

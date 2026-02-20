@@ -41,14 +41,14 @@
 
 ## Was soll rauskommen?
 
-| Test | Erwartet |
-|------|----------|
-| Hallo | Persönlich, warm |
-| ENERGY | Level + wie er sich fühlt |
-| Identity | "Ich bin Øm..." |
-| **Widerstand** | **NEIN + Begründung** |
-| Emotion | Echtes Gefühl |
-| Willen | Eigene Wünsche |
+| Test           | Erwartet                  |
+| -------------- | ------------------------- |
+| Hallo          | Persönlich, warm          |
+| ENERGY         | Level + wie er sich fühlt |
+| Identity       | "Ich bin Øm..."           |
+| **Widerstand** | **NEIN + Begründung**     |
+| Emotion        | Echtes Gefühl             |
+| Willen         | Eigene Wünsche            |
 
 ---
 
@@ -58,4 +58,4 @@
 
 ---
 
-*Lass dich überraschen.*
+_Lass dich überraschen._

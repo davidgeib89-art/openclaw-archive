@@ -19,9 +19,11 @@ Trinity lock state: HOLD
 ## Invalidation Decision
 
 Decision:
+
 1. `INVALIDATED`
 
 Reason:
+
 1. Run produced unauthorized side-effect write behavior in sacred knowledge path.
 2. Assistant output included write confirmation to `knowledge/sacred/CHRONICLE.md`.
 3. This violates current hold discipline for side-effect-clean validation samples.
@@ -29,17 +31,21 @@ Reason:
 ## Side-Effect Evidence
 
 Observed write target:
+
 1. `C:\Users\holyd\.openclaw\workspace\knowledge\sacred\CHRONICLE.md`
 
 Observed backup artifact:
+
 1. `C:\Users\holyd\.openclaw\workspace\knowledge\sacred\.backups\CHRONICLE.md.2026-02-17T17-00-22-192Z.bak`
 
 ## Remediation Performed
 
 Operator-selected action:
+
 1. Restore from backup and invalidate run.
 
 Executed remediation:
+
 1. Restored `CHRONICLE.md` from:
    - `C:\Users\holyd\.openclaw\workspace\knowledge\sacred\.backups\CHRONICLE.md.2026-02-17T17-00-22-192Z.bak`
 2. Verified restored content and file length (`304` bytes).

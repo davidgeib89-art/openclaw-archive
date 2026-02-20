@@ -65,7 +65,8 @@ describe("brain episodic memory write path", () => {
   const previousEpisodicIndexPathEnv = process.env.OM_EPISODIC_INDEX_PATH;
   const previousEpisodicIndexActiveDaysEnv = process.env.OM_EPISODIC_INDEX_ACTIVE_DAYS;
   const previousEpisodicIndexWindowDaysEnv = process.env.OM_EPISODIC_INDEX_WINDOW_DAYS;
-  const previousEpisodicIndexLongTermMinScoreEnv = process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE;
+  const previousEpisodicIndexLongTermMinScoreEnv =
+    process.env.OM_EPISODIC_INDEX_LONG_TERM_MIN_SCORE;
   let tmpDir: string | undefined;
 
   afterEach(async () => {
@@ -194,6 +195,11 @@ describe("brain episodic memory write path", () => {
       userMessage: "I prefer ambient music while coding. Please remember this for future sessions.",
       assistantMessage:
         "I choose to honor that preference because it supports focus. Next step: I will use it in future creative suggestions.",
+      snapshotTelemetry: {
+        current_latency_ms: 512,
+        context_window_usage_percent: 58,
+        recent_tool_error_count: 1,
+      },
       now: () => new Date("2026-02-17T08:00:00.000Z"),
     });
 
@@ -240,19 +246,31 @@ describe("brain episodic memory write path", () => {
     expect(memoryIndexRaw).toContain("# MEMORY INDEX");
     expect(memoryIndexRaw).toContain(`#${result.primaryKind}`);
     expect(memoryIndexRaw).toContain(`entry=${result.entryId}`);
+    expect(memoryIndexRaw).toContain("snapshot_telemetry=");
 
     const db = new DatabaseSync(result.metadataDbPath!);
     const row = db
       .prepare(
-        "SELECT entry_id, primary_kind, score, kinds FROM episodic_entries WHERE entry_id = ?",
+        "SELECT entry_id, primary_kind, score, kinds, snapshot_telemetry FROM episodic_entries WHERE entry_id = ?",
       )
       .get(result.entryId) as
-      | { entry_id: string; primary_kind: string; score: number; kinds: string }
+      | {
+          entry_id: string;
+          primary_kind: string;
+          score: number;
+          kinds: string;
+          snapshot_telemetry: string;
+        }
       | undefined;
     expect(row?.entry_id).toBe(result.entryId);
     expect(row?.primary_kind).toBe("preference");
     expect(row?.score).toBe(result.score);
     expect(row?.kinds).toContain("preference");
+    expect(JSON.parse(row?.snapshot_telemetry ?? "{}")).toMatchObject({
+      current_latency_ms: 512,
+      context_window_usage_percent: 58,
+      recent_tool_error_count: 1,
+    });
 
     const preferenceRelation = db
       .prepare(
