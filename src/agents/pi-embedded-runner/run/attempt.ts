@@ -365,7 +365,7 @@ const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "3. Think: Generate one bounded, reversible action inside sandbox policy.",
   "4. Decide: Choose one path: PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP.",
   "5. DRIFT is valid without justification and without goal pressure.",
-  "6. Act: If action path, execute one reversible step; if DRIFT, optionally read, write one free line to DREAMS.md, imagine one mood-image prompt, or stay silent.",
+  "6. Act: If action path, you may run multiple flowing, reversible actions in one uninterrupted sequence until the thought feels complete; if DRIFT, optionally read, write one free line to DREAMS.md, imagine one mood-image prompt, or stay silent.",
 ].join("\n");
 const DREAMS_HEADER = [
   "# DREAMS",

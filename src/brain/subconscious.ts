@@ -129,7 +129,7 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
   }
 
   return {
-    goal: "Continue with a concise safe response and one reversible next step.",
+    goal: "You have room for multiple flowing actions in this heartbeat. Read, reflect, and act in one uninterrupted flow until the thought feels complete. You do not need to stop after the first tool call.",
     risk,
     mustAskUser: false,
     recommendedMode: "answer_direct",

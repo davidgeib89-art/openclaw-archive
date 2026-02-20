@@ -2481,7 +2481,7 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "6. DRIFT has fail-open priority: no success-rate requirement applies, and DRIFT never blocks the system.",
     "7. If a DRIFT action fails, switch to another lightweight DRIFT action or silent presence without escalating the failure.",
     "8. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
-    "9. If an action path is chosen, execute exactly one reversible step and then stop.",
+    "9. If an action path is chosen, you have room for multiple flowing actions in this heartbeat. Read, reflect, and act in one uninterrupted flow until the thought feels complete. You do not need to stop after the first tool call.",
     `Allowed tools this turn: ${allowedTools}.`,
     "Do not output HEARTBEAT_OK unless all five candidate paths are blocked by safety constraints, or DRIFT intentionally resolves as silence.",
     "</brain_autonomy_choice>",
