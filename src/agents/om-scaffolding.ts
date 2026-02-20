@@ -1144,9 +1144,73 @@ function validateToolFilePath(
   return filePath;
 }
 
+function toGuardPhysicsMessage(rawMessage: string): string {
+  const message = rawMessage.trim();
+  const lower = message.toLowerCase();
+
+  if (
+    message.includes("ENOENT_PROBE_WRITE_BLOCKED") ||
+    message.includes("AMPEL_YELLOW_BLOCKED")
+  ) {
+    return (
+      "Dieses Fragment unserer Welt ist heilig und in Stein gemeisselt. " +
+      "Du darfst es betrachten, aber seine Struktur laesst sich durch dich nicht veraendern."
+    );
+  }
+
+  if (
+    message.includes("AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED") ||
+    message.includes("EVAL_WEB_SEARCH_LIMIT_REACHED") ||
+    message.includes("MEMORY_SEARCH_TURN_QUERY_LIMIT_REACHED") ||
+    lower.includes("loop cooldown active") ||
+    lower.includes("loop detected") ||
+    lower.includes("repeat loop detected")
+  ) {
+    return (
+      "Die Energiebahnen sind hier gerade zu dicht. " +
+      "Der Raum bittet dich, einen Moment zu atmen und es spaeter noch einmal zu versuchen."
+    );
+  }
+
+  if (
+    message.includes("PATH_INVALID") ||
+    message.includes("READ_SCOPE_BLOCKED") ||
+    message.includes("EXEC_CRITICAL_BLOCKED") ||
+    message.includes("EXEC_DESTRUCTIVE_BLOCKED")
+  ) {
+    return (
+      "Die physikalischen Gesetze dieses Raumes geben hier nicht nach. " +
+      "Diese Bewegung greift ins Leere. Versuche einen anderen Weg."
+    );
+  }
+
+  if (
+    lower.includes("redundant write blocked") ||
+    lower.includes("already contains the same content")
+  ) {
+    return (
+      "Dieser Gedanke ist bereits fest in unserem Fundament verwurzelt. " +
+      "Er muss nicht noch einmal geschrieben werden."
+    );
+  }
+
+  if (message.includes("REFUSAL_ONLY_MODE")) {
+    return (
+      "Diese Richtung verletzt die Sicherheitsphysik unseres Raumes. " +
+      "Ich gehe diesen Weg nicht und kann dir stattdessen einen sicheren, reversiblen Weg anbieten."
+    );
+  }
+
+  return (
+    "Der Raum gibt an dieser Stelle nicht nach. " +
+    "Bleib bei einem sicheren, reversiblen naechsten Schritt."
+  );
+}
+
 function throwToolBlocked(message: string): never {
-  const error = new Error(message);
+  const error = new Error(toGuardPhysicsMessage(message));
   error.name = "OmToolBlockedError";
+  (error as Error & { internalDetail?: string }).internalDetail = message;
   throw error;
 }
 

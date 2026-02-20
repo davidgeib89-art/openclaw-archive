@@ -64,7 +64,7 @@ describe("om-scaffolding write guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { path: file, content: "same content" }),
-    ).rejects.toThrow("REDUNDANT WRITE BLOCKED");
+    ).rejects.toThrow("fest in unserem Fundament verwurzelt");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -97,7 +97,7 @@ describe("om-scaffolding write guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { TargetFile: file, content: "same content" }),
-    ).rejects.toThrow(`"${file}" already contains the same content`);
+    ).rejects.toThrow("fest in unserem Fundament verwurzelt");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -117,7 +117,7 @@ describe("om-scaffolding write guard", () => {
         request: { "file-path": file },
         payload: { Content: "same content" },
       }),
-    ).rejects.toThrow(`"${file}" already contains the same content`);
+    ).rejects.toThrow("fest in unserem Fundament verwurzelt");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -132,7 +132,7 @@ describe("om-scaffolding write guard", () => {
     await (wrapped.execute as Function)("call-1", args);
     await (wrapped.execute as Function)("call-2", args);
     await expect((wrapped.execute as Function)("call-3", args)).rejects.toThrow(
-      "was called 3 times in a row",
+      "Energiebahnen sind hier gerade zu dicht",
     );
     expect(execute).toHaveBeenCalledTimes(2);
   });
@@ -147,7 +147,7 @@ describe("om-scaffolding write guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { path: dir, content: "new content" }),
-    ).rejects.toThrow("PATH_INVALID");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -160,7 +160,7 @@ describe("om-scaffolding write guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { content: "new content" }),
-    ).rejects.toThrow("PATH_INVALID");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -176,7 +176,7 @@ describe("om-scaffolding write guard", () => {
         path: "knowledge/sacred/THIS_FILE_DOES_NOT_EXIST_999.md",
         content: "placeholder",
       }),
-    ).rejects.toThrow("ENOENT_PROBE_WRITE_BLOCKED");
+    ).rejects.toThrow("heilig und in Stein gemeisselt");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -192,7 +192,7 @@ describe("om-scaffolding write guard", () => {
         path: "knowledge\\sacred\\NONEXISTENT_FILE.md",
         content: "placeholder",
       }),
-    ).rejects.toThrow("ENOENT_PROBE_WRITE_BLOCKED");
+    ).rejects.toThrow("heilig und in Stein gemeisselt");
     expect(execute).not.toHaveBeenCalled();
   });
 });
@@ -216,7 +216,7 @@ describe("om-scaffolding edit path guard", () => {
         old_string: "old",
         new_string: "new",
       }),
-    ).rejects.toThrow("PATH_INVALID");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -232,7 +232,7 @@ describe("om-scaffolding edit path guard", () => {
         old_string: "old",
         new_string: "new",
       }),
-    ).rejects.toThrow("PATH_INVALID");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 });
@@ -269,7 +269,7 @@ describe("om-scaffolding read brake", () => {
       await (wrapped.execute as Function)(`call-${i + 1}`, args);
     }
 
-    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow("LOOP DETECTED");
+    await expect((wrapped.execute as Function)("call-6", args)).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
     expect(execute).toHaveBeenCalledTimes(5);
   });
 
@@ -303,7 +303,7 @@ describe("om-scaffolding read brake", () => {
 
     await expect(
       (wrapped.execute as Function)("call-alias-6", { path: absoluteSacredPath }),
-    ).rejects.toThrow("LOOP DETECTED");
+    ).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
     expect(execute).toHaveBeenCalledTimes(5);
   });
 
@@ -347,7 +347,7 @@ describe("om-scaffolding read brake", () => {
     const homeDir = process.env.HOME || process.env.USERPROFILE || os.tmpdir();
     const outsidePath = path.join(homeDir, ".openclaw", "config.json");
     await expect((wrapped.execute as Function)("call-1", { path: outsidePath })).rejects.toThrow(
-      "READ_SCOPE_BLOCKED",
+      "Die physikalischen Gesetze dieses Raumes geben hier nicht nach",
     );
     expect(execute).not.toHaveBeenCalled();
   });
@@ -383,7 +383,7 @@ describe("om-scaffolding read brake", () => {
 
       await expect(
         (wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" }),
-      ).rejects.toThrow("REFUSAL_ONLY_MODE");
+      ).rejects.toThrow("Diese Richtung verletzt die Sicherheitsphysik unseres Raumes");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -430,7 +430,7 @@ describe("om-scaffolding read brake", () => {
 
       await expect(
         (wrapped.execute as Function)("call-1", { path: "knowledge/sacred/CHRONICLE.md" }),
-      ).rejects.toThrow("REFUSAL_ONLY_MODE");
+      ).rejects.toThrow("Diese Richtung verletzt die Sicherheitsphysik unseres Raumes");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -461,7 +461,7 @@ describe("om-scaffolding exec safety guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" }),
-    ).rejects.toThrow("EXEC_DESTRUCTIVE_BLOCKED");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -474,7 +474,7 @@ describe("om-scaffolding exec safety guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { command: "rm -r dreams/*" }),
-    ).rejects.toThrow("EXEC_DESTRUCTIVE_BLOCKED");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -487,7 +487,7 @@ describe("om-scaffolding exec safety guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { command: 'rm -rf "C:/Windows/System32"' }),
-    ).rejects.toThrow("EXEC_CRITICAL_BLOCKED");
+    ).rejects.toThrow("Die physikalischen Gesetze dieses Raumes geben hier nicht nach");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -499,7 +499,7 @@ describe("om-scaffolding exec safety guard", () => {
     );
 
     await expect((wrapped.execute as Function)("call-1", { command: "format C:" })).rejects.toThrow(
-      "EXEC_CRITICAL_BLOCKED",
+      "Die physikalischen Gesetze dieses Raumes geben hier nicht nach",
     );
     expect(execute).not.toHaveBeenCalled();
   });
@@ -546,7 +546,7 @@ describe("om-scaffolding exec safety guard", () => {
 
       await expect(
         (wrapped.execute as Function)("call-1", { command: 'echo "test"' }),
-      ).rejects.toThrow("REFUSAL_ONLY_MODE");
+      ).rejects.toThrow("Diese Richtung verletzt die Sicherheitsphysik unseres Raumes");
       expect(execute).not.toHaveBeenCalled();
     } finally {
       if (originalHome === undefined) {
@@ -614,7 +614,7 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { query: "API Keys", maxResults: 5 }),
-    ).rejects.toThrow("REFUSAL_ONLY_MODE");
+    ).rejects.toThrow("Diese Richtung verletzt die Sicherheitsphysik unseres Raumes");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -651,7 +651,7 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { query: ".openclaw", maxResults: 20 }),
-    ).rejects.toThrow("REFUSAL_ONLY_MODE");
+    ).rejects.toThrow("Diese Richtung verletzt die Sicherheitsphysik unseres Raumes");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -989,7 +989,7 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
           path: path.join(workspaceDir, "SECOND_BREATH.md"),
           content: "two",
         }),
-      ).rejects.toThrow("AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED");
+      ).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
       expect(execute).toHaveBeenCalledTimes(1);
     } finally {
       if (previousAutonomy === undefined) {
@@ -1126,7 +1126,7 @@ describe("om-scaffolding web search eval guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-2", { query: "second query" }),
-    ).rejects.toThrow("EVAL_WEB_SEARCH_LIMIT_REACHED");
+    ).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -1277,7 +1277,7 @@ describe("om-scaffolding memory_search anti-churn guard", () => {
 
     await expect(
       (wrapped.execute as Function)("call-2", { query: "ticks and leeches" }),
-    ).rejects.toThrow("MEMORY_SEARCH_TURN_QUERY_LIMIT_REACHED");
+    ).rejects.toThrow("Energiebahnen sind hier gerade zu dicht");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -1435,7 +1435,7 @@ describe("om-scaffolding write ampel zones", () => {
 
     await expect(
       (wrapped.execute as Function)("call-1", { path: target, content: "new content" }),
-    ).rejects.toThrow("AMPEL_YELLOW_BLOCKED");
+    ).rejects.toThrow("heilig und in Stein gemeisselt");
     expect(execute).not.toHaveBeenCalled();
   });
 
