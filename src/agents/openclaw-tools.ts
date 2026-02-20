@@ -8,6 +8,7 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
+import { createDreamAndPerceiveTool } from "./tools/dream-and-perceive-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
@@ -114,6 +115,10 @@ export function createOpenClawTools(options?: {
     createGatewayTool({
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
+    }),
+    createDreamAndPerceiveTool({
+      workspaceDir: options?.workspaceDir,
+      sandboxRoot: options?.sandboxRoot,
     }),
     createAgentsListTool({
       agentSessionKey: options?.agentSessionKey,

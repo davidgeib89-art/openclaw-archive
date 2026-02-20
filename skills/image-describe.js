@@ -178,12 +178,19 @@ function normalizeVisionResult(parsed, fallbackText) {
       mood: "",
       symbols: [],
       style: "",
+      light_and_color: "",
     };
   }
   const record = parsed;
   const descriptionRaw = typeof record.description === "string" ? record.description.trim() : "";
   const moodRaw = typeof record.mood === "string" ? record.mood.trim() : "";
   const styleRaw = typeof record.style === "string" ? record.style.trim() : "";
+  const lightAndColorRaw =
+    typeof record.light_and_color === "string"
+      ? record.light_and_color.trim()
+      : typeof record.lightAndColor === "string"
+        ? record.lightAndColor.trim()
+        : "";
   const symbolsRaw = Array.isArray(record.symbols)
     ? record.symbols
         .map((entry) => String(entry).trim())
@@ -196,6 +203,7 @@ function normalizeVisionResult(parsed, fallbackText) {
     mood: moodRaw,
     symbols: symbolsRaw,
     style: styleRaw,
+    light_and_color: lightAndColorRaw,
   };
 }
 

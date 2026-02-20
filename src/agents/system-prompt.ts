@@ -243,6 +243,8 @@ export function buildAgentSystemPrompt(params: {
     session_status:
       "Show a /status-equivalent status card (usage + time + Reasoning/Verbose/Elevated); use for model-use questions (📊 session_status); optional per-session model override",
     image: "Analyze an image with the configured image model",
+    dream_and_perceive:
+      "Generate an image with ComfyUI and immediately return a sensory perception paragraph",
   };
 
   const toolOrder = [
@@ -269,6 +271,7 @@ export function buildAgentSystemPrompt(params: {
     "sessions_send",
     "session_status",
     "image",
+    "dream_and_perceive",
   ];
 
   const rawToolNames = (params.toolNames ?? []).map((tool) => tool.trim());

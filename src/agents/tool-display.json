@@ -296,6 +296,11 @@
       "title": "Web Fetch",
       "detailKeys": ["url", "extractMode", "maxChars"]
     },
+    "dream_and_perceive": {
+      "emoji": "🪞",
+      "title": "Dream & Perceive",
+      "detailKeys": ["prompt", "visionModel", "baseUrl"]
+    },
     "whatsapp_login": {
       "emoji": "🟢",
       "title": "WhatsApp Login",
