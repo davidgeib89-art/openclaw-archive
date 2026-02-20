@@ -9,6 +9,7 @@ import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import {
   buildBrainSacredRecallContext,
+  createBrainAutonomyChoiceContract,
   createBrainDecision,
   createBrainRitualOutputContract,
   logBrainDecisionObserver,
@@ -1447,6 +1448,19 @@ export async function runEmbeddedAttempt(
                 label: "DREAM",
                 summary: `fail-open: ${String(dreamErr)}`,
                 source: "proto33-t2.dream",
+              });
+            }
+          }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            const autonomyChoiceContract = createBrainAutonomyChoiceContract(brainDecision);
+            if (autonomyChoiceContract) {
+              effectivePrompt = `${autonomyChoiceContract}\n\n${effectivePrompt}`;
+              const contractLineCount = autonomyChoiceContract.split(/\r?\n/).length;
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "CHOICE",
+                summary: `autonomy choice contract injected (${contractLineCount} lines; includes NO_OP path)`,
+                source: "proto33-r066.choice",
               });
             }
           }

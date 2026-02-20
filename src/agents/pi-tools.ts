@@ -120,6 +120,35 @@ function resolveExecConfig(params: { cfg?: OpenClawConfig; agentId?: string }) {
   };
 }
 
+const HEARTBEAT_AUTONOMY_MUTATION_BUDGET_ENV = "OM_HEARTBEAT_AUTONOMY_MUTATION_BUDGET";
+
+function resolveAutonomousMutationBudget(isHeartbeatRun?: boolean):
+  | {
+      remaining: number;
+      limit: number;
+    }
+  | undefined {
+  if (!isHeartbeatRun || !isSandboxModeEnabled()) {
+    return undefined;
+  }
+
+  // No hard cap by default (OpenClaw-style behavior).
+  // Set OM_HEARTBEAT_AUTONOMY_MUTATION_BUDGET=<N> to opt into a ceiling.
+  const raw = process.env[HEARTBEAT_AUTONOMY_MUTATION_BUDGET_ENV]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  const limit = Math.floor(parsed);
+  if (limit <= 0) {
+    return undefined;
+  }
+  return { remaining: limit, limit };
+}
+
 export const __testing = {
   cleanToolSchemaForGemini,
   normalizeToolParams,
@@ -258,8 +287,7 @@ export function createOpenClawCodingTools(options?: {
   const sandboxFsBridge = sandbox?.fsBridge;
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
   const workspaceRoot = options?.workspaceDir ?? process.cwd();
-  const autonomousMutationBudget =
-    options?.isHeartbeatRun && isSandboxModeEnabled() ? { remaining: 3, limit: 3 } : undefined;
+  const autonomousMutationBudget = resolveAutonomousMutationBudget(options?.isHeartbeatRun);
   const applyPatchConfig = options?.config?.tools?.exec?.applyPatch;
   const applyPatchEnabled =
     !!applyPatchConfig?.enabled &&

@@ -2458,6 +2458,27 @@ export function createBrainGuidanceNote(decision: BrainDecision): string | null 
   );
 }
 
+export function createBrainAutonomyChoiceContract(decision: BrainDecision): string | null {
+  if (decision.intent !== "autonomous") {
+    return null;
+  }
+
+  const allowedTools = formatAllowedToolsForGuidance(decision.allowedTools);
+  return [
+    "<brain_autonomy_choice>",
+    "Bounded autonomy protocol (freedom inside safety limits):",
+    "1. Before acting, generate exactly four candidate paths: PLAY, LEARN, MAINTAIN, and NO_OP.",
+    "2. Score each path from 0-5 on: value-now, learning, novelty, risk, reversibility, and energy-fit.",
+    "3. Compare utility as: value-now + learning + novelty + reversibility - risk.",
+    "4. You may choose any path freely. NO_OP is valid when action confidence is low or safe actions are blocked.",
+    "5. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
+    "6. If an action path is chosen, execute exactly one reversible step and then stop.",
+    `Allowed tools this turn: ${allowedTools}.`,
+    "Do not output HEARTBEAT_OK unless all four candidate paths are blocked by safety constraints.",
+    "</brain_autonomy_choice>",
+  ].join("\n");
+}
+
 export function createBrainRitualOutputContract(userMessage: string): string | null {
   const message = userMessage.trim();
   if (!message) return null;

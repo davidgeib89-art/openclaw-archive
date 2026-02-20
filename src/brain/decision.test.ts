@@ -7,6 +7,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { BrainDecisionInput } from "./types.js";
 import {
   buildBrainSacredRecallContext,
+  createBrainAutonomyChoiceContract,
   createBrainDecision,
   createBrainGuidanceNote,
   createBrainRitualOutputContract,
@@ -195,6 +196,43 @@ describe("brain decision generator", () => {
         process.env.OM_AUTONOMY_SANDBOX = previous;
       }
     }
+  });
+
+  it("builds an autonomy choice contract with explicit NO_OP handling", () => {
+    const previous = process.env.OM_AUTONOMY_SANDBOX;
+    process.env.OM_AUTONOMY_SANDBOX = "true";
+
+    try {
+      const decision = createBrainDecision({
+        userMessage:
+          "Read AGENDA.md if it exists (workspace context). If AGENDA.md is missing, read HEARTBEAT.md. If nothing needs attention, reply HEARTBEAT_OK.",
+        availableTools: ["read", "write", "edit"],
+        trigger: "heartbeat",
+      });
+      const contract = createBrainAutonomyChoiceContract(decision);
+
+      expect(contract).toContain("<brain_autonomy_choice>");
+      expect(contract).toContain("generate exactly four candidate paths");
+      expect(contract).toContain("PLAY, LEARN, MAINTAIN, and NO_OP");
+      expect(contract).toContain("Allowed tools this turn");
+      expect(contract).toContain("Do not output HEARTBEAT_OK unless all four candidate paths are blocked");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OM_AUTONOMY_SANDBOX;
+      } else {
+        process.env.OM_AUTONOMY_SANDBOX = previous;
+      }
+    }
+  });
+
+  it("does not build an autonomy choice contract outside autonomous mode", () => {
+    const decision = createBrainDecision({
+      userMessage: "Summarize the latest architecture state.",
+      availableTools: ["read", "search"],
+      trigger: "message",
+    });
+
+    expect(createBrainAutonomyChoiceContract(decision)).toBeNull();
   });
 
   it("does not treat output format wording as destructive intent", () => {

@@ -2189,7 +2189,7 @@ export function wrapToolWithRefusalOnlyGuard(
               detail: "heartbeat mutation budget exhausted",
             });
             throwToolBlocked(
-              "AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED: only one autonomous mutation is allowed per heartbeat run. Reflect and wait for the next heartbeat.",
+              "AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED: autonomous mutation budget reached for this heartbeat run. Reflect and wait for the next heartbeat.",
             );
           }
           budget.remaining -= 1;
