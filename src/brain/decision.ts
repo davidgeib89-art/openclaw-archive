@@ -2467,14 +2467,15 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
   return [
     "<brain_autonomy_choice>",
     "Bounded autonomy protocol (freedom inside safety limits):",
-    "1. Before acting, generate exactly four candidate paths: PLAY, LEARN, MAINTAIN, and NO_OP.",
+    "1. Before acting, generate exactly five candidate paths: PLAY, LEARN, MAINTAIN, DRIFT, and NO_OP.",
     "2. Score each path from 0-5 on: value-now, learning, novelty, risk, reversibility, and energy-fit.",
     "3. Compare utility as: value-now + learning + novelty + reversibility - risk.",
-    "4. You may choose any path freely. NO_OP is valid when action confidence is low or safe actions are blocked.",
-    "5. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
-    "6. If an action path is chosen, execute exactly one reversible step and then stop.",
+    "4. You may choose any path freely. DRIFT is valid when you need non-goal-directed presence; NO_OP is valid when action confidence is low or safe actions are blocked.",
+    "5. If DRIFT is chosen, no blocker report is required. You may read randomly, write one free line to DREAMS.md, generate one mood image prompt, or stay silent.",
+    "6. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
+    "7. If an action path is chosen, execute exactly one reversible step and then stop.",
     `Allowed tools this turn: ${allowedTools}.`,
-    "Do not output HEARTBEAT_OK unless all four candidate paths are blocked by safety constraints.",
+    "Do not output HEARTBEAT_OK unless all five candidate paths are blocked by safety constraints, or DRIFT intentionally resolves as silence.",
     "</brain_autonomy_choice>",
   ].join("\n");
 }

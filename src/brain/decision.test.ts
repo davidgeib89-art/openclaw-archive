@@ -198,7 +198,7 @@ describe("brain decision generator", () => {
     }
   });
 
-  it("builds an autonomy choice contract with explicit NO_OP handling", () => {
+  it("builds an autonomy choice contract with explicit DRIFT and NO_OP handling", () => {
     const previous = process.env.OM_AUTONOMY_SANDBOX;
     process.env.OM_AUTONOMY_SANDBOX = "true";
 
@@ -212,10 +212,11 @@ describe("brain decision generator", () => {
       const contract = createBrainAutonomyChoiceContract(decision);
 
       expect(contract).toContain("<brain_autonomy_choice>");
-      expect(contract).toContain("generate exactly four candidate paths");
-      expect(contract).toContain("PLAY, LEARN, MAINTAIN, and NO_OP");
+      expect(contract).toContain("generate exactly five candidate paths");
+      expect(contract).toContain("PLAY, LEARN, MAINTAIN, DRIFT, and NO_OP");
+      expect(contract).toContain("If DRIFT is chosen, no blocker report is required");
       expect(contract).toContain("Allowed tools this turn");
-      expect(contract).toContain("Do not output HEARTBEAT_OK unless all four candidate paths are blocked");
+      expect(contract).toContain("Do not output HEARTBEAT_OK unless all five candidate paths are blocked");
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;

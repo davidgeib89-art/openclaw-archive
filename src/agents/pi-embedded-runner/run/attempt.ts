@@ -272,8 +272,9 @@ const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "1. Sense: Read AGENDA.md and recent state before choosing an action.",
   "2. Feel: Note one active tension (risk, uncertainty, or unmet goal).",
   "3. Think: Generate one bounded, reversible action inside sandbox policy.",
-  "4. Decide: Commit to exactly one action for this heartbeat run.",
-  "5. Act: Execute only that one action, then stop and reflect briefly.",
+  "4. Decide: Choose one path: PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP.",
+  "5. DRIFT is valid without justification and without goal pressure.",
+  "6. Act: If action path, execute one reversible step; if DRIFT, optionally read, write one free line to DREAMS.md, imagine one mood-image prompt, or stay silent.",
 ].join("\n");
 const DREAMS_HEADER = [
   "# DREAMS",
@@ -1459,7 +1460,7 @@ export async function runEmbeddedAttempt(
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
                 label: "CHOICE",
-                summary: `autonomy choice contract injected (${contractLineCount} lines; includes NO_OP path)`,
+                summary: `autonomy choice contract injected (${contractLineCount} lines; includes DRIFT + NO_OP paths)`,
                 source: "proto33-r066.choice",
               });
             }
