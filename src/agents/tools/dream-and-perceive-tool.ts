@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnyAgentTool } from "./common.js";
 import { readNumberParam, readStringParam } from "./common.js";
+import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 
 const DEFAULT_COMFY_TIMEOUT_MS = 180_000;
 const DEFAULT_COMFY_POLL_MS = 1_000;
@@ -251,22 +252,30 @@ function buildPerceptionNarrative(reflection: DreamAndPerceiveReflection): strin
 }
 
 function resolveComfyImageScriptPath(): string {
-  const fromModule = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
-    "skills",
-    "comfyui-image.js",
-  );
-  const fromCwd = path.resolve(process.cwd(), "skills", "comfyui-image.js");
-  const candidates = [fromModule, fromCwd];
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const override = process.env.OPENCLAW_COMFYUI_IMAGE_SCRIPT?.trim();
+  const bundledSkillsDir = resolveBundledSkillsDir({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+    execPath: process.execPath,
+  });
+  const candidates = [
+    override ? path.resolve(override) : null,
+    bundledSkillsDir ? path.join(bundledSkillsDir, "comfyui-image.js") : null,
+    path.resolve(moduleDir, "..", "..", "..", "skills", "comfyui-image.js"),
+    path.resolve(moduleDir, "..", "..", "skills", "comfyui-image.js"),
+    path.resolve(moduleDir, "..", "skills", "comfyui-image.js"),
+    path.resolve(process.cwd(), "skills", "comfyui-image.js"),
+  ].filter((entry): entry is string => Boolean(entry));
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
-  throw new Error("comfyui-image script not found. Expected skills/comfyui-image.js.");
+  throw new Error(
+    `comfyui-image script not found. Expected skills/comfyui-image.js. Checked: ${candidates.join(", ")}`,
+  );
 }
 
 function buildScriptArgs(input: DreamAndPerceiveRunnerInput): string[] {
