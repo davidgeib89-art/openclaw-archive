@@ -18,7 +18,7 @@ import { getDefaultBrainObserverDir } from "./decision.js";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 30_000;
-const DEFAULT_SUBCONSCIOUS_MODEL_REF = "openrouter/arcee-ai/trinity-mini:free";
+const DEFAULT_SUBCONSCIOUS_MODEL_REF = "minimax/MiniMax-M2.5-Lightning";
 const DEFAULT_SUBCONSCIOUS_TEMPERATURE = 0.3;
 const MIN_SUBCONSCIOUS_TEMPERATURE = 0;
 const MAX_SUBCONSCIOUS_TEMPERATURE = 2;
@@ -193,6 +193,36 @@ type BrainSubconsciousRuntimeConfig = {
   temperature: number;
 };
 
+function readConfigEnvVar(cfg: OpenClawConfig | undefined, key: string): string | undefined {
+  const env = cfg?.env;
+  if (!env || typeof env !== "object") {
+    return undefined;
+  }
+
+  const direct = env[key];
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct.trim();
+  }
+
+  const varsRaw = env.vars;
+  if (!varsRaw || typeof varsRaw !== "object") {
+    return undefined;
+  }
+  const vars = varsRaw as Record<string, unknown>;
+  const nested = vars[key];
+  if (typeof nested === "string" && nested.trim().length > 0) {
+    return nested.trim();
+  }
+  return undefined;
+}
+
+function parseOptionalNumber(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
 function normalizeTimeoutMs(raw: number | undefined): number {
   if (typeof raw !== "number" || !Number.isFinite(raw)) {
     return DEFAULT_TIMEOUT_MS;
@@ -229,20 +259,26 @@ export function parseModelRef(rawRef: string): { provider: string; modelId: stri
 export function resolveBrainSubconsciousRuntimeConfig(
   input: Pick<
     BrainSubconsciousObserverRunInput,
-    "enabled" | "modelRef" | "timeoutMs" | "temperature"
+    "cfg" | "enabled" | "modelRef" | "timeoutMs" | "temperature"
   > = {},
 ): BrainSubconsciousRuntimeConfig {
-  const enabled = input.enabled ?? isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED);
+  const cfgEnabledRaw = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_ENABLED");
+  const enabled =
+    input.enabled ??
+    (cfgEnabledRaw ? isTruthyEnvValue(cfgEnabledRaw) : isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED));
+  const cfgModelRef = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_MODEL");
   const modelRef =
-    normalizeModelRef(input.modelRef ?? process.env.OM_SUBCONSCIOUS_MODEL) ??
+    normalizeModelRef(input.modelRef ?? cfgModelRef ?? process.env.OM_SUBCONSCIOUS_MODEL) ??
     DEFAULT_SUBCONSCIOUS_MODEL_REF;
+  const cfgTimeoutRaw = parseOptionalNumber(readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TIMEOUT_MS"));
+  const cfgTempRaw = parseOptionalNumber(readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_TEMPERATURE"));
   const envTimeoutRaw = Number(process.env.OM_SUBCONSCIOUS_TIMEOUT_MS);
   const envTempRaw = Number(process.env.OM_SUBCONSCIOUS_TEMPERATURE);
   const timeoutMs = normalizeTimeoutMs(
-    typeof input.timeoutMs === "number" ? input.timeoutMs : envTimeoutRaw,
+    typeof input.timeoutMs === "number" ? input.timeoutMs : cfgTimeoutRaw ?? envTimeoutRaw,
   );
   const temperature = normalizeTemperature(
-    typeof input.temperature === "number" ? input.temperature : envTempRaw,
+    typeof input.temperature === "number" ? input.temperature : cfgTempRaw ?? envTempRaw,
   );
   return {
     enabled,

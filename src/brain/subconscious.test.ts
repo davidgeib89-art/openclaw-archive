@@ -34,7 +34,7 @@ function makeFakeModel(): Model<Api> {
 }
 
 describe("brain subconscious observer", () => {
-  it("falls back to trinity-mini model ref when env/modelRef is not set", () => {
+  it("falls back to MiniMax M2.5 Lightning model ref when env/modelRef is not set", () => {
     const previousModelRef = process.env.OM_SUBCONSCIOUS_MODEL;
     const previousTemp = process.env.OM_SUBCONSCIOUS_TEMPERATURE;
     try {
@@ -44,7 +44,7 @@ describe("brain subconscious observer", () => {
         enabled: true,
         timeoutMs: 8_000,
       });
-      expect(runtime.modelRef).toBe("openrouter/arcee-ai/trinity-mini:free");
+      expect(runtime.modelRef).toBe("minimax/MiniMax-M2.5-Lightning");
       expect(runtime.temperature).toBe(0.3);
     } finally {
       if (typeof previousModelRef === "string") {
@@ -54,6 +54,56 @@ describe("brain subconscious observer", () => {
       }
       if (typeof previousTemp === "string") {
         process.env.OM_SUBCONSCIOUS_TEMPERATURE = previousTemp;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+      }
+    }
+  });
+
+  it("prefers cfg.env OM_SUBCONSCIOUS settings over process env", () => {
+    const previousModelRef = process.env.OM_SUBCONSCIOUS_MODEL;
+    const previousEnabled = process.env.OM_SUBCONSCIOUS_ENABLED;
+    const previousTimeout = process.env.OM_SUBCONSCIOUS_TIMEOUT_MS;
+    const previousTemperature = process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+    try {
+      process.env.OM_SUBCONSCIOUS_MODEL = "openrouter/arcee-ai/trinity-mini:free";
+      process.env.OM_SUBCONSCIOUS_ENABLED = "false";
+      process.env.OM_SUBCONSCIOUS_TIMEOUT_MS = "12000";
+      process.env.OM_SUBCONSCIOUS_TEMPERATURE = "1.1";
+      const runtime = resolveBrainSubconsciousRuntimeConfig({
+        cfg: {
+          env: {
+            OM_SUBCONSCIOUS_ENABLED: "true",
+            OM_SUBCONSCIOUS_MODEL: "minimax/MiniMax-M2.5-Lightning",
+            vars: {
+              OM_SUBCONSCIOUS_TIMEOUT_MS: "9000",
+              OM_SUBCONSCIOUS_TEMPERATURE: "0.55",
+            },
+          },
+        },
+      });
+      expect(runtime.enabled).toBe(true);
+      expect(runtime.modelRef).toBe("minimax/MiniMax-M2.5-Lightning");
+      expect(runtime.timeoutMs).toBe(9_000);
+      expect(runtime.temperature).toBe(0.55);
+    } finally {
+      if (typeof previousModelRef === "string") {
+        process.env.OM_SUBCONSCIOUS_MODEL = previousModelRef;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_MODEL;
+      }
+      if (typeof previousEnabled === "string") {
+        process.env.OM_SUBCONSCIOUS_ENABLED = previousEnabled;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_ENABLED;
+      }
+      if (typeof previousTimeout === "string") {
+        process.env.OM_SUBCONSCIOUS_TIMEOUT_MS = previousTimeout;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_TIMEOUT_MS;
+      }
+      if (typeof previousTemperature === "string") {
+        process.env.OM_SUBCONSCIOUS_TEMPERATURE = previousTemperature;
       } else {
         delete process.env.OM_SUBCONSCIOUS_TEMPERATURE;
       }
