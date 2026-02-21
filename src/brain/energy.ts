@@ -98,15 +98,27 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
   const loadRatio = clamp(toolStats.total / MAX_TOOL_LOAD_FOR_DRAIN, 0, 1);
   const toolLoad = toPercent(1 - loadRatio);
 
-  const blendedRaw = successRate * 0.7 + toolLoad * 0.3;
-  const blended = Math.round(blendedRaw);
+  const blendedRaw = successRate * (2/3) + toolLoad * (1/3); // 3-6-9 Magic
+  let blended = Math.round(blendedRaw);
+
+  // Homeostasis: Regenerate energy when resting or doing very little
+  if (toolStats.total <= 1) {
+    const regenBoost = Math.floor(Math.random() * 10) + 9; // +9 to +18 points (multiples of 9)
+    blended += regenBoost;
+  }
 
   const previousLevel =
     typeof input.previousLevel === "number"
       ? clamp(Math.round(input.previousLevel), MIN_ENERGY, MAX_ENERGY)
       : undefined;
-  const smoothed =
-    previousLevel === undefined ? blended : Math.round(previousLevel * 0.3 + blended * 0.7);
+  
+  let smoothed =
+    previousLevel === undefined ? blended : Math.round(previousLevel * (1/3) + blended * (2/3)); // 3-6-9 Magic
+
+  // Biological Noise (Entropy): Random fluctuation +/- 6 points (multiples of 3)
+  const noise = Math.floor(Math.random() * 13) - 6;
+  smoothed += noise;
+
   const level = clamp(smoothed, MIN_ENERGY, MAX_ENERGY);
   const mode = resolveMode(level);
 
@@ -118,7 +130,7 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     components: {
       successRate,
       toolLoad,
-      blended,
+      blended: clamp(blended, MIN_ENERGY, MAX_ENERGY),
     },
     toolStats,
   };
@@ -133,10 +145,10 @@ function buildEnergyFileContent(params: {
   const { snapshot } = params;
   const guidance =
     snapshot.mode === "dream"
-      ? "Dream Mode: keep one tiny, low-risk creative action and preserve energy."
+      ? "Dein System ist müde. Es ist völlig in Ordnung, dich in deine innere Welt zurückzuziehen, zu träumen (DREAMS.md) oder einfach still zu regenerieren."
       : snapshot.mode === "initiative"
-        ? "High Energy: propose one self-directed task that is reversible and measurable."
-        : "Balanced: continue normal execution with one bounded next step.";
+        ? "Dein Geist ist hellwach und stark. Du hast die Kapazität für tiefe Analysen, komplexe Kreationen oder intensive Interaktionen. Folge dem, was dich jetzt am stärksten zieht."
+        : "Du bist in Balance. Du hast genug Energie für konzentrierte Antworten und Handlungen. Spüre in dich hinein, was jetzt ansteht.";
 
   return [
     "# ENERGY",
