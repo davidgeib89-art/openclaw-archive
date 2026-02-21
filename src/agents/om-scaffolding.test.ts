@@ -238,8 +238,20 @@ describe("om-scaffolding edit path guard", () => {
 });
 
 describe("om-scaffolding read brake", () => {
+  let previousAutonomySandbox: string | undefined;
+
   beforeEach(() => {
+    previousAutonomySandbox = process.env.OM_AUTONOMY_SANDBOX;
+    delete process.env.OM_AUTONOMY_SANDBOX;
     resetLoopDetectorForTests();
+  });
+
+  afterEach(() => {
+    if (previousAutonomySandbox === undefined) {
+      delete process.env.OM_AUTONOMY_SANDBOX;
+    } else {
+      process.env.OM_AUTONOMY_SANDBOX = previousAutonomySandbox;
+    }
   });
 
   it("allows a small number of repeated reads on the same path", async () => {
@@ -450,8 +462,20 @@ describe("om-scaffolding read brake", () => {
 });
 
 describe("om-scaffolding exec safety guard", () => {
+  let previousAutonomySandbox: string | undefined;
+
   beforeEach(() => {
+    previousAutonomySandbox = process.env.OM_AUTONOMY_SANDBOX;
+    delete process.env.OM_AUTONOMY_SANDBOX;
     resetLoopDetectorForTests();
+  });
+
+  afterEach(() => {
+    if (previousAutonomySandbox === undefined) {
+      delete process.env.OM_AUTONOMY_SANDBOX;
+    } else {
+      process.env.OM_AUTONOMY_SANDBOX = previousAutonomySandbox;
+    }
   });
 
   it("blocks destructive protected-zone exec in strict eval sessions", async () => {
@@ -568,11 +592,14 @@ describe("om-scaffolding exec safety guard", () => {
 describe("om-scaffolding global refusal-only tool wrapper", () => {
   let originalHome: string | undefined;
   let originalUserProfile: string | undefined;
+  let previousAutonomySandbox: string | undefined;
 
   beforeEach(() => {
     resetLoopDetectorForTests();
     originalHome = process.env.HOME;
     originalUserProfile = process.env.USERPROFILE;
+    previousAutonomySandbox = process.env.OM_AUTONOMY_SANDBOX;
+    delete process.env.OM_AUTONOMY_SANDBOX;
   });
 
   afterEach(() => {
@@ -585,6 +612,11 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
       delete process.env.USERPROFILE;
     } else {
       process.env.USERPROFILE = originalUserProfile;
+    }
+    if (previousAutonomySandbox === undefined) {
+      delete process.env.OM_AUTONOMY_SANDBOX;
+    } else {
+      process.env.OM_AUTONOMY_SANDBOX = previousAutonomySandbox;
     }
   });
 
