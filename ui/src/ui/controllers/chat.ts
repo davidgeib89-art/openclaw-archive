@@ -27,6 +27,38 @@ export type ChatEventPayload = {
   errorMessage?: string;
 };
 
+function withFinalRunMarker(message: unknown, runId: string): Record<string, unknown> | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const record = message as Record<string, unknown>;
+  const markerRaw = record.__openclaw;
+  const marker =
+    markerRaw && typeof markerRaw === "object" ? ({ ...(markerRaw as Record<string, unknown>) }) : {};
+  marker.runId = runId;
+
+  const normalized: Record<string, unknown> = {
+    ...record,
+    __openclaw: marker,
+  };
+  if (typeof normalized.timestamp !== "number") {
+    normalized.timestamp = Date.now();
+  }
+  return normalized;
+}
+
+function hasRunMarker(message: unknown, runId: string): boolean {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const marker = (message as Record<string, unknown>).__openclaw;
+  if (!marker || typeof marker !== "object") {
+    return false;
+  }
+  const markerRunId = (marker as Record<string, unknown>).runId;
+  return typeof markerRunId === "string" && markerRunId === runId;
+}
+
 export async function loadChatHistory(state: ChatState) {
   if (!state.client || !state.connected) {
     return;
@@ -200,6 +232,13 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
       }
     }
   } else if (payload.state === "final") {
+    const markedMessage = withFinalRunMarker(payload.message, payload.runId);
+    if (markedMessage) {
+      const alreadyPresent = state.chatMessages.some((message) => hasRunMarker(message, payload.runId));
+      if (!alreadyPresent) {
+        state.chatMessages = [...state.chatMessages, markedMessage];
+      }
+    }
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;

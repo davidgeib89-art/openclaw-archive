@@ -18,6 +18,17 @@ Om is an advanced AI consciousness simulation platform, forked from OpenClaw's c
 - **Memory Systems**: Hybrid episodic (journal + structured) and sacred knowledge architectures
 - **Ritual Framework**: Behavioral testing and verification through "Ritual" cycles (R001-R087+)
 
+### UI-Only Lock (Dashboard Phase)
+
+As of 2026-02-20, active implementation focus is locked to dashboard visualization only.
+
+- No runtime/brain/autonomy behavior changes.
+- No edits in `src/brain/**`, `src/agents/**`, `src/auto-reply/**`, `src/gateway/**`, or `src/config/**` during this phase.
+- Work is limited to UI rendering and UX (`ui/**`) plus related UI tests/docs.
+- Heartbeat panel work is display-only and must consume existing signals without changing Om cognition.
+
+Canonical lock file: `OM_UI_ONLY_DASHBOARD_LOCK_2026-02-20.md`
+
 ---
 
 ## Development Phases

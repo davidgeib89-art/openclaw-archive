@@ -76,6 +76,7 @@ import {
   type ToolStreamEntry,
   type CompactionStatus,
   type ThoughtStreamEntry,
+  type ThoughtTraceHistoryEntry,
 } from "./app-tool-stream.ts";
 import { resolveInjectedAssistantIdentity } from "./assistant-identity.ts";
 import { onTtsStateChange, onSttStateChange, stopTtsPlayback, stopStt } from "./chat/voice-ui.ts";
@@ -134,6 +135,7 @@ export class OpenClawApp extends LitElement {
   @state() chatMessages: unknown[] = [];
   @state() chatToolMessages: unknown[] = [];
   @state() chatThoughtEvents: ThoughtStreamEntry[] = [];
+  @state() chatThoughtHistory: ThoughtTraceHistoryEntry[] = [];
   @state() chatStream: string | null = null;
   @state() chatStreamStartedAt: number | null = null;
   @state() chatRunId: string | null = null;

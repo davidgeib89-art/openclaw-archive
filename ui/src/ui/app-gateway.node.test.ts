@@ -76,6 +76,8 @@ function createHost() {
     assistantAgentId: null,
     sessionKey: "main",
     chatRunId: null,
+    chatMessages: [],
+    chatThoughtEvents: [],
     refreshSessionsAfterChat: new Set<string>(),
     execApprovalQueue: [],
     execApprovalError: null,

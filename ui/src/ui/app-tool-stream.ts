@@ -5,6 +5,7 @@ const TOOL_STREAM_THROTTLE_MS = 80;
 const TOOL_OUTPUT_CHAR_LIMIT = 120_000;
 const THOUGHT_STREAM_LIMIT = 120;
 const THOUGHT_SUMMARY_LIMIT = 260;
+const THOUGHT_DETAIL_LIMIT = 1_800;
 
 export type AgentEventPayload = {
   runId: string;
@@ -35,9 +36,38 @@ export type ThoughtStreamEntry = {
   sessionKey?: string;
   label: string;
   summary: string;
+  rawSummary?: string;
+  detail?: string;
   risk?: string;
   phase?: string;
   stream: "reasoning" | "reply";
+};
+
+export type ThoughtTraceStep = {
+  seq: number;
+  ts: number;
+  label: string;
+  phase?: string;
+  risk?: string;
+  stream: "reasoning" | "reply";
+  summary: string;
+  detail?: string;
+};
+
+export type ThoughtTraceAttachment = {
+  version: 1;
+  runId: string;
+  sessionKey?: string;
+  capturedAt: number;
+  stepCount: number;
+  steps: ThoughtTraceStep[];
+};
+
+export type ThoughtTraceHistoryEntry = {
+  trace: ThoughtTraceAttachment;
+  endedState: "final" | "aborted" | "error";
+  endedAt: number;
+  messageTimestamp?: number;
 };
 
 type ToolStreamHost = {
@@ -62,6 +92,187 @@ function normalizeThoughtSummary(raw: unknown): string | null {
     return normalized;
   }
   return `${normalized.slice(0, THOUGHT_SUMMARY_LIMIT - 3)}...`;
+}
+
+function normalizeThoughtDetail(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const normalized = raw.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length <= THOUGHT_DETAIL_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, THOUGHT_DETAIL_LIMIT - 3)}...`;
+}
+
+function parseSummaryKeyValueMap(summary: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const segment of summary.split(";")) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (!key || !value) continue;
+    map[key] = value;
+  }
+  return map;
+}
+
+function toYesNo(raw: string | undefined): string {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (normalized === "yes" || normalized === "true") return "yes";
+  if (normalized === "no" || normalized === "false") return "no";
+  return normalized || "n/a";
+}
+
+function intentLabel(raw: string | undefined): string {
+  switch ((raw ?? "").trim().toLowerCase()) {
+    case "qa":
+      return "question answering";
+    case "research":
+      return "research";
+    case "edit":
+      return "file change";
+    case "creative":
+      return "creative step";
+    case "ops":
+      return "system operation";
+    case "autonomous":
+      return "autonomous heartbeat";
+    default:
+      return raw?.trim() || "n/a";
+  }
+}
+
+function modeLabel(raw: string | undefined): string {
+  switch ((raw ?? "").trim().toLowerCase()) {
+    case "answer_direct":
+      return "answer directly";
+    case "ask_clarify":
+      return "ask clarifying question";
+    case "plan_then_answer":
+      return "plan, then answer";
+    default:
+      return raw?.trim() || "n/a";
+  }
+}
+
+function humanizeReasoningLabel(raw: string, phase: string | undefined): string {
+  const normalized = (raw || phase || "").trim().toLowerCase();
+  switch (normalized) {
+    case "input":
+      return "Your Message";
+    case "intent":
+      return "Goal";
+    case "risk":
+      return "Safety";
+    case "recall":
+      return "Memory";
+    case "subconscious":
+      return "Inner Observer";
+    case "inject":
+      return "Context Inject";
+    case "contract":
+      return "Contract";
+    case "choice":
+      return "Choice";
+    case "cycle":
+      return "Cycle";
+    case "dream":
+      return "Dream";
+    case "guard":
+      return "Guard";
+    case "tools":
+      return "Tool Limits";
+    case "energy":
+      return "Energy";
+    case "brain":
+      return "Brain";
+    default:
+      return raw;
+  }
+}
+
+function shouldAttachRawSummaryDetail(rawSummary: string, summary: string): boolean {
+  if (rawSummary === summary) {
+    return false;
+  }
+  return /[=;:{}<>]/.test(rawSummary);
+}
+
+function humanizeReasoningSummary(
+  data: Record<string, unknown>,
+  rawSummary: string,
+): { summary: string; detail?: string; rawSummary?: string } {
+  const phase = typeof data.phase === "string" ? data.phase.trim().toLowerCase() : "";
+  const label = typeof data.label === "string" ? data.label.trim().toLowerCase() : "";
+  const kv = parseSummaryKeyValueMap(rawSummary);
+
+  let summary = rawSummary;
+
+  if (phase === "input" || label === "input") {
+    summary = `Your message: "${rawSummary}"`;
+  } else if (phase === "intent" || label === "intent") {
+    const intent = intentLabel(kv.intent);
+    const mustAskUser = toYesNo(kv.mustAskUser);
+    const allowedTools = kv.allowedTools ?? "n/a";
+    summary = `Goal recognized: ${intent}. Clarification needed: ${mustAskUser}. Allowed tools: ${allowedTools}.`;
+  } else if (phase === "risk" || label === "risk") {
+    const cleaned = rawSummary.replace(/^Observer decision:\s*/i, "");
+    summary = `Safety check: ${cleaned}`;
+  } else if (phase === "recall" || label === "recall") {
+    const hitsRaw = kv.hits;
+    const hits = typeof hitsRaw === "string" ? Number(hitsRaw) : Number.NaN;
+    if (/fail-open/i.test(rawSummary)) {
+      summary = "Memory recall was unavailable for a moment, run continued safely (fail-open).";
+    } else if (Number.isFinite(hits)) {
+      summary =
+        hits > 0
+          ? `Memory recall found ${hits} relevant hit${hits === 1 ? "" : "s"}.`
+          : "Memory recall found no direct hit and continued without blocking.";
+    } else if (/no relevant sacred memory found/i.test(rawSummary)) {
+      summary = "Memory recall found no direct hit and continued without blocking.";
+    }
+  } else if (phase === "subconscious" || label === "subconscious") {
+    const status = kv.status ?? "n/a";
+    const parseOk = toYesNo(kv.parseOk);
+    const mode = modeLabel(kv.mode);
+    const note = kv.note ?? "n/a";
+    summary = `Inner observer: status ${status}, parse ${parseOk}, mode ${mode}. Signal: ${note}.`;
+  } else if (phase === "inject" || label === "inject") {
+    summary = "Inner context was injected into the run before the final response.";
+  } else if (phase === "energy" || label === "energy") {
+    const level = kv.level ?? "n/a";
+    const mode = kv.mode ?? "n/a";
+    const dream = toYesNo(kv.dream);
+    const initiative = toYesNo(kv.initiative);
+    summary = `Energy snapshot: ${level}% (${mode}). Dream mode: ${dream}. Initiative: ${initiative}.`;
+  }
+
+  const detailFromEvent = normalizeThoughtDetail(data.detail);
+  if (detailFromEvent) {
+    return {
+      summary,
+      detail: detailFromEvent,
+      rawSummary: summary === rawSummary ? undefined : rawSummary,
+    };
+  }
+  if (shouldAttachRawSummaryDetail(rawSummary, summary)) {
+    return {
+      summary,
+      detail: rawSummary,
+      rawSummary,
+    };
+  }
+  return {
+    summary,
+    rawSummary: summary === rawSummary ? undefined : rawSummary,
+  };
 }
 
 function trimThoughtStream(host: ToolStreamHost) {
@@ -287,13 +498,14 @@ export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPaylo
       return;
     }
     const data = payload.data ?? {};
-    const summary =
+    const rawSummary =
       normalizeThoughtSummary(data.summary) ??
       normalizeThoughtSummary(data.text) ??
       normalizeThoughtSummary(JSON.stringify(data));
-    if (!summary) {
+    if (!rawSummary) {
       return;
     }
+    const humanized = humanizeReasoningSummary(data, rawSummary);
     const phase = typeof data.phase === "string" ? data.phase : undefined;
     const risk = typeof data.risk === "string" ? data.risk : undefined;
     const labelRaw =
@@ -304,14 +516,17 @@ export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPaylo
           : phase
             ? phase.toUpperCase()
             : "THOUGHT";
+    const label = humanizeReasoningLabel(labelRaw, phase);
     pushThoughtEvent(host, {
       id: `reasoning:${payload.runId}:${payload.seq}`,
       runId: payload.runId,
       seq: payload.seq,
       ts: typeof payload.ts === "number" ? payload.ts : Date.now(),
       sessionKey: typeof payload.sessionKey === "string" ? payload.sessionKey : undefined,
-      label: labelRaw,
-      summary,
+      label,
+      summary: humanized.summary,
+      rawSummary: humanized.rawSummary,
+      detail: humanized.detail,
       risk,
       phase,
       stream: "reasoning",

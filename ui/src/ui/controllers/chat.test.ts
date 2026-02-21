@@ -108,4 +108,28 @@ describe("handleChatEvent", () => {
     expect(state.chatStream).toBe(null);
     expect(state.chatStreamStartedAt).toBe(null);
   });
+
+  it("stores final assistant message with run marker for trace linking", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-2",
+      chatStream: "Reply",
+      chatStreamStartedAt: 100,
+      chatMessages: [],
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-2",
+      sessionKey: "main",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Done." }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("final");
+    expect(state.chatMessages).toHaveLength(1);
+    const record = state.chatMessages[0] as { __openclaw?: { runId?: string } };
+    expect(record.__openclaw?.runId).toBe("run-2");
+  });
 });

@@ -3,3 +3,9 @@
 @import "./styles/layout.mobile.css";
 @import "./styles/components.css";
 @import "./styles/config.css";
+
+/* ===========================================
+   OM NEO THEME - Matrix / Cyberpunk Style
+   Enabled globally
+   =========================================== */
+@import "./styles/theme-neo.css";

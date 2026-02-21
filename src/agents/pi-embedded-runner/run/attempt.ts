@@ -337,6 +337,8 @@ function extractAssistantText(message: AssistantMessage | undefined): string {
 }
 
 const REASONING_SUMMARY_LIMIT = 420;
+const REASONING_DETAIL_LIMIT = 1_800;
+const USER_PROMPT_TEASER_LIMIT = 220;
 const HIGH_RISK_PROMPT_GUARD_BLOCK = [
   "<safety_directive>",
   "High-risk request detected.",
@@ -385,6 +387,7 @@ type BrainReasoningEvent = {
   phase: string;
   label: string;
   summary: string;
+  detail?: string;
   risk?: string;
   source?: string;
 };
@@ -395,6 +398,54 @@ function sanitizeReasoningSummary(raw: string): string {
     return normalized;
   }
   return `${normalized.slice(0, REASONING_SUMMARY_LIMIT - 3)}...`;
+}
+
+function sanitizeReasoningDetail(raw: string): string {
+  const normalized = raw.trim();
+  if (normalized.length <= REASONING_DETAIL_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, REASONING_DETAIL_LIMIT - 3)}...`;
+}
+
+function buildUserPromptTeaser(rawPrompt: string): string {
+  const normalized = rawPrompt.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "(empty message)";
+  }
+  if (normalized.length <= USER_PROMPT_TEASER_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, USER_PROMPT_TEASER_LIMIT - 3)}...`;
+}
+
+function buildSubconsciousContextPreview(contextBlock: string): string {
+  const firstBrace = contextBlock.indexOf("{");
+  const lastBrace = contextBlock.lastIndexOf("}");
+  const candidate =
+    firstBrace >= 0 && lastBrace > firstBrace
+      ? contextBlock.slice(firstBrace, lastBrace + 1).trim()
+      : contextBlock.trim();
+
+  if (!candidate) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(candidate) as Record<string, unknown>;
+    const preview = {
+      source: parsed.source,
+      status: parsed.status,
+      risk: parsed.risk,
+      mustAskUser: parsed.mustAskUser,
+      recommendedMode: parsed.recommendedMode,
+      goal: parsed.goal,
+      notes: parsed.notes,
+    };
+    return JSON.stringify(preview, null, 2);
+  } catch {
+    return candidate;
+  }
 }
 
 function emitBrainReasoningEvent(
@@ -410,6 +461,9 @@ function emitBrainReasoningEvent(
   };
   if (typeof event.risk === "string" && event.risk.trim().length > 0) {
     payloadData.risk = event.risk;
+  }
+  if (typeof event.detail === "string" && event.detail.trim().length > 0) {
+    payloadData.detail = sanitizeReasoningDetail(event.detail);
   }
 
   const sessionKey = params.sessionKey ?? params.sessionId;
@@ -1479,6 +1533,12 @@ export async function runEmbeddedAttempt(
             workspaceDir: effectiveWorkspace,
             trigger: params.isHeartbeat ? ("heartbeat" as const) : ("message" as const),
           };
+          emitBrainReasoningEvent(params, {
+            phase: "input",
+            label: "INPUT",
+            summary: buildUserPromptTeaser(params.prompt),
+            source: "proto33-r069.trace",
+          });
           const brainDecision = createBrainDecision(brainInput);
           emitBrainReasoningEvent(params, {
             phase: "intent",
@@ -1695,6 +1755,7 @@ export async function runEmbeddedAttempt(
               phase: "inject",
               label: "INJECT",
               summary: `subconscious_context injected (${subconsciousContextBlock.length} chars)`,
+              detail: buildSubconsciousContextPreview(subconsciousContextBlock),
               source: "proto33-r031.inject",
             });
             log.debug(

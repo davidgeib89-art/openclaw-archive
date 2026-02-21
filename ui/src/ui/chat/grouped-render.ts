@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { AssistantIdentity } from "../assistant-identity.ts";
+import { icons } from "../icons.ts";
 import type { MessageGroup } from "../types/chat-types.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import { detectTextDirection } from "../text-direction.ts";
@@ -18,6 +19,91 @@ type ImageBlock = {
   url: string;
   alt?: string;
 };
+
+type ThoughtTraceStep = {
+  seq: number;
+  ts: number;
+  label: string;
+  phase?: string;
+  risk?: string;
+  stream: "reasoning" | "reply";
+  summary: string;
+  detail?: string;
+};
+
+type ThoughtTraceAttachment = {
+  version: 1;
+  runId: string;
+  sessionKey?: string;
+  capturedAt: number;
+  stepCount: number;
+  steps: ThoughtTraceStep[];
+};
+
+function extractThoughtTrace(message: unknown): ThoughtTraceAttachment | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const marker = (message as Record<string, unknown>).__openclaw;
+  if (!marker || typeof marker !== "object") {
+    return null;
+  }
+  const trace = (marker as Record<string, unknown>).thoughtTrace;
+  if (!trace || typeof trace !== "object") {
+    return null;
+  }
+  const record = trace as Record<string, unknown>;
+  if (record.version !== 1) {
+    return null;
+  }
+  if (typeof record.runId !== "string" || !Array.isArray(record.steps)) {
+    return null;
+  }
+  return record as unknown as ThoughtTraceAttachment;
+}
+
+function formatTraceTime(ts: number): string {
+  if (!Number.isFinite(ts)) {
+    return "n/a";
+  }
+  return new Date(ts).toISOString();
+}
+
+function formatThoughtTraceSidebar(trace: ThoughtTraceAttachment): string {
+  const lines: string[] = [
+    "## Thought Trace",
+    "",
+    `- runId: \`${trace.runId}\``,
+    trace.sessionKey ? `- sessionKey: \`${trace.sessionKey}\`` : "",
+    `- capturedAt: \`${new Date(trace.capturedAt).toISOString()}\``,
+    `- steps: \`${trace.stepCount}\``,
+    "",
+  ];
+
+  trace.steps.forEach((step, index) => {
+    lines.push(`### ${index + 1}. ${step.label}`);
+    lines.push(`- stream: \`${step.stream}\``);
+    lines.push(`- seq: \`${step.seq}\``);
+    lines.push(`- time: \`${formatTraceTime(step.ts)}\``);
+    if (step.phase) {
+      lines.push(`- phase: \`${step.phase}\``);
+    }
+    if (step.risk) {
+      lines.push(`- risk: \`${step.risk}\``);
+    }
+    lines.push("", step.summary);
+    if (step.detail) {
+      const detailBlock =
+        step.detail.startsWith("{") || step.detail.startsWith("[")
+          ? `\`\`\`json\n${step.detail}\n\`\`\``
+          : step.detail;
+      lines.push("", detailBlock);
+    }
+    lines.push("");
+  });
+
+  return lines.filter((line) => line.length > 0).join("\n");
+}
 
 function extractImages(message: unknown): ImageBlock[] {
   const m = message as Record<string, unknown>;
@@ -242,8 +328,10 @@ function renderGroupedMessage(
   const markdownBase = extractedText?.trim() ? extractedText : null;
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
   const markdown = markdownBase;
+  const thoughtTrace = role === "assistant" ? extractThoughtTrace(message) : null;
   const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
   const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
+  const canOpenTrace = role === "assistant" && Boolean(thoughtTrace) && Boolean(onOpenSidebar);
   // Build a stable key for TTS state tracking
   const ttsKey = `tts:${typeof m.timestamp === "number" ? m.timestamp : "no-ts"}:${(markdown ?? "").length}`;
   const msgTimestamp = typeof m.timestamp === "number" ? m.timestamp : 0;
@@ -273,6 +361,18 @@ function renderGroupedMessage(
   return html`
     <div class="${bubbleClasses}">
       <div class="chat-bubble-actions">
+        ${
+          canOpenTrace
+            ? html`<button
+                class="chat-trace-btn"
+                type="button"
+                title="View thought trace"
+                @click=${() => onOpenSidebar?.(formatThoughtTraceSidebar(thoughtTrace!))}
+              >
+                ${icons.brain}
+              </button>`
+            : nothing
+        }
         ${canPlayTts ? renderTtsButton(markdown!, ttsKey) : nothing}
         ${canCopyMarkdown ? renderCopyAsMarkdownButton(markdown!) : nothing}
       </div>

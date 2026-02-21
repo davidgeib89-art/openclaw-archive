@@ -176,7 +176,7 @@ describe("chat view", () => {
     expect(onHeartbeatTrigger).toHaveBeenCalledTimes(1);
   });
 
-  it("renders thought stream summary entries", () => {
+  it("renders thought stream timeline entries", () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -208,8 +208,212 @@ describe("chat view", () => {
     );
 
     expect(container.querySelector(".chat-thought-monitor")).not.toBeNull();
-    expect(container.textContent).toContain("[INTENT]");
-    expect(container.textContent).toContain("[RISK]");
+    expect(container.textContent).toContain("INTENT");
+    expect(container.textContent).toContain("RISK");
     expect(container.querySelector(".chat-thought-monitor__risk--medium")).not.toBeNull();
+    expect(container.querySelector(".chat-thought-monitor__stream--reasoning")).not.toBeNull();
+  });
+
+  it("renders heartbeat status panel with explicit cycle and known mutation budget", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          thoughtEvents: [
+            {
+              id: "thought-cycle",
+              runId: "run-2",
+              seq: 1,
+              ts: 1_000,
+              label: "CYCLE",
+              summary: "cycle=DRIFT",
+              stream: "reasoning",
+            },
+          ],
+          toolMessages: [
+            {
+              content: "heartbeat mutation budget 2/33",
+              timestamp: 1_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const panel = container.querySelector(".chat-heartbeat-panel");
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain("Current cycle: DRIFT");
+    expect(panel?.textContent).toContain("DRIFT active");
+    expect(panel?.textContent).toContain("2/33");
+    expect(panel?.textContent).toContain("31 left");
+    expect(panel?.textContent).toContain("high");
+  });
+
+  it("shows unknown mutation budget when no budget signal is visible", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          thoughtEvents: [
+            {
+              id: "thought-play",
+              runId: "run-3",
+              seq: 1,
+              ts: 2_000,
+              label: "CYCLE",
+              summary: "path=PLAY",
+              stream: "reasoning",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const panel = container.querySelector(".chat-heartbeat-panel");
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain("Current cycle: PLAY");
+    expect(panel?.textContent).toContain("Budget not exposed in UI-only mode");
+  });
+
+  it("opens sidebar detail from heartbeat status panel", () => {
+    const container = document.createElement("div");
+    const onOpenSidebar = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          onOpenSidebar,
+          thoughtEvents: [
+            {
+              id: "thought-maintain",
+              runId: "run-4",
+              seq: 1,
+              ts: 3_000,
+              label: "CYCLE",
+              summary: "selected=MAINTAIN",
+              stream: "reasoning",
+            },
+          ],
+          toolMessages: [
+            {
+              content: "heartbeat mutation budget 4/33",
+              timestamp: 3_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const detailButton = container.querySelector(
+      ".chat-heartbeat-panel__detail-btn",
+    ) as HTMLButtonElement | null;
+    expect(detailButton).not.toBeNull();
+    detailButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(onOpenSidebar).toHaveBeenCalledTimes(1);
+    const markdown = onOpenSidebar.mock.calls[0]?.[0];
+    expect(markdown).toContain("Heartbeat Status Snapshot");
+    expect(markdown).toContain("cycle_path: `MAINTAIN`");
+    expect(markdown).toContain("mutation_budget: `4/33 (remaining 29)`");
+  });
+
+  it("renders thought stream history with explicit end state", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          thoughtHistory: [
+            {
+              trace: {
+                version: 1,
+                runId: "run-history-1",
+                sessionKey: "main",
+                capturedAt: 4_000,
+                stepCount: 2,
+                steps: [
+                  {
+                    seq: 1,
+                    ts: 4_000,
+                    label: "Goal",
+                    stream: "reasoning",
+                    summary: "Goal recognized",
+                  },
+                  {
+                    seq: 2,
+                    ts: 4_001,
+                    label: "Choice",
+                    stream: "reasoning",
+                    summary: "Chose direct answer path",
+                  },
+                ],
+              },
+              endedState: "final",
+              endedAt: 4_005,
+              messageTimestamp: 4_010,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const panel = container.querySelector(".chat-thought-history");
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain("Thought Stream History");
+    expect(panel?.textContent).toContain("final");
+    expect(panel?.textContent).toContain("Goal -> Choice");
+    expect(panel?.textContent).toContain("2 steps");
+  });
+
+  it("restores thought trace button for assistant messages from history cache", () => {
+    const container = document.createElement("div");
+    const onOpenSidebar = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          onOpenSidebar,
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Recovered trace message" }],
+              timestamp: 9_001,
+            },
+          ],
+          thoughtHistory: [
+            {
+              trace: {
+                version: 1,
+                runId: "run-trace-restore",
+                sessionKey: "main",
+                capturedAt: 9_000,
+                stepCount: 1,
+                steps: [
+                  {
+                    seq: 1,
+                    ts: 9_000,
+                    label: "Goal",
+                    stream: "reasoning",
+                    summary: "Goal recognized",
+                  },
+                ],
+              },
+              endedState: "final",
+              endedAt: 9_002,
+              messageTimestamp: 9_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const traceButton = container.querySelector(".chat-trace-btn") as HTMLButtonElement | null;
+    expect(traceButton).not.toBeNull();
+    traceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onOpenSidebar).toHaveBeenCalledTimes(1);
+    expect(onOpenSidebar.mock.calls[0]?.[0]).toContain("Thought Trace");
+    expect(onOpenSidebar.mock.calls[0]?.[0]).toContain("run-trace-restore");
   });
 });
