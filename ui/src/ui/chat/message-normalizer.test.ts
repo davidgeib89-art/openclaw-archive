@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  coerceMessageTimestamp,
   normalizeMessage,
   normalizeRoleForGrouping,
   isToolResultMessage,
@@ -102,6 +103,24 @@ describe("message-normalizer", () => {
       expect(result.timestamp).toBe(Date.now());
     });
 
+    it("parses ISO timestamp strings", () => {
+      const result = normalizeMessage({
+        role: "assistant",
+        content: "from history",
+        timestamp: "2026-02-21T08:12:00.000Z",
+      });
+      expect(result.timestamp).toBe(Date.parse("2026-02-21T08:12:00.000Z"));
+    });
+
+    it("parses numeric timestamp strings", () => {
+      const result = normalizeMessage({
+        role: "assistant",
+        content: "from history",
+        timestamp: "1730000000000",
+      });
+      expect(result.timestamp).toBe(1730000000000);
+    });
+
     it("handles arguments field (alternative to args)", () => {
       const result = normalizeMessage({
         role: "assistant",
@@ -174,6 +193,27 @@ describe("message-normalizer", () => {
     it("returns false for non-string role", () => {
       expect(isToolResultMessage({ role: 123 })).toBe(false);
       expect(isToolResultMessage({ role: null })).toBe(false);
+    });
+  });
+
+  describe("coerceMessageTimestamp", () => {
+    it("returns null for missing values", () => {
+      expect(coerceMessageTimestamp(undefined)).toBeNull();
+      expect(coerceMessageTimestamp(null)).toBeNull();
+      expect(coerceMessageTimestamp("")).toBeNull();
+      expect(coerceMessageTimestamp("   ")).toBeNull();
+    });
+
+    it("accepts numbers and valid timestamp strings", () => {
+      expect(coerceMessageTimestamp(123)).toBe(123);
+      expect(coerceMessageTimestamp("456")).toBe(456);
+      expect(coerceMessageTimestamp("2026-02-21T08:12:00.000Z")).toBe(
+        Date.parse("2026-02-21T08:12:00.000Z"),
+      );
+    });
+
+    it("rejects invalid timestamp strings", () => {
+      expect(coerceMessageTimestamp("not-a-timestamp")).toBeNull();
     });
   });
 });

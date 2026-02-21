@@ -243,6 +243,8 @@ export function buildAgentSystemPrompt(params: {
     session_status:
       "Show a /status-equivalent status card (usage + time + Reasoning/Verbose/Elevated); use for model-use questions (📊 session_status); optional per-session model override",
     image: "Analyze an image with the configured image model",
+    knowledge_commit:
+      "Persist high-value learned facts into memory/SEMANTIC_KNOWLEDGE.md (first-person insight)",
     dream_and_perceive:
       "Generate an image with ComfyUI and immediately return a sensory perception paragraph",
   };
@@ -271,6 +273,7 @@ export function buildAgentSystemPrompt(params: {
     "sessions_send",
     "session_status",
     "image",
+    "knowledge_commit",
     "dream_and_perceive",
   ];
 

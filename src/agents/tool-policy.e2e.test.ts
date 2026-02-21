@@ -25,5 +25,13 @@ describe("tool-policy", () => {
     expect(group).toContain("browser");
     expect(group).toContain("message");
     expect(group).toContain("session_status");
+    expect(group).toContain("knowledge_commit");
+  });
+
+  it("includes knowledge_commit in group:memory", () => {
+    const group = TOOL_GROUPS["group:memory"];
+    expect(group).toContain("memory_search");
+    expect(group).toContain("memory_get");
+    expect(group).toContain("knowledge_commit");
   });
 });

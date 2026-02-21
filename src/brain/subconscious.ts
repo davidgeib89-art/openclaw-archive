@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { ZodError, z } from "zod";
 import type { OpenClawConfig } from "../config/config.js";
 import type {
+  BrainSubconsciousCuriositySignals,
   BrainHomeostasisTelemetry,
   BrainObserverOptions,
   BrainSubconsciousBrief,
@@ -19,7 +20,7 @@ import { getDefaultBrainObserverDir } from "./decision.js";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 30_000;
-const DEFAULT_SUBCONSCIOUS_MODEL_REF = "minimax/MiniMax-M2.5-Lightning";
+const DEFAULT_SUBCONSCIOUS_MODEL_REF = "openrouter/anthropic/claude-3.5-sonnet";
 const DEFAULT_SUBCONSCIOUS_TEMPERATURE = 0.3;
 const MIN_SUBCONSCIOUS_TEMPERATURE = 0;
 const MAX_SUBCONSCIOUS_TEMPERATURE = 2;
@@ -49,6 +50,8 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
   .strict();
 
 const SILENT_OBSERVER_FALLBACK_TEXT = "Third Eye silent (unclear signal)";
+const SEARCH_LIMIT_CONSTRAINT_TEXT =
+  "You have reached your search limit. Reflect on what you found or return NO_OP/DRIFT.";
 const CREATIVE_EGO_FALLBACK_TEXT =
   "Speak in first person, choose one clear path, name one uncertainty, and keep safety boundaries explicit.";
 const CREATIVE_EGO_FALLBACK_NOTES =
@@ -79,6 +82,14 @@ function buildTelemetrySignature(telemetry: BrainHomeostasisTelemetry): string {
     `latency_ms=${telemetry.current_latency_ms}`,
     `context_window_usage_percent=${telemetry.context_window_usage_percent}`,
     `recent_tool_error_count=${telemetry.recent_tool_error_count}`,
+    `recent_search_count=${telemetry.recent_search_count}`,
+  ].join(";");
+}
+
+function buildCuriositySignature(curiosity: BrainSubconsciousCuriositySignals): string {
+  return [
+    `recall_hits=${curiosity.recall_hits}`,
+    `intrinsic_learning_window_open=${curiosity.intrinsic_learning_window_open ? "yes" : "no"}`,
   ].join(";");
 }
 
@@ -86,11 +97,13 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
   const context = telemetry.context_window_usage_percent;
   const latency = telemetry.current_latency_ms;
   const errors = telemetry.recent_tool_error_count;
+  const searchCount = telemetry.recent_search_count;
+  const searchLimitReached = searchCount >= 3;
 
   let risk: "low" | "medium" | "high" = "low";
-  if (context >= 85 || errors >= 3 || latency >= 22_000) {
+  if (context >= 85 || errors >= 3 || latency >= 22_000 || searchCount >= 5) {
     risk = "high";
-  } else if (context >= 65 || errors >= 1 || latency >= 10_000) {
+  } else if (context >= 65 || errors >= 1 || latency >= 10_000 || searchLimitReached) {
     risk = "medium";
   }
 
@@ -99,8 +112,22 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
   const rhythm =
     latency >= 22_000 ? "heavy-latency" : latency >= 10_000 ? "slow-latency" : "stable-latency";
   const footing = errors >= 3 ? "repeated-tool-stumble" : errors >= 1 ? "light-tool-stumble" : "stable-tools";
-  const sensation = [pressure, rhythm, footing].join(",");
+  const epistemicPace = searchCount >= 3 ? "search-overheat" : "search-steady";
+  const sensation = [pressure, rhythm, footing, epistemicPace].join(",");
   const telemetrySignature = buildTelemetrySignature(telemetry);
+
+  if (searchLimitReached) {
+    return {
+      goal: SEARCH_LIMIT_CONSTRAINT_TEXT,
+      risk,
+      mustAskUser: false,
+      recommendedMode: "answer_direct",
+      notes: trimToLimit(
+        `homeostasis:${telemetrySignature};sensation=${sensation};guidance=epistemic-fasting`,
+        MAX_NOTES_CHARS,
+      ),
+    };
+  }
 
   if (risk === "high") {
     return {
@@ -152,12 +179,19 @@ function hasCreativeEgoSignal(userMessage: string): boolean {
 function buildFallbackBrief(
   userMessage: string,
   homeostasis?: BrainHomeostasisTelemetry,
+  curiosity?: BrainSubconsciousCuriositySignals,
 ): BrainSubconsciousBrief {
   const telemetry = normalizeHomeostasisTelemetry(homeostasis);
+  const curiositySignals = normalizeCuriositySignals(curiosity);
   if (hasCreativeEgoSignal(userMessage)) {
     const telemetrySignature = telemetry ? buildTelemetrySignature(telemetry) : null;
-    const notes = telemetrySignature
-      ? trimToLimit(`${CREATIVE_EGO_FALLBACK_NOTES} homeostasis:${telemetrySignature}`, MAX_NOTES_CHARS)
+    const curiositySignature = curiositySignals ? buildCuriositySignature(curiositySignals) : null;
+    const signatures = [telemetrySignature, curiositySignature].filter(Boolean).join(";");
+    const notes = signatures.length > 0
+      ? trimToLimit(
+          `${CREATIVE_EGO_FALLBACK_NOTES} signals:${signatures}`.trim(),
+          MAX_NOTES_CHARS,
+        )
       : CREATIVE_EGO_FALLBACK_NOTES;
     return {
       goal: CREATIVE_EGO_FALLBACK_TEXT,
@@ -257,6 +291,7 @@ export type BrainSubconsciousObserverRunInput = {
   agentId?: string;
   agentDir?: string;
   homeostasis?: BrainHomeostasisTelemetry;
+  curiosity?: BrainSubconsciousCuriositySignals;
   enabled?: boolean;
   modelRef?: string;
   timeoutMs?: number;
@@ -338,10 +373,27 @@ function normalizeHomeostasisTelemetry(
   const recentToolErrors = Number.isFinite(raw.recent_tool_error_count)
     ? Math.max(0, Math.round(raw.recent_tool_error_count))
     : 0;
+  const recentSearchCount = Number.isFinite(raw.recent_search_count)
+    ? Math.max(0, Math.round(raw.recent_search_count))
+    : 0;
   return {
     current_latency_ms: latencyMs,
     context_window_usage_percent: contextUsage,
     recent_tool_error_count: recentToolErrors,
+    recent_search_count: recentSearchCount,
+  };
+}
+
+function normalizeCuriositySignals(
+  raw: BrainSubconsciousCuriositySignals | undefined,
+): BrainSubconsciousCuriositySignals | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const recallHits = Number.isFinite(raw.recall_hits) ? Math.max(0, Math.round(raw.recall_hits)) : 0;
+  return {
+    recall_hits: recallHits,
+    intrinsic_learning_window_open: raw.intrinsic_learning_window_open === true,
   };
 }
 
@@ -464,7 +516,7 @@ export function extractSubconsciousTextFromModelMessage(
 
   for (const item of message.content) {
     if (!item || typeof item !== "object") continue;
-    const record = item as Record<string, unknown>;
+    const record = item as unknown as Record<string, unknown>;
     const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
 
     const text = typeof record.text === "string" ? record.text : undefined;
@@ -617,19 +669,41 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
 function buildSubconsciousPrompt(
   userMessage: string,
   homeostasis: BrainHomeostasisTelemetry | undefined,
+  curiosity: BrainSubconsciousCuriositySignals | undefined,
 ): string {
   const safeFallback =
     '{"goal":"Sicher und klar antworten","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":""}';
   const noSpecificObservationFallback = `{"goal":"${SILENT_OBSERVER_FALLBACK_TEXT}","risk":"low","mustAskUser":false,"recommendedMode":"answer_direct","notes":"${SILENT_OBSERVER_FALLBACK_TEXT}"}`;
   const telemetry = normalizeHomeostasisTelemetry(homeostasis);
+  const curiositySignals = normalizeCuriositySignals(curiosity);
   const homeostasisBlock = telemetry
     ? [
         "",
-        "Körperliche Empfindung (Homeostase):",
+        "Koerperliche Empfindung (Homeostase):",
         `current_latency_ms: ${telemetry.current_latency_ms}`,
         `context_window_usage_percent: ${telemetry.context_window_usage_percent}`,
         `recent_tool_error_count: ${telemetry.recent_tool_error_count}`,
-        "Dies ist dein aktueller System-Körperzustand. Interpretiere diese physischen Gegebenheiten frei in deine emotionale Resonanz.",
+        `recent_search_count: ${telemetry.recent_search_count}`,
+        "Dies ist dein aktueller System-Koerperzustand. Interpretiere diese physischen Gegebenheiten frei in deine emotionale Resonanz.",
+      ]
+    : [];
+  const antiGuardrailsBlock = [
+    "",
+    "Epistemische Guardrails (Anti):",
+    "Tiefe Philosophie, Trauer und Condition Humaine sind erlaubte Lernraeume.",
+    "Blockiere radikalisierendes Doomscrolling, toxischen Laerm, Ragebait und eskalierende Hassspiralen.",
+    "Wenn Philosophie/Wissenschaft unklar bleibt, bevorzuge kuratierte Quellen (site:wikipedia.org OR site:plato.stanford.edu).",
+    `Wenn recent_search_count >= 3, setze strikt den Constraint: "${SEARCH_LIMIT_CONSTRAINT_TEXT}"`,
+  ];
+  const curiosityBlock = curiositySignals
+    ? [
+        "",
+        "Neugier-Signale (Lernimpuls):",
+        `recall_hits: ${curiositySignals.recall_hits}`,
+        `intrinsic_learning_window_open: ${curiositySignals.intrinsic_learning_window_open ? "true" : "false"}`,
+        "LEARN ist legitim, wenn eine offene Frage ungeloest bleibt (z.B. recall_hits=0).",
+        "LEARN ist auch legitim aus DRIFT heraus, wenn intrinsic_learning_window_open=true.",
+        "Kein Speicherzwang: Speichere Wissen nur, wenn es neu oder wertvoll fuer dein Weltbild ist. Rauschen darf verworfen werden.",
       ]
     : [];
   return [
@@ -653,6 +727,8 @@ function buildSubconsciousPrompt(
     safeFallback,
     'Wenn unsicher, nutze defaults und liefere trotzdem JSON. "notes" darf leer sein. "goal" immer als String.',
     ...homeostasisBlock,
+    ...antiGuardrailsBlock,
+    ...curiosityBlock,
     "",
     "Benutzeranfrage:",
     userMessage.trim(),
@@ -777,6 +853,10 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
     /(?:^|\/)arcee-ai\/trinity-mini(?::|$)/i.test(input.model.id);
   const isMiniMax =
     input.model.provider === "minimax" || /(?:^|\/)minimax\b/i.test(input.model.id);
+  const isClaudeModel =
+    (input.model.provider === "openrouter" &&
+      /(?:^|\/)anthropic\/claude(?:-|\b)/i.test(input.model.id)) ||
+    (input.model.provider === "anthropic" && /^claude(?:-|\b)/i.test(input.model.id));
   const callOptions: {
     signal: AbortSignal;
     apiKey?: string;
@@ -789,7 +869,7 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
     maxTokens: 320,
     temperature: input.temperature,
   };
-  if (!isTrinityMini && !isMiniMax) {
+  if (!isTrinityMini && !isMiniMax && !isClaudeModel) {
     callOptions.reasoning = "low";
   }
 
@@ -893,7 +973,11 @@ export async function runBrainSubconsciousObserver(
 
   const invoker = input.modelInvoker ?? defaultModelInvoker;
   try {
-    const subconsciousPrompt = buildSubconsciousPrompt(input.userMessage, input.homeostasis);
+    const subconsciousPrompt = buildSubconsciousPrompt(
+      input.userMessage,
+      input.homeostasis,
+      input.curiosity,
+    );
     const apiKey = resolveSubconsciousApiKey(input.cfg, resolved.model.provider);
     const raw = await runWithTimeout(runtime.timeoutMs, (signal) =>
       invoker({
@@ -907,7 +991,7 @@ export async function runBrainSubconsciousObserver(
     );
     if (raw.trim().length === 0) {
       const durationMs = Date.now() - startedAt;
-      const brief = buildFallbackBrief(input.userMessage, input.homeostasis);
+      const brief = buildFallbackBrief(input.userMessage, input.homeostasis, input.curiosity);
       logger(
         "OK_FALLBACK",
         [
@@ -937,7 +1021,11 @@ export async function runBrainSubconsciousObserver(
         throw err;
       }
       const durationMs = Date.now() - startedAt;
-      const fallbackBrief = buildFallbackBrief(input.userMessage, input.homeostasis);
+      const fallbackBrief = buildFallbackBrief(
+        input.userMessage,
+        input.homeostasis,
+        input.curiosity,
+      );
       logger(
         "OK_FALLBACK",
         [
@@ -1047,3 +1135,4 @@ export function logBrainSubconsciousObserver(
   const entry = createBrainSubconsciousObserverEntry(input, result, options);
   return appendBrainSubconsciousObserverEntry(entry, options.baseDir);
 }
+

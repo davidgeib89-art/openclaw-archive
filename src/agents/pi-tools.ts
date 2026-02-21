@@ -462,6 +462,7 @@ export function createOpenClawCodingTools(options?: {
           agentId,
           sessionKey: options?.sessionKey,
           sessionId: options?.sessionId,
+          isHeartbeatRun: options?.isHeartbeatRun,
         })
       : tool.name === "memory_search"
         ? wrapMemorySearchWithTurnGuard(tool, {

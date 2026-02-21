@@ -173,6 +173,9 @@ export async function handleToolExecutionEnd(
   const sanitizedResult = sanitizeToolResult(result);
   const meta = ctx.state.toolMetaById.get(toolCallId);
   ctx.state.toolExecutionCounts.total += 1;
+  if (toolName === "web_search") {
+    ctx.state.toolExecutionCounts.webSearch += 1;
+  }
   if (isToolError) {
     ctx.state.toolExecutionCounts.failed += 1;
   } else {

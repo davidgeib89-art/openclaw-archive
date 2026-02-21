@@ -2482,6 +2482,8 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "7. If a DRIFT action fails, switch to another lightweight DRIFT action or silent presence without escalating the failure.",
     "8. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",
     "9. If an action path is chosen, you have room for multiple flowing actions in this heartbeat. Read, reflect, and act in one uninterrupted flow until the thought feels complete. You do not need to stop after the first tool call.",
+    "10. LEARN may use web_search/web_fetch/browser when a question is unresolved or curiosity emerges during DRIFT with free capacity.",
+    "11. Knowledge persistence is optional: use knowledge_commit only for insights that are genuinely new or identity-shaping; discard noise without penalty.",
     `Allowed tools this turn: ${allowedTools}.`,
     "Do not output HEARTBEAT_OK unless all five candidate paths are blocked by safety constraints, or DRIFT intentionally resolves as silence.",
     "</brain_autonomy_choice>",

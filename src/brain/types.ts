@@ -49,6 +49,12 @@ export type BrainHomeostasisTelemetry = {
   current_latency_ms: number;
   context_window_usage_percent: number;
   recent_tool_error_count: number;
+  recent_search_count: number;
+};
+
+export type BrainSubconsciousCuriositySignals = {
+  recall_hits: number;
+  intrinsic_learning_window_open: boolean;
 };
 
 export type BrainSubconsciousStatus = "ok" | "fail_open" | "skipped";
@@ -71,6 +77,7 @@ export type BrainSubconsciousInput = {
   modelRef?: string;
   timeoutMs: number;
   homeostasis?: BrainHomeostasisTelemetry;
+  curiosity?: BrainSubconsciousCuriositySignals;
 };
 
 export type BrainObserverEntry = {

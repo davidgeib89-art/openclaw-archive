@@ -199,6 +199,7 @@ describe("brain episodic memory write path", () => {
         current_latency_ms: 512,
         context_window_usage_percent: 58,
         recent_tool_error_count: 1,
+        recent_search_count: 0,
       },
       now: () => new Date("2026-02-17T08:00:00.000Z"),
     });
@@ -270,6 +271,7 @@ describe("brain episodic memory write path", () => {
       current_latency_ms: 512,
       context_window_usage_percent: 58,
       recent_tool_error_count: 1,
+      recent_search_count: 0,
     });
 
     const preferenceRelation = db

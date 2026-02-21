@@ -11,7 +11,11 @@ import {
   extractThinkingCached,
   formatReasoningMarkdown,
 } from "./message-extract.ts";
-import { isToolResultMessage, normalizeRoleForGrouping } from "./message-normalizer.ts";
+import {
+  coerceMessageTimestamp,
+  isToolResultMessage,
+  normalizeRoleForGrouping,
+} from "./message-normalizer.ts";
 import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
 import { renderTtsButton, requestAutoTts, renderInlineAudioPlayer } from "./voice-ui.ts";
 
@@ -333,8 +337,9 @@ function renderGroupedMessage(
   const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
   const canOpenTrace = role === "assistant" && Boolean(thoughtTrace) && Boolean(onOpenSidebar);
   // Build a stable key for TTS state tracking
-  const ttsKey = `tts:${typeof m.timestamp === "number" ? m.timestamp : "no-ts"}:${(markdown ?? "").length}`;
-  const msgTimestamp = typeof m.timestamp === "number" ? m.timestamp : 0;
+  const resolvedTimestamp = coerceMessageTimestamp(m.timestamp);
+  const ttsKey = `tts:${resolvedTimestamp ?? "no-ts"}:${(markdown ?? "").length}`;
+  const msgTimestamp = resolvedTimestamp ?? 0;
 
   // Trigger auto-TTS for new assistant messages (idempotent)
   if (canPlayTts && markdown) {

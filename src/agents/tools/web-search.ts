@@ -35,6 +35,14 @@ const DEFAULT_GROK_MODEL = "grok-4-1-fast";
 const SEARCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
 const BRAVE_FRESHNESS_SHORTCUTS = new Set(["pd", "pw", "pm", "py"]);
 const BRAVE_FRESHNESS_RANGE = /^(\d{4}-\d{2}-\d{2})to(\d{4}-\d{2}-\d{2})$/;
+const CURATED_REALITY_FILTER = "(site:wikipedia.org OR site:plato.stanford.edu)";
+const CURATED_REALITY_SOURCE_RE = /\bsite:(?:wikipedia\.org|plato\.stanford\.edu)\b/i;
+const CURATED_REALITY_TOPIC_PATTERNS = [
+  /\b(philosophy|philosophical|metaphysics|ontology|epistemology|ethics|existential|condition humaine|grief|mourning|stoicism)\b/i,
+  /\b(philosophie|metaphysik|ontologie|epistemologie|ethik|existenzial|kondition humaine|trauer)\b/i,
+  /\b(science|scientific|physics|biology|neuroscience|cosmology|mathematics|research paper|peer[-\s]?review)\b/i,
+  /\b(wissenschaft|physik|biologie|neurowissenschaft|kosmologie|mathematik|forschungsarbeit)\b/i,
+];
 
 const WebSearchSchema = Type.Object({
   query: Type.String({ description: "Search query string." }),
@@ -403,6 +411,27 @@ function normalizeFreshness(value: string | undefined): string | undefined {
   return `${start}to${end}`;
 }
 
+function shouldApplyCuratedRealityFilter(query: string): boolean {
+  if (!query.trim()) {
+    return false;
+  }
+  if (CURATED_REALITY_SOURCE_RE.test(query)) {
+    return false;
+  }
+  return CURATED_REALITY_TOPIC_PATTERNS.some((pattern) => pattern.test(query));
+}
+
+function applyCuratedRealityFilter(query: string): { effectiveQuery: string; applied: boolean } {
+  const trimmed = query.trim();
+  if (!shouldApplyCuratedRealityFilter(trimmed)) {
+    return { effectiveQuery: trimmed, applied: false };
+  }
+  return {
+    effectiveQuery: `${trimmed} ${CURATED_REALITY_FILTER}`.trim(),
+    applied: true,
+  };
+}
+
 /**
  * Map normalized freshness values (pd/pw/pm/py) to Perplexity's
  * search_recency_filter values (day/week/month/year).
@@ -742,6 +771,7 @@ export function createWebSearchTool(options?: {
       }
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
+      const curated = applyCuratedRealityFilter(query);
       const count =
         readNumberParam(params, "count", { integer: true }) ?? search?.maxResults ?? undefined;
       const country = readStringParam(params, "country");
@@ -765,7 +795,7 @@ export function createWebSearchTool(options?: {
         });
       }
       const result = await runWebSearch({
-        query,
+        query: curated.effectiveQuery,
         count: resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         apiKey,
         timeoutSeconds: resolveTimeoutSeconds(search?.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS),
@@ -784,7 +814,14 @@ export function createWebSearchTool(options?: {
         grokModel: resolveGrokModel(grokConfig),
         grokInlineCitations: resolveGrokInlineCitations(grokConfig),
       });
-      return jsonResult(result);
+      const withCuratedMeta = curated.applied
+        ? {
+            ...result,
+            original_query: query,
+            curated_filter_applied: true,
+          }
+        : result;
+      return jsonResult(withCuratedMeta);
     },
   };
 }
@@ -796,6 +833,8 @@ export const __testing = {
   resolvePerplexityRequestModel,
   normalizeFreshness,
   freshnessToPerplexityRecency,
+  applyCuratedRealityFilter,
+  shouldApplyCuratedRealityFilter,
   resolveGrokApiKey,
   resolveGrokModel,
   resolveGrokInlineCitations,

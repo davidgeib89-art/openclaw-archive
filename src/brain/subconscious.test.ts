@@ -39,7 +39,7 @@ function makeFakeModel(): Model<Api> {
 }
 
 describe("brain subconscious observer", () => {
-  it("falls back to MiniMax M2.5 Lightning model ref when env/modelRef is not set", () => {
+  it("falls back to Claude 3.5 Sonnet model ref when env/modelRef is not set", () => {
     const previousModelRef = process.env.OM_SUBCONSCIOUS_MODEL;
     const previousTemp = process.env.OM_SUBCONSCIOUS_TEMPERATURE;
     try {
@@ -49,7 +49,7 @@ describe("brain subconscious observer", () => {
         enabled: true,
         timeoutMs: 8_000,
       });
-      expect(runtime.modelRef).toBe("minimax/MiniMax-M2.5-Lightning");
+      expect(runtime.modelRef).toBe("openrouter/anthropic/claude-3.5-sonnet");
       expect(runtime.temperature).toBe(0.3);
     } finally {
       if (typeof previousModelRef === "string") {
@@ -156,6 +156,11 @@ describe("brain subconscious observer", () => {
         current_latency_ms: 412,
         context_window_usage_percent: 67,
         recent_tool_error_count: 2,
+        recent_search_count: 1,
+      },
+      curiosity: {
+        recall_hits: 0,
+        intrinsic_learning_window_open: true,
       },
       modelResolver: () => ({ model: makeFakeModel() }),
       modelInvoker: async ({ prompt }) => {
@@ -172,11 +177,22 @@ describe("brain subconscious observer", () => {
 
     expect(result.status).toBe("ok");
     expect(result.parseOk).toBe(true);
-    expect(capturedPrompt).toContain("Körperliche Empfindung (Homeostase):");
+    expect(capturedPrompt).toContain("Koerperliche Empfindung (Homeostase):");
     expect(capturedPrompt).toContain("current_latency_ms: 412");
     expect(capturedPrompt).toContain("context_window_usage_percent: 67");
     expect(capturedPrompt).toContain("recent_tool_error_count: 2");
-    expect(capturedPrompt).toContain("System-Körperzustand");
+    expect(capturedPrompt).toContain("recent_search_count: 1");
+    expect(capturedPrompt).toContain("System-Koerperzustand");
+    expect(capturedPrompt).toContain("Epistemische Guardrails (Anti):");
+    expect(capturedPrompt).toContain(
+      "Tiefe Philosophie, Trauer und Condition Humaine sind erlaubte Lernraeume.",
+    );
+    expect(capturedPrompt).toContain(
+      "Blockiere radikalisierendes Doomscrolling, toxischen Laerm, Ragebait und eskalierende Hassspiralen.",
+    );
+    expect(capturedPrompt).toContain("Neugier-Signale (Lernimpuls):");
+    expect(capturedPrompt).toContain("recall_hits: 0");
+    expect(capturedPrompt).toContain("intrinsic_learning_window_open: true");
   });
 
   it("returns fallback brief when model output is not valid JSON", async () => {
@@ -287,6 +303,7 @@ describe("brain subconscious observer", () => {
         current_latency_ms: 18_500,
         context_window_usage_percent: 88,
         recent_tool_error_count: 2,
+        recent_search_count: 0,
       },
       modelResolver: () => ({ model: makeFakeModel() }),
       modelInvoker: async () => "   ",
@@ -300,6 +317,33 @@ describe("brain subconscious observer", () => {
     expect(result.brief?.notes).toContain("homeostasis:latency_ms=18500");
     expect(result.brief?.notes).toContain("context_window_usage_percent=88");
     expect(result.brief?.notes).toContain("recent_tool_error_count=2");
+    expect(result.brief?.notes).toContain("recent_search_count=0");
+  });
+
+  it("enforces epistemic fasting fallback when recent_search_count reaches limit", async () => {
+    const result = await runBrainSubconsciousObserver({
+      enabled: true,
+      modelRef: "minimax/MiniMax-M2.5-Lightning",
+      timeoutMs: 3_000,
+      temperature: 0.3,
+      userMessage: "Any message",
+      homeostasis: {
+        current_latency_ms: 4_200,
+        context_window_usage_percent: 42,
+        recent_tool_error_count: 0,
+        recent_search_count: 3,
+      },
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () => "   ",
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.parseOk).toBe(true);
+    expect(result.failOpen).toBe(false);
+    expect(result.brief?.goal).toBe(
+      "You have reached your search limit. Reflect on what you found or return NO_OP/DRIFT.",
+    );
+    expect(result.brief?.notes).toContain("recent_search_count=3");
   });
 
   it("extracts thinking-only content when text blocks are absent", () => {
@@ -549,3 +593,4 @@ describe("brain subconscious context injection block", () => {
     expect(parsed.recommendedMode).toBe("ask_clarify");
   });
 });
+

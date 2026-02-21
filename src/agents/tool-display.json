@@ -282,9 +282,14 @@
       "detailKeys": ["query"]
     },
     "memory_get": {
-      "emoji": "📓",
+      "emoji": "M",
       "title": "Memory Get",
       "detailKeys": ["path", "from", "lines"]
+    },
+    "knowledge_commit": {
+      "emoji": "K",
+      "title": "Knowledge Commit",
+      "detailKeys": ["source", "confidence", "tags"]
     },
     "web_search": {
       "emoji": "🔎",
@@ -311,3 +316,4 @@
     }
   }
 }
+

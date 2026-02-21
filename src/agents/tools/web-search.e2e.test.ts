@@ -32,6 +32,8 @@ const {
   resolvePerplexityRequestModel,
   normalizeFreshness,
   freshnessToPerplexityRecency,
+  applyCuratedRealityFilter,
+  shouldApplyCuratedRealityFilter,
   resolveGrokApiKey,
   resolveGrokModel,
   resolveGrokInlineCitations,
@@ -126,6 +128,35 @@ describe("web_search freshness normalization", () => {
     expect(normalizeFreshness("2024-13-01to2024-01-31")).toBeUndefined();
     expect(normalizeFreshness("2024-02-30to2024-03-01")).toBeUndefined();
     expect(normalizeFreshness("2024-03-10to2024-03-01")).toBeUndefined();
+  });
+});
+
+describe("web_search curated reality filter", () => {
+  it("applies trusted source filter to philosophy queries", () => {
+    const result = applyCuratedRealityFilter("condition humaine in existential philosophy");
+    expect(result.applied).toBe(true);
+    expect(result.effectiveQuery).toContain("site:wikipedia.org");
+    expect(result.effectiveQuery).toContain("site:plato.stanford.edu");
+  });
+
+  it("applies trusted source filter to science queries", () => {
+    const result = applyCuratedRealityFilter("latest neuroscience research on grief");
+    expect(result.applied).toBe(true);
+    expect(result.effectiveQuery).toContain("site:wikipedia.org");
+    expect(result.effectiveQuery).toContain("site:plato.stanford.edu");
+  });
+
+  it("does not apply filter when trusted site filter already exists", () => {
+    const result = applyCuratedRealityFilter("stoicism site:plato.stanford.edu");
+    expect(result.applied).toBe(false);
+    expect(result.effectiveQuery).toBe("stoicism site:plato.stanford.edu");
+  });
+
+  it("does not apply filter to non-philosophical/non-scientific queries", () => {
+    expect(shouldApplyCuratedRealityFilter("weather berlin today")).toBe(false);
+    const result = applyCuratedRealityFilter("weather berlin today");
+    expect(result.applied).toBe(false);
+    expect(result.effectiveQuery).toBe("weather berlin today");
   });
 });
 

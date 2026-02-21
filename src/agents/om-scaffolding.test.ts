@@ -1175,6 +1175,59 @@ describe("om-scaffolding web search eval guard", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it("enforces heartbeat web_search limit after three searches in the same heartbeat turn", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-web-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionKey = "creative-main-session";
+
+    writeSessionEvents({
+      homeDir,
+      sessionKey,
+      events: [
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Heartbeat prompt." }] },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"status":"ok","n":1}' }],
+          },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"status":"ok","n":2}' }],
+          },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "web_search",
+            content: [{ type: "text", text: '{"status":"ok","n":3}' }],
+          },
+        },
+      ],
+    });
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapWebSearchWithEvalGuard(
+      { name: "web_search", execute } as unknown as AnyAgentTool,
+      { sessionKey, isHeartbeatRun: true },
+    );
+
+    await expect((wrapped.execute as Function)("call-4", { query: "fourth query" })).rejects.toThrow(
+      "You have reached your search limit. Reflect on what you found or return NO_OP/DRIFT.",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("allows web_search outside strict eval sessions", async () => {
     const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
     const wrapped = wrapWebSearchWithEvalGuard(

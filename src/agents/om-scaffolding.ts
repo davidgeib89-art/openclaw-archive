@@ -43,7 +43,17 @@ function getIsoTimestamp(): string {
   return new Date().toISOString();
 }
 
-function rotateLogIfNeeded(filePath: string, maxSizeBytes: number, rotatedFilePath: string): void {
+function buildTimestampedRotationPath(filePath: string): string {
+  const parsed = path.parse(filePath);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 23);
+  const baseNameWithoutDotExt = parsed.ext
+    ? parsed.base.slice(0, -parsed.ext.length)
+    : parsed.base;
+  const rotatedBase = `${baseNameWithoutDotExt}.prev.${timestamp}${parsed.ext}`;
+  return path.join(parsed.dir, rotatedBase);
+}
+
+function rotateLogIfNeeded(filePath: string, maxSizeBytes: number): void {
   if (!fs.existsSync(filePath)) {
     return;
   }
@@ -51,9 +61,7 @@ function rotateLogIfNeeded(filePath: string, maxSizeBytes: number, rotatedFilePa
   if (stat.size <= maxSizeBytes) {
     return;
   }
-  if (fs.existsSync(rotatedFilePath)) {
-    fs.unlinkSync(rotatedFilePath);
-  }
+  const rotatedFilePath = buildTimestampedRotationPath(filePath);
   fs.renameSync(filePath, rotatedFilePath);
 }
 
@@ -79,11 +87,7 @@ function formatReadableLogEntry(layer: string, event: string, details: string | 
 
 function appendThoughtStreamEntry(layer: string, event: string, details: string | null): void {
   fs.mkdirSync(OM_THOUGHT_STREAM_DIR, { recursive: true });
-  rotateLogIfNeeded(
-    OM_THOUGHT_STREAM_FILE,
-    MAX_THOUGHT_STREAM_SIZE,
-    OM_THOUGHT_STREAM_FILE.replace(".jsonl", ".prev.jsonl"),
-  );
+  rotateLogIfNeeded(OM_THOUGHT_STREAM_FILE, MAX_THOUGHT_STREAM_SIZE);
   const entry = {
     ts: getIsoTimestamp(),
     layer,
@@ -129,7 +133,7 @@ export function omThought(entry: OmThoughtStreamEntry): void {
 export function omLog(layer: string, event: string, details?: string): void {
   try {
     fs.mkdirSync(OM_LOG_DIR, { recursive: true });
-    rotateLogIfNeeded(OM_LOG_FILE, MAX_LOG_SIZE, OM_LOG_FILE.replace(".log", ".prev.log"));
+    rotateLogIfNeeded(OM_LOG_FILE, MAX_LOG_SIZE);
 
     const normalizedDetails = normalizeLogDetails(details);
     const line = formatReadableLogEntry(layer, event, normalizedDetails);
@@ -287,6 +291,9 @@ const LOOP_COOLDOWN_MS = 90_000;
 const READ_LOOP_DETECT_THRESHOLD = 6;
 const READ_LOOP_REPEAT_THRESHOLD = 12;
 const READ_LOOP_COOLDOWN_MS = 120_000;
+const HEARTBEAT_WEB_SEARCH_LIMIT = 3;
+const HEARTBEAT_WEB_SEARCH_LIMIT_CONSTRAINT =
+  "You have reached your search limit. Reflect on what you found or return NO_OP/DRIFT.";
 
 type WriteZone = "green" | "yellow" | "red";
 type AutonomousMutationBudget = {
@@ -1154,11 +1161,15 @@ function toGuardPhysicsMessage(rawMessage: string): string {
   if (
     message.includes("AUTONOMY_HEARTBEAT_MUTATION_LIMIT_REACHED") ||
     message.includes("EVAL_WEB_SEARCH_LIMIT_REACHED") ||
+    message.includes("HEARTBEAT_WEB_SEARCH_LIMIT_REACHED") ||
     message.includes("MEMORY_SEARCH_TURN_QUERY_LIMIT_REACHED") ||
     lower.includes("loop cooldown active") ||
     lower.includes("loop detected") ||
     lower.includes("repeat loop detected")
   ) {
+    if (message.includes("HEARTBEAT_WEB_SEARCH_LIMIT_REACHED")) {
+      return HEARTBEAT_WEB_SEARCH_LIMIT_CONSTRAINT;
+    }
     return (
       "Die Energiebahnen sind hier gerade zu dicht. " +
       "Der Raum bittet dich, einen Moment zu atmen und es spaeter noch einmal zu versuchen."
@@ -2092,12 +2103,25 @@ export function wrapWebSearchWithEvalGuard(
         });
       }
 
-      if (isStrictEvalSession(context?.sessionKey)) {
-        const searchesInCurrentTurn = countWebSearchCallsInLatestUserTurn({
-          agentId: context?.agentId,
-          sessionKey: context?.sessionKey,
-          sessionId: context?.sessionId,
+      const searchesInCurrentTurn = countWebSearchCallsInLatestUserTurn({
+        agentId: context?.agentId,
+        sessionKey: context?.sessionKey,
+        sessionId: context?.sessionId,
+      });
+      if (context?.isHeartbeatRun && searchesInCurrentTurn >= HEARTBEAT_WEB_SEARCH_LIMIT) {
+        logBlockedAction({
+          toolName: "web_search",
+          guardian: "EPISTEMIC-FASTING",
+          reason: "LOOP",
+          target: query || "(no query)",
+          detail: `heartbeat web_search limit reached in session ${context?.sessionKey}`,
         });
+        throwToolBlocked(
+          `HEARTBEAT_WEB_SEARCH_LIMIT_REACHED: ${HEARTBEAT_WEB_SEARCH_LIMIT_CONSTRAINT}`,
+        );
+      }
+
+      if (isStrictEvalSession(context?.sessionKey)) {
         if (searchesInCurrentTurn >= 1) {
           logBlockedAction({
             toolName: "web_search",

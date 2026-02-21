@@ -182,6 +182,7 @@ function normalizeSnapshotTelemetry(
       current_latency_ms: 0,
       context_window_usage_percent: 0,
       recent_tool_error_count: 0,
+      recent_search_count: 0,
     };
   }
   return {
@@ -191,6 +192,7 @@ function normalizeSnapshotTelemetry(
       Math.max(0, Math.round(telemetry.context_window_usage_percent)),
     ),
     recent_tool_error_count: Math.max(0, Math.round(telemetry.recent_tool_error_count)),
+    recent_search_count: Math.max(0, Math.round(telemetry.recent_search_count)),
   };
 }
 
@@ -624,7 +626,8 @@ function buildMemoryIndexLine(params: {
     `snapshot_telemetry=` +
     `{latency_ms:${telemetry.current_latency_ms},` +
     `context_window_usage_percent:${telemetry.context_window_usage_percent},` +
-    `recent_tool_error_count:${telemetry.recent_tool_error_count}}`;
+    `recent_tool_error_count:${telemetry.recent_tool_error_count},` +
+    `recent_search_count:${telemetry.recent_search_count}}`;
   const userCue = truncateText(params.entry.user, 140);
   const assistantCue = truncateText(params.entry.assistant, 180);
   return (
@@ -682,6 +685,7 @@ function buildStructuredEntry(params: {
       snapshotTelemetry.current_latency_ms.toString(),
       snapshotTelemetry.context_window_usage_percent.toString(),
       snapshotTelemetry.recent_tool_error_count.toString(),
+      snapshotTelemetry.recent_search_count.toString(),
       user,
       assistant,
     ].join("|"),
@@ -717,7 +721,7 @@ function ensureEpisodicSnapshotTelemetryColumn(db: DatabaseSync): void {
     db.exec(
       `ALTER TABLE episodic_entries
          ADD COLUMN snapshot_telemetry TEXT NOT NULL
-         DEFAULT '{"current_latency_ms":0,"context_window_usage_percent":0,"recent_tool_error_count":0}'`,
+         DEFAULT '{"current_latency_ms":0,"context_window_usage_percent":0,"recent_tool_error_count":0,"recent_search_count":0}'`,
     );
   } catch {
     // Fail-open: schema migration must not block runtime.

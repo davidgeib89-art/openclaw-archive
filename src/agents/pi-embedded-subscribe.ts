@@ -40,6 +40,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       total: 0,
       successful: 0,
       failed: 0,
+      webSearch: 0,
     },
     toolMetaById: new Map(),
     toolSummaryById: new Set(),
@@ -576,6 +577,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     toolExecutionCounts.total = 0;
     toolExecutionCounts.successful = 0;
     toolExecutionCounts.failed = 0;
+    toolExecutionCounts.webSearch = 0;
     toolMetaById.clear();
     toolSummaryById.clear();
     state.lastToolError = undefined;

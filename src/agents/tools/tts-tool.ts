@@ -21,7 +21,7 @@ export function createTtsTool(opts?: {
     label: "TTS",
     name: "tts",
     description:
-      "Convert text to speech and return a MEDIA: path. Use when the user requests audio or TTS is enabled. Copy the MEDIA line exactly.",
+      "Convert text to speech and return a MEDIA: path. Use only when the user explicitly asks for audio/voice output. Do not call this for normal replies that already have automatic TTS handling.",
     parameters: TtsToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

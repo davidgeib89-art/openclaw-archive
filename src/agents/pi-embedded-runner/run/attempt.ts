@@ -5,7 +5,10 @@ import { createAgentSession, SessionManager, SettingsManager } from "@mariozechn
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BrainHomeostasisTelemetry } from "../../../brain/types.js";
+import type {
+  BrainHomeostasisTelemetry,
+  BrainSubconsciousCuriositySignals,
+} from "../../../brain/types.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import {
@@ -272,6 +275,33 @@ function countRecentToolErrors(messages: AgentMessage[]): number {
   return count;
 }
 
+function countRecentWebSearches(messages: AgentMessage[]): number {
+  let count = 0;
+  const recent = messages.slice(-HOMEOSTASIS_RECENT_MESSAGES);
+  for (const message of recent) {
+    const role = typeof message.role === "string" ? message.role.toLowerCase() : "";
+    if (role !== "toolresult" && role !== "tool_result" && role !== "tool") {
+      continue;
+    }
+    const record = message as { toolName?: unknown; tool_name?: unknown };
+    const toolNameRaw =
+      typeof record.toolName === "string"
+        ? record.toolName
+        : typeof record.tool_name === "string"
+          ? record.tool_name
+          : "";
+    const toolName = toolNameRaw.trim().toLowerCase();
+    const text = extractMessageTextForTelemetry(message).toLowerCase();
+    const looksLikeWebSearchTool = toolName === "web_search" || toolName === "websearch";
+    const looksLikeWebSearchText =
+      text.includes('"toolname":"web_search"') || text.includes("toolname=web_search");
+    if (looksLikeWebSearchTool || looksLikeWebSearchText) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function estimateContextWindowUsagePercent(params: {
   messages: AgentMessage[];
   promptText: string;
@@ -297,10 +327,13 @@ function buildHomeostasisTelemetry(params: {
   promptText: string;
   contextWindowTokens: number | undefined;
   recentToolErrorCountFloor?: number;
+  recentSearchCountFloor?: number;
 }): BrainHomeostasisTelemetry {
   const currentLatencyMs = Math.max(0, Math.round(Date.now() - params.startedAtMs));
   const recentToolErrors = countRecentToolErrors(params.messages);
+  const recentSearches = countRecentWebSearches(params.messages);
   const floorFromRuntime = Math.max(0, Math.round(params.recentToolErrorCountFloor ?? 0));
+  const searchFloorFromRuntime = Math.max(0, Math.round(params.recentSearchCountFloor ?? 0));
   return {
     current_latency_ms: currentLatencyMs,
     context_window_usage_percent: estimateContextWindowUsagePercent({
@@ -309,6 +342,27 @@ function buildHomeostasisTelemetry(params: {
       contextWindowTokens: params.contextWindowTokens,
     }),
     recent_tool_error_count: Math.max(recentToolErrors, floorFromRuntime),
+    recent_search_count: Math.max(recentSearches, searchFloorFromRuntime),
+  };
+}
+
+function buildSubconsciousCuriositySignals(params: {
+  recallHits: number;
+  homeostasis?: BrainHomeostasisTelemetry;
+  isHeartbeat: boolean;
+}): BrainSubconsciousCuriositySignals {
+  const safeRecallHits = Math.max(0, Math.round(params.recallHits));
+  const telemetry = params.homeostasis;
+  const intrinsicLearningWindowOpen =
+    params.isHeartbeat &&
+    !!telemetry &&
+    telemetry.context_window_usage_percent <= 60 &&
+    telemetry.recent_tool_error_count === 0 &&
+    telemetry.current_latency_ms <= 15_000;
+
+  return {
+    recall_hits: safeRecallHits,
+    intrinsic_learning_window_open: intrinsicLearningWindowOpen,
   };
 }
 
@@ -1415,7 +1469,7 @@ export async function runEmbeddedAttempt(
         getLastToolError,
         getUsageTotals,
         getCompactionCount,
-        getToolExecutionCounts = () => ({ total: 0, successful: 0, failed: 0 }),
+        getToolExecutionCounts = () => ({ total: 0, successful: 0, failed: 0, webSearch: 0 }),
       } = subscription;
 
       const queueHandle: EmbeddedPiQueueHandle = {
@@ -1733,6 +1787,11 @@ export async function runEmbeddedAttempt(
                   contextWindowTokens: params.model.contextWindow,
                 })
               : undefined;
+          const subconsciousCuriosity = buildSubconsciousCuriositySignals({
+            recallHits: sacredRecall.items.length,
+            homeostasis: subconsciousHomeostasis,
+            isHeartbeat: params.isHeartbeat === true,
+          });
           const subconsciousResult = await runBrainSubconsciousObserver({
             cfg: params.config,
             userMessage: params.prompt,
@@ -1740,6 +1799,7 @@ export async function runEmbeddedAttempt(
             agentId: sessionAgentId,
             agentDir,
             homeostasis: subconsciousHomeostasis,
+            curiosity: subconsciousCuriosity,
           });
           emitBrainReasoningEvent(params, {
             phase: "subconscious",
@@ -1770,6 +1830,7 @@ export async function runEmbeddedAttempt(
                 modelRef: subconsciousResult.modelRef,
                 timeoutMs: subconsciousResult.timeoutMs,
                 homeostasis: subconsciousHomeostasis,
+                curiosity: subconsciousCuriosity,
               },
               subconsciousResult,
               {
@@ -2024,6 +2085,7 @@ export async function runEmbeddedAttempt(
                   promptText: params.prompt,
                   contextWindowTokens: params.model.contextWindow,
                   recentToolErrorCountFloor: toolCounts.failed,
+                  recentSearchCountFloor: toolCounts.webSearch,
                 })
               : undefined;
           const episodicResult = await appendBrainEpisodicJournal({

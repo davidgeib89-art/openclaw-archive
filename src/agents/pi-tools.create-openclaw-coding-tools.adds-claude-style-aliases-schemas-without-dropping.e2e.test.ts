@@ -266,6 +266,7 @@ describe("createOpenClawCodingTools", () => {
       "sessions_spawn",
       "session_status",
       "image",
+      "knowledge_commit",
       "dream_and_perceive",
     ]);
     const offenders: Array<{

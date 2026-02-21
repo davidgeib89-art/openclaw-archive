@@ -4,6 +4,28 @@
 
 import type { NormalizedMessage, MessageContentItem } from "../types/chat-types.ts";
 
+export function coerceMessageTimestamp(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const asNumber = Number(trimmed);
+  if (Number.isFinite(asNumber)) {
+    return asNumber;
+  }
+
+  const asDate = Date.parse(trimmed);
+  return Number.isFinite(asDate) ? asDate : null;
+}
+
 /**
  * Normalize a raw message object into a consistent structure.
  */
@@ -47,7 +69,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
     content = [{ type: "text", text: m.text }];
   }
 
-  const timestamp = typeof m.timestamp === "number" ? m.timestamp : Date.now();
+  const timestamp = coerceMessageTimestamp(m.timestamp) ?? Date.now();
   const id = typeof m.id === "string" ? m.id : undefined;
 
   return { role, content, timestamp, id };

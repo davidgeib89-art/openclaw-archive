@@ -29,6 +29,7 @@ export type EmbeddedPiSubscribeState = {
     total: number;
     successful: number;
     failed: number;
+    webSearch: number;
   };
   toolMetaById: Map<string, string | undefined>;
   toolSummaryById: Set<string>;
@@ -112,7 +113,7 @@ export type EmbeddedPiSubscribeContext = {
   incrementCompactionCount: () => void;
   getUsageTotals: () => NormalizedUsage | undefined;
   getCompactionCount: () => number;
-  getToolExecutionCounts: () => { total: number; successful: number; failed: number };
+  getToolExecutionCounts: () => { total: number; successful: number; failed: number; webSearch: number };
 };
 
 export type EmbeddedPiSubscribeEvent =
