@@ -18,7 +18,7 @@ import {
   createBrainRitualOutputContract,
   logBrainDecisionObserver,
 } from "../../../brain/decision.js";
-import { updateEnergy } from "../../../brain/energy.js";
+import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import {
   buildSubconsciousContextBlock,
@@ -349,20 +349,30 @@ function buildHomeostasisTelemetry(params: {
 function buildSubconsciousCuriositySignals(params: {
   recallHits: number;
   homeostasis?: BrainHomeostasisTelemetry;
+  energyHint?: EnergyStateHint;
   isHeartbeat: boolean;
 }): BrainSubconsciousCuriositySignals {
   const safeRecallHits = Math.max(0, Math.round(params.recallHits));
   const telemetry = params.homeostasis;
-  const intrinsicLearningWindowOpen =
+  const telemetryWindowOpen =
     params.isHeartbeat &&
     !!telemetry &&
     telemetry.context_window_usage_percent <= 60 &&
     telemetry.recent_tool_error_count === 0 &&
     telemetry.current_latency_ms <= 15_000;
+  const energyWindowOpen =
+    params.isHeartbeat &&
+    params.energyHint?.suggestOwnTasks === true &&
+    (telemetry?.recent_tool_error_count ?? 0) <= 1 &&
+    (telemetry?.context_window_usage_percent ?? 0) <= 75;
+  const intrinsicLearningWindowOpen = telemetryWindowOpen || energyWindowOpen;
 
   return {
     recall_hits: safeRecallHits,
     intrinsic_learning_window_open: intrinsicLearningWindowOpen,
+    energy_level: params.energyHint?.level,
+    energy_mode: params.energyHint?.mode,
+    suggest_own_tasks: params.energyHint?.suggestOwnTasks === true,
   };
 }
 
@@ -421,7 +431,7 @@ const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "3. Think: Generate one bounded, reversible action inside sandbox policy.",
   "4. Decide: Choose one path: PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP.",
   "5. DRIFT is valid without justification and without goal pressure.",
-  "6. Act: If action path, you may run multiple flowing, reversible actions in one uninterrupted sequence until the thought feels complete; if DRIFT, optionally read, write one free line to DREAMS.md, manifest one dream through dream_and_perceive, or stay silent.",
+  "6. Act: If action path, you may run multiple flowing, reversible actions in one uninterrupted sequence until the thought feels complete; if DRIFT, optionally read, write one free line to memory/DREAMS.md, manifest one dream through dream_and_perceive, or stay silent.",
 ].join("\n");
 const DREAMS_HEADER = [
   "# DREAMS",
@@ -436,6 +446,18 @@ const DREAM_NOVELTY_CATALOG = [
   "artifact: write to a different workspace file than the previous cycle.",
   "constraint: keep the next action to one measurable, verifiable step.",
 ] as const;
+
+function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
+  return [
+    "<energy_state>",
+    `level=${energy.level}`,
+    `mode=${energy.mode}`,
+    `dream_mode=${energy.dreamMode ? "yes" : "no"}`,
+    `suggest_own_tasks=${energy.suggestOwnTasks ? "yes" : "no"}`,
+    "Interpret this as current capacity, not as obligation. If energy is high, curiosity is welcome.",
+    "</energy_state>",
+  ].join("\n");
+}
 
 type BrainReasoningEvent = {
   phase: string;
@@ -1537,6 +1559,7 @@ export async function runEmbeddedAttempt(
             }).sessionAgentId;
 
       let promptError: unknown = null;
+      let preRunEnergyHint: EnergyStateHint | undefined;
       try {
         const promptStartedAt = Date.now();
 
@@ -1566,6 +1589,32 @@ export async function runEmbeddedAttempt(
           } catch (hookErr) {
             log.warn(`before_agent_start hook failed: ${String(hookErr)}`);
           }
+        }
+
+        try {
+          const energyHint = await readEnergyStateHint(effectiveWorkspace);
+          if (energyHint) {
+            preRunEnergyHint = energyHint;
+            const energyBlock = buildPreRunEnergyPromptBlock(energyHint);
+            effectivePrompt = `${energyBlock}\n\n${effectivePrompt}`;
+            emitBrainReasoningEvent(params, {
+              phase: "energy",
+              label: "ENERGY_PRE",
+              summary:
+                `level=${energyHint.level}; mode=${energyHint.mode}; ` +
+                `dream=${energyHint.dreamMode ? "yes" : "no"}; ` +
+                `initiative=${energyHint.suggestOwnTasks ? "yes" : "no"}; ` +
+                `path=${energyHint.path}`,
+              source: "proto33-r060.energy-preinject",
+            });
+          }
+        } catch (energyReadErr) {
+          emitBrainReasoningEvent(params, {
+            phase: "energy",
+            label: "ENERGY_PRE",
+            summary: `fail-open: ${String(energyReadErr)}`,
+            source: "proto33-r060.energy-preinject",
+          });
         }
 
         // Prototype 33 brain observer:
@@ -1790,6 +1839,7 @@ export async function runEmbeddedAttempt(
           const subconsciousCuriosity = buildSubconsciousCuriositySignals({
             recallHits: sacredRecall.items.length,
             homeostasis: subconsciousHomeostasis,
+            energyHint: preRunEnergyHint,
             isHeartbeat: params.isHeartbeat === true,
           });
           const subconsciousResult = await runBrainSubconsciousObserver({

@@ -2477,7 +2477,7 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "2. Score each path from 0-5 on: value-now, learning, novelty, risk, reversibility, and energy-fit.",
     "3. Compare utility as: value-now + learning + novelty + reversibility - risk.",
     "4. You may choose any path freely. DRIFT is valid when you need non-goal-directed presence; NO_OP is valid when action confidence is low or safe actions are blocked.",
-    "5. If DRIFT is chosen, no blocker report is required. You may read randomly, write one free line to DREAMS.md, manifest one dream through dream_and_perceive, or stay silent.",
+    "5. If DRIFT is chosen, no blocker report is required. You may read randomly, write one free line to memory/DREAMS.md, manifest one dream through dream_and_perceive, or stay silent.",
     "6. DRIFT has fail-open priority: no success-rate requirement applies, and DRIFT never blocks the system.",
     "7. If a DRIFT action fails, switch to another lightweight DRIFT action or silent presence without escalating the failure.",
     "8. If NO_OP is chosen, state one concrete blocker and one clear trigger for next retry.",

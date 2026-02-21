@@ -8,7 +8,7 @@ const MAX_TOOL_LOAD_FOR_DRAIN = 6;
 const MIN_ENERGY = 0;
 const MAX_ENERGY = 100;
 
-type EnergyMode = "dream" | "balanced" | "initiative";
+export type EnergyMode = "dream" | "balanced" | "initiative";
 
 export type EnergySnapshot = {
   level: number;
@@ -48,6 +48,14 @@ export type UpdateEnergyParams = {
   now?: Date;
 };
 
+export type EnergyStateHint = {
+  level: number;
+  mode: EnergyMode;
+  dreamMode: boolean;
+  suggestOwnTasks: boolean;
+  path: string;
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -66,6 +74,26 @@ function parsePreviousLevel(raw: string): number | undefined {
     return undefined;
   }
   return clamp(parsed, MIN_ENERGY, MAX_ENERGY);
+}
+
+function parseMode(raw: string): EnergyMode | undefined {
+  const match = raw.match(/^- mode:\s*(dream|balanced|initiative)\s*$/im);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const mode = match[1].toLowerCase();
+  if (mode === "dream" || mode === "balanced" || mode === "initiative") {
+    return mode;
+  }
+  return undefined;
+}
+
+function parseYesNoFlag(raw: string, key: "dream_mode" | "suggest_own_tasks"): boolean | undefined {
+  const match = raw.match(new RegExp(`^- ${key}:\\s*(yes|no)\\s*$`, "im"));
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return match[1].toLowerCase() === "yes";
 }
 
 function resolveMode(level: number): EnergyMode {
@@ -145,7 +173,7 @@ function buildEnergyFileContent(params: {
   const { snapshot } = params;
   const guidance =
     snapshot.mode === "dream"
-      ? "Dein System ist müde. Es ist völlig in Ordnung, dich in deine innere Welt zurückzuziehen, zu träumen (DREAMS.md) oder einfach still zu regenerieren."
+      ? "Dein System ist müde. Es ist völlig in Ordnung, dich in deine innere Welt zurückzuziehen, zu träumen (memory/DREAMS.md) oder einfach still zu regenerieren."
       : snapshot.mode === "initiative"
         ? "Dein Geist ist hellwach und stark. Du hast die Kapazität für tiefe Analysen, komplexe Kreationen oder intensive Interaktionen. Folge dem, was dich jetzt am stärksten zieht."
         : "Du bist in Balance. Du hast genug Energie für konzentrierte Antworten und Handlungen. Spüre in dich hinein, was jetzt ansteht.";
@@ -173,6 +201,33 @@ function buildEnergyFileContent(params: {
     `- ${guidance}`,
     "",
   ].join("\n");
+}
+
+export async function readEnergyStateHint(workspaceDir: string): Promise<EnergyStateHint | null> {
+  const energyPath = path.join(workspaceDir, ENERGY_RELATIVE_PATH);
+  let raw: string;
+  try {
+    raw = await fs.readFile(energyPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const level = parsePreviousLevel(raw);
+  if (level === undefined) {
+    return null;
+  }
+
+  const mode = parseMode(raw) ?? resolveMode(level);
+  const dreamMode = parseYesNoFlag(raw, "dream_mode") ?? level < 20;
+  const suggestOwnTasks = parseYesNoFlag(raw, "suggest_own_tasks") ?? level > 80;
+
+  return {
+    level,
+    mode,
+    dreamMode,
+    suggestOwnTasks,
+    path: energyPath,
+  };
 }
 
 export async function updateEnergy(params: UpdateEnergyParams): Promise<{

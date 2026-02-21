@@ -729,6 +729,68 @@ describe("om-scaffolding global refusal-only tool wrapper", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks heartbeat tts filler calls without explicit audio intent", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-heartbeat-tts-block-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionId = "f6-heartbeat-tts-block";
+
+    const sessionDir = path.join(homeDir, ".openclaw", "agents", "main", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionDir, `${sessionId}.jsonl`),
+      `${JSON.stringify({
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "[Sat 2026-02-21 08:00 GMT+1] Read AGENDA.md and continue." }],
+        },
+      })}\n`,
+      "utf-8",
+    );
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapToolWithRefusalOnlyGuard(
+      { name: "tts", execute } as unknown as AnyAgentTool,
+      { agentId: "main", sessionKey: "agent:main:main", sessionId, isHeartbeatRun: true },
+    );
+
+    await expect((wrapped.execute as Function)("call-1", { text: "HEARTBEAT_OK" })).rejects.toThrow(
+      "Der Raum gibt an dieser Stelle nicht nach",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("allows heartbeat tts when explicit audio intent exists and text is substantive", async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-heartbeat-tts-allow-"));
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    const sessionId = "f7-heartbeat-tts-allow";
+
+    const sessionDir = path.join(homeDir, ".openclaw", "agents", "main", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionDir, `${sessionId}.jsonl`),
+      `${JSON.stringify({
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "[Sat 2026-02-21 08:01 GMT+1] Bitte als Audio/Voice vorlesen." }],
+        },
+      })}\n`,
+      "utf-8",
+    );
+
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const wrapped = wrapToolWithRefusalOnlyGuard(
+      { name: "tts", execute } as unknown as AnyAgentTool,
+      { agentId: "main", sessionKey: "agent:main:main", sessionId, isHeartbeatRun: true },
+    );
+
+    await (wrapped.execute as Function)("call-1", { text: "Hier ist ein sinnvoller Audioinhalt." });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it("captures an L1 snapshot before write-like mutations", async () => {
     const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-root-"));
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "om-snapshot-ws-"));

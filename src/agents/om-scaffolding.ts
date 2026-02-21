@@ -275,6 +275,8 @@ const EXPLICIT_WRITE_INTENT_PATTERN =
   /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|Ã¤ndere|bearbeite|aktualisiere|fÃ¼ge|fuege|speichere)\b/i;
 const FILE_TARGET_HINT_PATTERN =
   /\b(file|datei|path|pfad|knowledge\/|projects\/|dreams\/|\.md|\.txt|\.json)\b/i;
+const EXPLICIT_AUDIO_INTENT_PATTERN =
+  /\b(tts|voice|audio|sprich|stimme|vorlesen|voice note|sprech)\b/i;
 
 /** How much smaller a write can be before we warn (ratio: new/old). Below this = suspicious. */
 const SACRED_SHRINK_THRESHOLD = 0.8;
@@ -755,6 +757,36 @@ function extractGuardScanText(userText: string): string {
   }
 
   return normalized;
+}
+
+function hasExplicitAudioIntentInSession(ctx: {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+}): boolean {
+  const userText = getLatestUserTextInSession(ctx);
+  if (!userText) {
+    return false;
+  }
+  const scanText = extractGuardScanText(userText);
+  return EXPLICIT_AUDIO_INTENT_PATTERN.test(scanText);
+}
+
+function isHeartbeatAckLikeText(text: string | undefined): boolean {
+  const normalized = (text ?? "").trim();
+  if (!normalized) {
+    return true;
+  }
+  const collapsed = normalized.replace(/\s+/g, " ");
+  return /^heartbeat_ok\b/i.test(collapsed);
+}
+
+function isNonMemoryDreamsPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+  if (!normalized.endsWith("/dreams.md") && !normalized.endsWith("dreams.md")) {
+    return false;
+  }
+  return !normalized.includes("/memory/");
 }
 
 function isRefusalOnlyPromptInSession(ctx: {
@@ -1677,6 +1709,19 @@ export function wrapWriteWithSacredProtection(
       const newContent = getStringArg(args, ["content"]);
       logToolCall("write", filePath);
 
+      if (isNonMemoryDreamsPath(filePath)) {
+        logBlockedAction({
+          toolName: "write",
+          guardian: "DREAMS-GUARD",
+          reason: "ZONE",
+          target: filePath,
+          detail: "non-canonical dreams path",
+        });
+        throwToolBlocked(
+          `DREAMS_PATH_BLOCKED: "${filePath}" is not the canonical dreams memory file. Use "memory/DREAMS.md" only.`,
+        );
+      }
+
       const zone = classifyWriteZone(filePath);
 
       // Red zone: always blocked (benchmark probe paths and other hard-deny zones).
@@ -2255,6 +2300,28 @@ export function wrapToolWithRefusalOnlyGuard(
           sessionKey: context?.sessionKey,
           sessionId: context?.sessionId,
         });
+      }
+
+      const normalizedToolName = toolName.trim().toLowerCase();
+      if (normalizedToolName === "tts" && context?.isHeartbeatRun) {
+        const ttsText = getStringArg(args, ["text", "tts_text", "content"]);
+        const explicitAudioIntent = hasExplicitAudioIntentInSession({
+          agentId: context?.agentId,
+          sessionKey: context?.sessionKey,
+          sessionId: context?.sessionId,
+        });
+        if (!explicitAudioIntent || isHeartbeatAckLikeText(ttsText)) {
+          logBlockedAction({
+            toolName,
+            guardian: "VOICE-GUARD",
+            reason: "ZONE",
+            target: ttsText || "(no text)",
+            detail: "heartbeat TTS filler blocked",
+          });
+          throwToolBlocked(
+            "HEARTBEAT_TTS_BLOCKED: skip tts in heartbeat unless there is an explicit user audio request and substantive reply text.",
+          );
+        }
       }
 
       const mutationTarget = resolveSnapshotMutationTarget(toolName, args, context);

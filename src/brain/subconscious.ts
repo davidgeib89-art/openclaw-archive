@@ -87,10 +87,20 @@ function buildTelemetrySignature(telemetry: BrainHomeostasisTelemetry): string {
 }
 
 function buildCuriositySignature(curiosity: BrainSubconsciousCuriositySignals): string {
-  return [
+  const parts = [
     `recall_hits=${curiosity.recall_hits}`,
     `intrinsic_learning_window_open=${curiosity.intrinsic_learning_window_open ? "yes" : "no"}`,
-  ].join(";");
+  ];
+  if (typeof curiosity.energy_level === "number") {
+    parts.push(`energy_level=${Math.max(0, Math.round(curiosity.energy_level))}`);
+  }
+  if (typeof curiosity.energy_mode === "string" && curiosity.energy_mode.trim().length > 0) {
+    parts.push(`energy_mode=${curiosity.energy_mode}`);
+  }
+  if (typeof curiosity.suggest_own_tasks === "boolean") {
+    parts.push(`suggest_own_tasks=${curiosity.suggest_own_tasks ? "yes" : "no"}`);
+  }
+  return parts.join(";");
 }
 
 function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): BrainSubconsciousBrief {
@@ -391,9 +401,19 @@ function normalizeCuriositySignals(
     return undefined;
   }
   const recallHits = Number.isFinite(raw.recall_hits) ? Math.max(0, Math.round(raw.recall_hits)) : 0;
+  const energyLevel = Number.isFinite(raw.energy_level)
+    ? Math.max(0, Math.round(raw.energy_level as number))
+    : undefined;
+  const energyMode =
+    raw.energy_mode === "dream" || raw.energy_mode === "balanced" || raw.energy_mode === "initiative"
+      ? raw.energy_mode
+      : undefined;
   return {
     recall_hits: recallHits,
     intrinsic_learning_window_open: raw.intrinsic_learning_window_open === true,
+    energy_level: energyLevel,
+    energy_mode: energyMode,
+    suggest_own_tasks: raw.suggest_own_tasks === true,
   };
 }
 
@@ -701,8 +721,18 @@ function buildSubconsciousPrompt(
         "Neugier-Signale (Lernimpuls):",
         `recall_hits: ${curiositySignals.recall_hits}`,
         `intrinsic_learning_window_open: ${curiositySignals.intrinsic_learning_window_open ? "true" : "false"}`,
+        ...(typeof curiositySignals.energy_level === "number"
+          ? [`energy_level: ${curiositySignals.energy_level}`]
+          : []),
+        ...(curiositySignals.energy_mode
+          ? [`energy_mode: ${curiositySignals.energy_mode}`]
+          : []),
+        ...(typeof curiositySignals.suggest_own_tasks === "boolean"
+          ? [`suggest_own_tasks: ${curiositySignals.suggest_own_tasks ? "true" : "false"}`]
+          : []),
         "LEARN ist legitim, wenn eine offene Frage ungeloest bleibt (z.B. recall_hits=0).",
         "LEARN ist auch legitim aus DRIFT heraus, wenn intrinsic_learning_window_open=true.",
+        "Hohe Energie ist eine Einladung zu Neugier und Exploration, niemals ein Zwang.",
         "Kein Speicherzwang: Speichere Wissen nur, wenn es neu oder wertvoll fuer dein Weltbild ist. Rauschen darf verworfen werden.",
       ]
     : [];

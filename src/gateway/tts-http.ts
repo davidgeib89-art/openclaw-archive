@@ -9,12 +9,32 @@
  * messages, enabling voice playback in the browser.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readFileSync, unlinkSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { loadConfig } from "../config/config.js";
+import { saveMediaSource } from "../media/store.js";
 import { textToSpeech } from "../tts/tts.js";
 
 const TTS_PATH = "/api/tts";
 const MAX_TEXT_LENGTH = 5000;
+
+function resolveAudioContentType(params: { outputFormat?: string; audioPath?: string }): string {
+  const fmt = (params.outputFormat ?? "").toLowerCase();
+  if (fmt.includes("opus") || fmt.includes("ogg")) {
+    return "audio/ogg";
+  }
+  if (fmt.includes("wav") || fmt.includes("riff") || fmt.includes("pcm")) {
+    return "audio/wav";
+  }
+  const ext = path.extname(params.audioPath ?? "").toLowerCase();
+  if (ext === ".wav") {
+    return "audio/wav";
+  }
+  if (ext === ".ogg" || ext === ".opus") {
+    return "audio/ogg";
+  }
+  return "audio/mpeg";
+}
 
 function readJsonBodySimple(
   req: IncomingMessage,
@@ -101,7 +121,12 @@ export async function handleTtsHttpRequest(
 
   try {
     const cfg = loadConfig();
-    const result = await textToSpeech({ text, cfg, channel: "webchat" });
+    const result = await textToSpeech({
+      text,
+      cfg,
+      channel: "webchat",
+      strictProvider: true,
+    });
 
     if (!result.success || !result.audioPath) {
       res.statusCode = 500;
@@ -111,12 +136,31 @@ export async function handleTtsHttpRequest(
     }
 
     const audioData = readFileSync(result.audioPath);
-    const contentType = result.outputFormat?.includes("opus") ? "audio/ogg" : "audio/mpeg";
+    const contentType = resolveAudioContentType({
+      outputFormat: result.outputFormat,
+      audioPath: result.audioPath,
+    });
+    let mediaUrl: string | undefined;
+    try {
+      const saved = await saveMediaSource(result.audioPath);
+      mediaUrl = `/media/${saved.id}`;
+    } catch {
+      // Fail-open: binary audio response should still work even if media cache write fails.
+    }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Length", String(audioData.length));
     res.setHeader("Cache-Control", "no-store");
+    if (mediaUrl) {
+      res.setHeader("X-OpenClaw-Media-Url", mediaUrl);
+    }
+    if (result.provider) {
+      res.setHeader("X-OpenClaw-Tts-Provider", result.provider);
+    }
+    if (result.outputFormat) {
+      res.setHeader("X-OpenClaw-Tts-Format", result.outputFormat);
+    }
     res.end(audioData);
   } catch (err) {
     res.statusCode = 500;

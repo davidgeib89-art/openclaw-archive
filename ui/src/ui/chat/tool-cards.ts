@@ -72,11 +72,6 @@ export function renderToolCardSidebar(card: ToolCard, onOpenSidebar?: (content: 
       }
     : undefined;
 
-function getBasePath(): string {
-  const raw = (window as unknown as Record<string, unknown>).__OPENCLAW_CONTROL_UI_BASE_PATH__ ?? "";
-  return typeof raw === "string" ? raw.replace(/\/+$/, "") : "";
-}
-
   const isShort = hasText && (cleanedText?.length ?? 0) <= TOOL_INLINE_THRESHOLD;
   const showCollapsed = hasText && !isShort;
   const showInline = hasText && isShort;

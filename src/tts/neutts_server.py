@@ -4,7 +4,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 import soundfile as sf
 import tempfile
-from neutts import NeuTTS
 
 app = FastAPI()
 
@@ -21,7 +20,36 @@ class TTSRequest(BaseModel):
 async def startup_event():
     global tts, ref_codes, ref_text
     print("Loading NeuTTS Nano German model... (This may take a minute)")
-    
+
+    # Ensure phonemizer can find eSpeak on Windows without manual env setup.
+    if not os.environ.get("PHONEMIZER_ESPEAK_LIBRARY"):
+        espeak_candidates = [
+            r"C:\Program Files\eSpeak NG\libespeak-ng.dll",
+            r"C:\Program Files (x86)\eSpeak NG\libespeak-ng.dll",
+        ]
+        for candidate in espeak_candidates:
+            if os.path.exists(candidate):
+                os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = candidate
+                print(f"Using eSpeak library: {candidate}")
+                break
+
+    # Work around a upstream edge-case on some Windows setups where
+    # perth.PerthImplicitWatermarker exists but is not callable (None).
+    # NeuTTS already supports "no watermark" mode when watermarker is absent.
+    try:
+        import perth  # type: ignore
+
+        if not callable(getattr(perth, "PerthImplicitWatermarker", None)):
+            class _NoopWatermarker:
+                def apply_watermark(self, wav, sample_rate=24000):
+                    return wav
+
+            perth.PerthImplicitWatermarker = _NoopWatermarker  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    from neutts import NeuTTS
+
     tts = NeuTTS(
         backbone_repo="neuphonic/neutts-nano-german",
         backbone_device="cpu", # Change to cuda/mps if GPU support is needed

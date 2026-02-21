@@ -14,6 +14,27 @@ function resolveBasePath(): string {
   return typeof raw === "string" ? raw.replace(/\/+$/, "") : "";
 }
 
+function resolveMediaHeaderUrl(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const value = raw.trim();
+  if (!value) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+  if (value.startsWith("/")) {
+    return `${resolveBasePath()}${value}`;
+  }
+  return null;
+}
+
+function isBlobUrl(url: string): boolean {
+  return url.startsWith("blob:");
+}
+
 // ─── TTS playback ────────────────────────────────────────────────────
 let currentAudio: HTMLAudioElement | null = null;
 let currentPlayingKey: string | null = null;
@@ -79,20 +100,27 @@ export async function playTts(text: string, messageKey: string): Promise<void> {
       return;
     }
 
-    const audioBlob = await res.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
+    const mediaHeaderUrl = resolveMediaHeaderUrl(res.headers.get("x-openclaw-media-url"));
+    const audioUrl =
+      mediaHeaderUrl ??
+      URL.createObjectURL(await res.blob());
     const audio = new Audio(audioUrl);
+    const shouldRevokeObjectUrl = isBlobUrl(audioUrl);
     currentAudio = audio;
 
     audio.addEventListener("ended", () => {
-      URL.revokeObjectURL(audioUrl);
+      if (shouldRevokeObjectUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
       currentAudio = null;
       currentPlayingKey = null;
       setTtsState("idle", null);
     });
 
     audio.addEventListener("error", () => {
-      URL.revokeObjectURL(audioUrl);
+      if (shouldRevokeObjectUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
       currentAudio = null;
       currentPlayingKey = null;
       setTtsState("idle", null);
@@ -352,8 +380,12 @@ type AutoTtsEntry = {
 
 const autoTtsCache = new Map<string, AutoTtsEntry>();
 const autoTtsRequested = new Set<string>();
+const autoTtsAutoPlayed = new Set<string>();
 
-// Only auto-TTS messages that arrived after session start
+const AUTO_TTS_STORAGE_KEY = "openclaw:auto-tts:v1";
+const AUTO_TTS_STORAGE_MAX_ENTRIES = 64;
+const AUTO_TTS_STORAGE_MAX_AGE_MS = 1000 * 60 * 60 * 6;
+const AUTO_TTS_BACKFILL_MAX_AGE_MS = 1000 * 60 * 10;
 const autoTtsSessionStart = Date.now();
 
 // Settings
@@ -362,6 +394,73 @@ let autoPlayNewMessages = true;
 
 // Max text length for auto-TTS (skip very long messages)
 const AUTO_TTS_MAX_LENGTH = 2000;
+
+type PersistedAutoTtsEntry = {
+  url: string;
+  savedAt: number;
+};
+
+function readPersistedAutoTts(): Record<string, PersistedAutoTtsEntry> {
+  try {
+    const raw = window.sessionStorage.getItem(AUTO_TTS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, PersistedAutoTtsEntry>;
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function writePersistedAutoTts(next: Record<string, PersistedAutoTtsEntry>): void {
+  try {
+    window.sessionStorage.setItem(AUTO_TTS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore storage failures in private mode / full quota.
+  }
+}
+
+function prunePersistedAutoTts(
+  entries: Record<string, PersistedAutoTtsEntry>,
+): Record<string, PersistedAutoTtsEntry> {
+  const now = Date.now();
+  const kept = Object.entries(entries)
+    .filter(([, entry]) => {
+      if (!entry || typeof entry.url !== "string" || typeof entry.savedAt !== "number") {
+        return false;
+      }
+      if (isBlobUrl(entry.url)) {
+        return false;
+      }
+      return now - entry.savedAt <= AUTO_TTS_STORAGE_MAX_AGE_MS;
+    })
+    .sort((a, b) => b[1].savedAt - a[1].savedAt)
+    .slice(0, AUTO_TTS_STORAGE_MAX_ENTRIES);
+  return Object.fromEntries(kept);
+}
+
+function persistAutoTtsUrl(messageKey: string, url: string): void {
+  if (!url || isBlobUrl(url)) {
+    return;
+  }
+  const existing = readPersistedAutoTts();
+  existing[messageKey] = { url, savedAt: Date.now() };
+  writePersistedAutoTts(prunePersistedAutoTts(existing));
+}
+
+function restoreAutoTtsUrl(messageKey: string): string | null {
+  const persisted = prunePersistedAutoTts(readPersistedAutoTts());
+  const entry = persisted[messageKey];
+  if (!entry?.url) {
+    return null;
+  }
+  writePersistedAutoTts(persisted);
+  return entry.url;
+}
 
 export function isAutoTtsEnabled(): boolean {
   return autoTtsEnabled;
@@ -384,12 +483,33 @@ export function getAutoTtsEntry(messageKey: string): AutoTtsEntry | null {
  * calling it multiple times for the same key is safe.
  */
 export function requestAutoTts(text: string, messageKey: string, messageTimestamp: number): void {
-  // Guard: skip if disabled, already requested, history message, or too long
+  // Guard: skip if disabled, empty, too long, or already requested
   if (!autoTtsEnabled) return;
-  if (autoTtsRequested.has(messageKey)) return;
-  if (messageTimestamp < autoTtsSessionStart) return;
-  if (text.length > AUTO_TTS_MAX_LENGTH) return;
   if (!text.trim()) return;
+  if (text.length > AUTO_TTS_MAX_LENGTH) return;
+
+  const existing = autoTtsCache.get(messageKey);
+  if (existing && (existing.state === "loading" || existing.state === "ready")) {
+    return;
+  }
+  if (autoTtsRequested.has(messageKey)) return;
+
+  const now = Date.now();
+  const isNewMessage = messageTimestamp >= autoTtsSessionStart;
+  const messageAgeMs = Number.isFinite(messageTimestamp) ? Math.max(0, now - messageTimestamp) : 0;
+  if (!isNewMessage && messageAgeMs > AUTO_TTS_BACKFILL_MAX_AGE_MS) {
+    return;
+  }
+
+  const restoredUrl = restoreAutoTtsUrl(messageKey);
+  if (restoredUrl) {
+    autoTtsCache.set(messageKey, { state: "ready", url: restoredUrl });
+    autoTtsRequested.add(messageKey);
+    for (const listener of ttsStateListeners) {
+      listener();
+    }
+    return;
+  }
 
   autoTtsRequested.add(messageKey);
   autoTtsCache.set(messageKey, { state: "loading" });
@@ -407,31 +527,44 @@ export function requestAutoTts(text: string, messageKey: string, messageTimestam
   })
     .then((res) => {
       if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
-      return res.blob();
+      const mediaHeaderUrl = resolveMediaHeaderUrl(res.headers.get("x-openclaw-media-url"));
+      if (mediaHeaderUrl) {
+        return { url: mediaHeaderUrl };
+      }
+      return res.blob().then((blob) => ({ url: URL.createObjectURL(blob) }));
     })
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
+    .then(({ url }) => {
       autoTtsCache.set(messageKey, { state: "ready", url });
+      persistAutoTtsUrl(messageKey, url);
 
       // Notify listeners to trigger re-render (shows player)
       for (const listener of ttsStateListeners) {
         listener();
       }
 
-      // Auto-play if enabled and nothing else is currently playing
-      if (autoPlayNewMessages && !currentAudio) {
+      // Auto-play only for truly new messages so reloads don't replay old runs.
+      const shouldAutoPlay = autoPlayNewMessages && isNewMessage && !autoTtsAutoPlayed.has(messageKey);
+      if (shouldAutoPlay && !currentAudio) {
+        autoTtsAutoPlayed.add(messageKey);
         const audio = new Audio(url);
+        const shouldRevokeObjectUrl = isBlobUrl(url);
         currentAudio = audio;
         currentPlayingKey = messageKey;
         setTtsState("playing", messageKey);
 
         audio.addEventListener("ended", () => {
+          if (shouldRevokeObjectUrl) {
+            URL.revokeObjectURL(url);
+          }
           currentAudio = null;
           currentPlayingKey = null;
           setTtsState("idle", null);
         });
 
         audio.addEventListener("error", () => {
+          if (shouldRevokeObjectUrl) {
+            URL.revokeObjectURL(url);
+          }
           currentAudio = null;
           currentPlayingKey = null;
           setTtsState("idle", null);

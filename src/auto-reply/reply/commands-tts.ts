@@ -60,7 +60,8 @@ function ttsUsage(): ReplyPayload {
       `**Providers:**\n` +
       `• edge — Free, fast (default)\n` +
       `• openai — High quality (requires API key)\n` +
-      `• elevenlabs — Premium voices (requires API key)\n\n` +
+      `• elevenlabs — Premium voices (requires API key)\n` +
+      `• neuphonic — Local server voice (no cloud key)\n\n` +
       `**Text Limit (default: 1500, max: 4096):**\n` +
       `When text exceeds the limit:\n` +
       `• Summary ON: AI summarizes, then generates audio\n` +
@@ -135,6 +136,7 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
       channel: params.command.channel,
       prefsPath,
       overrides: emotionalOverrides,
+      strictProvider: true,
     });
 
     if (result.success && result.audioPath) {
@@ -184,13 +186,18 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
             `OpenAI key: ${hasOpenAI ? "✅" : "❌"}\n` +
             `ElevenLabs key: ${hasElevenLabs ? "✅" : "❌"}\n` +
             `Edge enabled: ${hasEdge ? "✅" : "❌"}\n` +
-            `Usage: /tts provider openai | elevenlabs | edge`,
+            `Usage: /tts provider openai | elevenlabs | edge | neuphonic`,
         },
       };
     }
 
     const requested = args.trim().toLowerCase();
-    if (requested !== "openai" && requested !== "elevenlabs" && requested !== "edge") {
+    if (
+      requested !== "openai" &&
+      requested !== "elevenlabs" &&
+      requested !== "edge" &&
+      requested !== "neuphonic"
+    ) {
       return { shouldContinue: false, reply: ttsUsage() };
     }
 

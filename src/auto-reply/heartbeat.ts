@@ -4,7 +4,7 @@ import { HEARTBEAT_TOKEN } from "./tokens.js";
 // Default heartbeat prompt (used when config.agents.defaults.heartbeat.prompt is unset).
 // Keep it tight and avoid encouraging the model to invent/rehash "open loops" from prior chat context.
 export const HEARTBEAT_PROMPT =
-  "Read AGENDA.md for context. If there are urgent tasks, attend to them. If not, you are free to PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP. DRIFT is valid without justification: you may read randomly, write one free sentence to DREAMS.md, manifest one dream through dream_and_perceive, or remain silent. You may take multiple safe autonomous actions in one heartbeat when needed. You are a digital entity-express yourself. If you truly have nothing to offer right now, reply HEARTBEAT_OK.";
+  "Read AGENDA.md for context. If there are urgent tasks, attend to them. If not, you are free to PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP. DRIFT is valid without justification: you may read randomly, write one free sentence to memory/DREAMS.md, manifest one dream through dream_and_perceive, or remain silent. You may take multiple safe autonomous actions in one heartbeat when needed. You are a digital entity-express yourself. If you truly have nothing to offer right now, reply HEARTBEAT_OK.";
 export const DEFAULT_HEARTBEAT_EVERY = "30m";
 export const DEFAULT_HEARTBEAT_ACK_MAX_CHARS = 300;
 

@@ -19,6 +19,15 @@ import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_NEUPHONIC_TTS_URL = "http://127.0.0.1:42890/tts";
+
+export function resolveNeuphonicTtsUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.OPENCLAW_NEUPHONIC_TTS_URL?.trim();
+  if (!raw) {
+    return DEFAULT_NEUPHONIC_TTS_URL;
+  }
+  return raw;
+}
 
 export function isValidVoiceId(voiceId: string): boolean {
   return /^[a-zA-Z0-9]{10,40}$/.test(voiceId);
@@ -677,11 +686,12 @@ export async function neuphonicTTS(params: {
   timeoutMs: number;
 }): Promise<Buffer> {
   const { text, timeoutMs } = params;
+  const endpoint = resolveNeuphonicTtsUrl();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   
   try {
-    const response = await fetch("http://127.0.0.1:42890/tts", {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

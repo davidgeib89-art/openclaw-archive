@@ -146,47 +146,6 @@ function extractImages(message: unknown): ImageBlock[] {
   return images;
 }
 
-function getBasePath(): string {
-  const raw = (window as unknown as Record<string, unknown>).__OPENCLAW_CONTROL_UI_BASE_PATH__ ?? "";
-  return typeof raw === "string" ? raw.replace(/\/+$/, "") : "";
-}
-
-function extractAudioUrls(toolCards: import("../types/chat-types.js").ToolCard[]): { urls: string[], texts: string[] } {
-  const urls: string[] = [];
-  const texts: string[] = [];
-  for (const card of toolCards) {
-    if (card.text) {
-      // Find matches for URL:\/media\/...
-      const match = card.text.match(/URL:(\/media\/[a-zA-Z0-9_.-]+(\.mp3|\.wav|\.ogg))/i);
-      if (match) {
-        urls.push(`${getBasePath()}${match[1]}`);
-        
-        // Find TEXT match
-        const textMatch = card.text.match(/TEXT:([\s\S]*?)(?=\nMEDIA:|$)/i);
-        if (textMatch) {
-            texts.push(textMatch[1].trim());
-        }
-      }
-    }
-  }
-  return { urls: [...new Set(urls)], texts: [...new Set(texts)] };
-}
-
-function renderMessageAudio(urls: string[]) {
-  if (urls.length === 0) {
-    return nothing;
-  }
-  return html`
-    <div class="chat-message-audio-list">
-      ${urls.map(
-        (url) => html`
-          <audio controls src="${url}" style="width: 100%; height: 32px; margin-top: 8px;"></audio>
-        `,
-      )}
-    </div>
-  `;
-}
-
 export function renderReadingIndicatorGroup(assistant?: AssistantIdentity) {
   return html`
     <div class="chat-group assistant">
@@ -226,6 +185,7 @@ export function renderStreamingGroup(
           },
           { isStreaming: true, showReasoning: false },
           onOpenSidebar,
+          `stream:${startedAt}`,
         )}
         <div class="chat-group-footer">
           <span class="chat-sender-name">${name}</span>
@@ -275,6 +235,7 @@ export function renderMessageGroup(
               showReasoning: opts.showReasoning,
             },
             opts.onOpenSidebar,
+            item.key,
           ),
         )}
         <div class="chat-group-footer">
@@ -352,6 +313,7 @@ function renderGroupedMessage(
   message: unknown,
   opts: { isStreaming: boolean; showReasoning: boolean },
   onOpenSidebar?: (content: string) => void,
+  messageRenderKey = "unknown",
 ) {
   const m = message as Record<string, unknown>;
   const role = typeof m.role === "string" ? m.role : "unknown";
@@ -366,10 +328,12 @@ function renderGroupedMessage(
   const hasToolCards = toolCards.length > 0;
   const images = extractImages(message);
   const hasImages = images.length > 0;
-  const audioData = extractAudioUrls(toolCards);
-  const audioUrls = audioData.urls;
-  const audioTexts = audioData.texts;
-  const hasAudio = audioUrls.length > 0;
+  const audioTexts = toolCards
+    .map((card) => {
+      const textMatch = card.text?.match(/TEXT:([\s\S]*?)(?=\nMEDIA:|$)/i);
+      return textMatch?.[1]?.trim();
+    })
+    .filter((text): text is string => Boolean(text && text.length > 0));
 
   const extractedText = extractTextCached(message);
   const extractedThinking =
@@ -378,7 +342,15 @@ function renderGroupedMessage(
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
 
   let markdown = markdownBase;
-  const isTtsResult = isToolResult && hasAudio && audioTexts.length > 0;
+  const isTtsResult = isToolResult && audioTexts.length > 0;
+  const isOnlyTtsToolResult =
+    isToolResult &&
+    toolCards.length > 0 &&
+    toolCards.every((card) => card.name.toLowerCase() === "tts");
+
+  if (isOnlyTtsToolResult) {
+    return nothing;
+  }
   
   if (isTtsResult) {
     markdown = audioTexts.join('\n\n');
@@ -392,9 +364,9 @@ function renderGroupedMessage(
   const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
   const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
   const canOpenTrace = role === "assistant" && Boolean(thoughtTrace) && Boolean(onOpenSidebar);
-  // Build a stable key for TTS state tracking
+  // Use the message render key so TTS state is stable across re-renders.
   const resolvedTimestamp = coerceMessageTimestamp(m.timestamp);
-  const ttsKey = `tts:${resolvedTimestamp ?? "no-ts"}:${(markdown ?? "").length}`;
+  const ttsKey = `tts:${messageRenderKey}`;
   const msgTimestamp = resolvedTimestamp ?? 0;
 
   // Trigger auto-TTS for new assistant messages (idempotent)
@@ -413,11 +385,11 @@ function renderGroupedMessage(
 
   const visibleToolCards = toolCards.filter((card) => card.name !== "tts");
 
-  if (!markdown && visibleToolCards.length > 0 && isToolResult && !hasAudio) {
+  if (!markdown && visibleToolCards.length > 0 && isToolResult) {
     return html`${visibleToolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}`;
   }
 
-  if (!markdown && visibleToolCards.length === 0 && !hasImages && !hasAudio && !thoughtTrace) {
+  if (!markdown && visibleToolCards.length === 0 && !hasImages && !thoughtTrace) {
     return nothing;
   }
 
@@ -453,7 +425,6 @@ function renderGroupedMessage(
           : nothing
       }
       ${canPlayTts ? renderInlineAudioPlayer(ttsKey) : nothing}
-      ${renderMessageAudio(audioUrls)}
       ${visibleToolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}
     </div>
   `;

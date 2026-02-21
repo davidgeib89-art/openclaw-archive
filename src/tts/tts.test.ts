@@ -1,4 +1,5 @@
 import { completeSimple } from "@mariozechner/pi-ai";
+import fs from "node:fs";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { getApiKeyForModel } from "../agents/model-auth.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
@@ -442,6 +443,26 @@ describe("tts", () => {
           expect(provider).toBe("edge");
         },
       );
+    });
+
+    it("prefers configured provider over persisted prefs override", () => {
+      const prefsPath = `/tmp/tts-prefs-config-priority-${Date.now()}.json`;
+      try {
+        fs.writeFileSync(prefsPath, JSON.stringify({ tts: { provider: "edge" } }), "utf-8");
+
+        const config = resolveTtsConfig({
+          ...baseCfg,
+          messages: { tts: { provider: "neuphonic" } },
+        });
+        const provider = getTtsProvider(config, prefsPath);
+        expect(provider).toBe("neuphonic");
+      } finally {
+        try {
+          fs.rmSync(prefsPath, { force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
     });
   });
 

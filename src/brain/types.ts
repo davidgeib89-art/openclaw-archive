@@ -55,6 +55,9 @@ export type BrainHomeostasisTelemetry = {
 export type BrainSubconsciousCuriositySignals = {
   recall_hits: number;
   intrinsic_learning_window_open: boolean;
+  energy_level?: number;
+  energy_mode?: "dream" | "balanced" | "initiative";
+  suggest_own_tasks?: boolean;
 };
 
 export type BrainSubconsciousStatus = "ok" | "fail_open" | "skipped";

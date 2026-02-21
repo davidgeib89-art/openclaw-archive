@@ -33,6 +33,7 @@ export function createTtsTool(opts?: {
         text,
         cfg,
         channel: channel ?? opts?.agentChannel,
+        strictProvider: true,
       });
 
       if (result.success && result.audioPath) {

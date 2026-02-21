@@ -21,6 +21,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
+import { maybeAutoStartNeuphonicServer } from "../../tts/neuphonic-autostart.js";
 import { ensureDevGatewayConfig } from "./dev.js";
 import { runGatewayLoop } from "./run-loop.js";
 import {
@@ -95,6 +96,7 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
   }
 
   const cfg = loadConfig();
+  await maybeAutoStartNeuphonicServer({ cfg, logger: gatewayLog });
   const portOverride = parsePort(opts.port);
   if (opts.port !== undefined && portOverride === null) {
     defaultRuntime.error("Invalid port");
