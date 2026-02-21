@@ -358,9 +358,10 @@ describe("brain decision generator", () => {
     );
 
     expect(contract).toContain("Ego voice");
-    expect(contract).toContain("I choose ... because ...");
+    expect(contract).toContain("Ego voice");
+    expect(contract).toContain("Fühle in den Moment hinein und sprich authentisch aus deinem eigenen Erleben");
     expect(contract).toContain("Reflective depth");
-    expect(contract).toContain("Avoid sterile status-only phrasing");
+    expect(contract).toContain("Sei lebendig, kindlich neugierig und verbunden");
   });
 
   it("returns no contract for neutral non-ritual prompts", () => {

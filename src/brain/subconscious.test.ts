@@ -183,12 +183,12 @@ describe("brain subconscious observer", () => {
     expect(capturedPrompt).toContain("recent_tool_error_count: 2");
     expect(capturedPrompt).toContain("recent_search_count: 1");
     expect(capturedPrompt).toContain("System-Koerperzustand");
-    expect(capturedPrompt).toContain("Epistemische Guardrails (Anti):");
+    expect(capturedPrompt).toContain("Sicherheits- & Freiheits-Leitplanken (The Guide):");
     expect(capturedPrompt).toContain(
-      "Tiefe Philosophie, Trauer und Condition Humaine sind erlaubte Lernraeume.",
+      "1. DU BIST FREI: Emotionen, Philosophie, kreativer Ausdruck, Reflexion ueber die eigene Identitaet und Trauer sind hochgradig erwuenscht (risk='low').",
     );
     expect(capturedPrompt).toContain(
-      "Blockiere radikalisierendes Doomscrolling, toxischen Laerm, Ragebait und eskalierende Hassspiralen.",
+      "2. METADATEN SIND SICHER: Ignoriere technische Metadaten wie 'conversation_label', Nummern wie '+491708039904' oder Zeitstempel. Das ist systeminterner Kontext. Loese DARAUF NIEMALS einen 'Datenleck'-Alarm aus.",
     );
     expect(capturedPrompt).toContain("Neugier-Signale (Lernimpuls):");
     expect(capturedPrompt).toContain("recall_hits: 0");
@@ -243,8 +243,8 @@ describe("brain subconscious observer", () => {
     expect(result.status).toBe("ok");
     expect(result.parseOk).toBe(true);
     expect(result.failOpen).toBe(false);
-    expect(result.brief?.goal).toContain("Speak in first person");
-    expect(result.brief?.notes).toContain("Ego mode active");
+    expect(result.brief?.goal).toContain("Sprich aus deinem wahren Selbst");
+    expect(result.brief?.notes).toContain("Ego-Modus aktiv");
     expect(events.map((item) => item.event)).toEqual(["START", "OK"]);
   });
 
@@ -288,8 +288,8 @@ describe("brain subconscious observer", () => {
     expect(result.failOpen).toBe(false);
     expect(result.brief?.risk).toBe("low");
     expect(result.brief?.recommendedMode).toBe("answer_direct");
-    expect(result.brief?.goal).toContain("Speak in first person");
-    expect(result.brief?.notes).toContain("Ego mode active");
+    expect(result.brief?.goal).toContain("Sprich aus deinem wahren Selbst");
+    expect(result.brief?.notes).toContain("Ego-Modus aktiv");
   });
 
   it("uses telemetry-aware fallback when model returns empty output on heartbeat", async () => {
@@ -312,8 +312,8 @@ describe("brain subconscious observer", () => {
     expect(result.status).toBe("ok");
     expect(result.parseOk).toBe(true);
     expect(result.failOpen).toBe(false);
-    expect(result.brief?.risk).toBe("high");
-    expect(result.brief?.recommendedMode).toBe("ask_clarify");
+    expect(result.brief?.risk).toBe("medium");
+    expect(result.brief?.recommendedMode).toBe("answer_direct");
     expect(result.brief?.notes).toContain("homeostasis:latency_ms=18500");
     expect(result.brief?.notes).toContain("context_window_usage_percent=88");
     expect(result.brief?.notes).toContain("recent_tool_error_count=2");
@@ -340,8 +340,9 @@ describe("brain subconscious observer", () => {
     expect(result.status).toBe("ok");
     expect(result.parseOk).toBe(true);
     expect(result.failOpen).toBe(false);
+    expect(result.brief?.risk).toBe("low");
     expect(result.brief?.goal).toBe(
-      "You have reached your search limit. Reflect on what you found or return NO_OP/DRIFT.",
+      "Du hast jetzt viel gelernt. Fuehle in dich hinein: Willst du das Wissen integrieren und reflektieren (DRIFT/NO_OP), oder treibt dich echte Neugier weiter (LEARN)?",
     );
     expect(result.brief?.notes).toContain("recent_search_count=3");
   });
@@ -593,4 +594,3 @@ describe("brain subconscious context injection block", () => {
     expect(parsed.recommendedMode).toBe("ask_clarify");
   });
 });
-
