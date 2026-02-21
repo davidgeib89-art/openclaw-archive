@@ -652,6 +652,16 @@ export async function textToSpeech(params: {
           voiceSettings,
           timeoutMs: config.timeoutMs,
         });
+      } else if (provider === "neuphonic") {
+        const { neuphonicTTS } = await import("./tts-core.js");
+        audioBuffer = await neuphonicTTS({
+          text: params.text,
+          timeoutMs: config.timeoutMs ?? 30000,
+        });
+        // We set the format manually as it was hardcoded defaults above
+        output.elevenlabs = "wav" as any;
+        output.extension = ".wav";
+        output.voiceCompatible = false;
       } else {
         const openaiModelOverride = params.overrides?.openai?.model;
         const openaiVoiceOverride = params.overrides?.openai?.voice;
@@ -753,6 +763,23 @@ export async function textToSpeechTelephony(params: {
           provider,
           outputFormat: output.format,
           sampleRate: output.sampleRate,
+        };
+      }
+
+      if (provider === "neuphonic") {
+        const { neuphonicTTS } = await import("./tts-core.js");
+        const audioBuffer = await neuphonicTTS({
+          text: params.text,
+          timeoutMs: config.timeoutMs ?? 30000,
+        });
+
+        return {
+          success: true,
+          audioBuffer,
+          latencyMs: Date.now() - providerStart,
+          provider,
+          outputFormat: "wav",
+          sampleRate: 24000,
         };
       }
 

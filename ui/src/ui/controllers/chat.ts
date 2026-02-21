@@ -217,10 +217,10 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     return null;
   }
 
-  // Ignore unsolicited deltas when this tab has no active local run.
-  // This prevents phantom "typing dots" after session reset or tab reconnect.
+  // Adopt unsolicited deltas (like background Heartbeats) so their stream renders smoothly.
   if (payload.state === "delta" && payload.runId && !state.chatRunId) {
-    return null;
+    state.chatRunId = payload.runId;
+    state.chatStreamStartedAt = Date.now();
   }
 
   if (payload.state === "delta") {
@@ -232,11 +232,13 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
       }
     }
   } else if (payload.state === "final") {
-    const markedMessage = withFinalRunMarker(payload.message, payload.runId);
-    if (markedMessage) {
-      const alreadyPresent = state.chatMessages.some((message) => hasRunMarker(message, payload.runId));
-      if (!alreadyPresent) {
-        state.chatMessages = [...state.chatMessages, markedMessage];
+    if (payload.message) {
+      const markedMessage = withFinalRunMarker(payload.message, payload.runId);
+      if (markedMessage) {
+        const alreadyPresent = state.chatMessages.some((message) => hasRunMarker(message, payload.runId));
+        if (!alreadyPresent) {
+          state.chatMessages = [...state.chatMessages, markedMessage];
+        }
       }
     }
     state.chatStream = null;

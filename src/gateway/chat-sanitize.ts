@@ -167,7 +167,41 @@ export function stripEnvelopeFromMessages(messages: unknown[]): unknown[] {
     return messages;
   }
   let changed = false;
-  const next = messages.map((message) => {
+  
+  const filtered = messages.filter((message) => {
+    if (!message || typeof message !== "object") {
+      return true;
+    }
+    const entry = message as Record<string, unknown>;
+    const role = typeof entry.role === "string" ? entry.role.toLowerCase() : "";
+    
+    // Hide trailing heartbeat ok tokens that leaked into the assistant's context history
+    if (role === "assistant") {
+      let text = "";
+      if (typeof entry.content === "string") {
+        text = entry.content;
+      } else if (Array.isArray(entry.content)) {
+        text = entry.content
+          .filter((c: any) => c && typeof c === "object" && c.type === "text")
+          .map((c: any) => typeof c.text === "string" ? c.text : "")
+          .join("");
+      } else if (typeof entry.text === "string") {
+        text = entry.text;
+      }
+      
+      const hasToolCalls = Array.isArray(entry.content) && entry.content.some((c: any) => 
+        c && typeof c === "object" && (c.type === "tool_call" || c.type === "tooluse" || typeof c.name === "string")
+      );
+      
+      if (!hasToolCalls && text.trim() === "HEARTBEAT_OK") {
+        changed = true;
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const next = filtered.map((message) => {
     const stripped = stripEnvelopeFromMessage(message);
     if (stripped !== message) {
       changed = true;

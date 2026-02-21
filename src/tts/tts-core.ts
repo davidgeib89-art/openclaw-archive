@@ -671,3 +671,31 @@ export async function edgeTTS(params: {
   });
   await tts.ttsPromise(text, outputPath);
 }
+
+export async function neuphonicTTS(params: {
+  text: string;
+  timeoutMs: number;
+}): Promise<Buffer> {
+  const { text, timeoutMs } = params;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch("http://127.0.0.1:42890/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`NeuTTS API error (${response.status})`);
+    }
+    
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+  }
+}

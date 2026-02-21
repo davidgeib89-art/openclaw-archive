@@ -57,6 +57,54 @@ import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 import { handleTtsHttpRequest } from "./tts-http.js";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { getMediaDir } from "../media/store.js";
+import { detectMime } from "../media/mime.js";
+
+async function handleMediaHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (!url.pathname.startsWith("/media/")) return false;
+  
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.statusCode = 405;
+    res.end();
+    return true;
+  }
+  
+  const id = url.pathname.slice("/media/".length);
+  if (!id) return false;
+  
+  const mediaDir = getMediaDir();
+  // Basic path traversal protection
+  const safeId = path.normalize(id).replace(/^(\.\.(\/|\\|$))+/, "");
+  const safePath = path.join(mediaDir, safeId);
+  
+  try {
+    const stat = await fs.stat(safePath);
+    if (!stat.isFile()) throw new Error();
+    
+    const data = await fs.readFile(safePath);
+    const mime = await detectMime({ buffer: data, filePath: safePath });
+    
+    if (mime) {
+      res.setHeader("Content-Type", mime);
+    }
+    res.setHeader("Content-Length", stat.size);
+    res.statusCode = 200;
+    
+    if (req.method === "HEAD") {
+      res.end();
+    } else {
+      res.end(data);
+    }
+  } catch {
+    res.statusCode = 404;
+    res.end("Not found");
+  }
+  
+  return true;
+}
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 type HookAuthFailure = { count: number; windowStartedAtMs: number };
@@ -508,6 +556,9 @@ export function createGatewayHttpServer(opts: {
       }
       // TTS endpoint for WebGUI voice playback
       if (await handleTtsHttpRequest(req, res)) {
+        return;
+      }
+      if (await handleMediaHttpRequest(req, res)) {
         return;
       }
       if (await handleSlackHttpRequest(req, res)) {

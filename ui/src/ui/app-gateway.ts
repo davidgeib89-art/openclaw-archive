@@ -19,6 +19,7 @@ import {
   type ThoughtStreamEntry,
   type ThoughtTraceAttachment,
   type ThoughtTraceHistoryEntry,
+  type ThoughtTraceStep,
 } from "./app-tool-stream.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadAssistantIdentity } from "./controllers/assistant-identity.ts";

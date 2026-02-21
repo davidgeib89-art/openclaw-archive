@@ -51,6 +51,11 @@ export default defineConfig(() => {
           target: "http://127.0.0.1:18789",
           changeOrigin: true,
         },
+        // Proxy media requests
+        "/media": {
+          target: "http://127.0.0.1:18789",
+          changeOrigin: true,
+        },
         // Proxy root WebSocket connections to the gateway (for JSON-RPC)
         "^/$": {
           target: "ws://127.0.0.1:18789",

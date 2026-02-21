@@ -11,7 +11,7 @@ import { formatForLog } from "./ws-log.js";
  * We only suppress "OK ping" heartbeats when showOk is disabled.
  * Meaningful heartbeat replies should still stream to chat.
  */
-function shouldSuppressHeartbeatBroadcast(runId: string, text?: string): boolean {
+function shouldSuppressHeartbeatBroadcast(runId: string, text?: string, hasToolCalls?: boolean): boolean {
   const runContext = getAgentRunContext(runId);
   if (!runContext?.isHeartbeat) {
     return false;
@@ -22,6 +22,10 @@ function shouldSuppressHeartbeatBroadcast(runId: string, text?: string): boolean
     const visibility = resolveHeartbeatVisibility({ cfg, channel: "webchat" });
     if (visibility.showOk) {
       return false;
+    }
+
+    if (hasToolCalls) {
+      return false; // Don't suppress if we had tool events so UI can reload and show them
     }
 
     const normalized = (text ?? "").trim();
@@ -105,6 +109,7 @@ export type ChatRunState = {
   buffers: Map<string, string>;
   deltaSentAt: Map<string, number>;
   abortedRuns: Map<string, number>;
+  runsWithTools: Set<string>;
   clear: () => void;
 };
 
@@ -113,12 +118,14 @@ export function createChatRunState(): ChatRunState {
   const buffers = new Map<string, string>();
   const deltaSentAt = new Map<string, number>();
   const abortedRuns = new Map<string, number>();
+  const runsWithTools = new Set<string>();
 
   const clear = () => {
     registry.clear();
     buffers.clear();
     deltaSentAt.clear();
     abortedRuns.clear();
+    runsWithTools.clear();
   };
 
   return {
@@ -126,6 +133,7 @@ export function createChatRunState(): ChatRunState {
     buffers,
     deltaSentAt,
     abortedRuns,
+    runsWithTools,
     clear,
   };
 }
@@ -245,184 +253,191 @@ export function createAgentEventHandler({
       return;
     }
     chatRunState.deltaSentAt.set(clientRunId, now);
+    const isHeartbeatOk = text.trim() === HEARTBEAT_TOKEN;
     const payload = {
       runId: clientRunId,
       sessionKey,
       seq,
       state: "delta" as const,
-      message: {
+      message: isHeartbeatOk ? undefined : {
         role: "assistant",
         content: [{ type: "text", text }],
         timestamp: now,
       },
     };
     // Suppress only heartbeat OK pings when showOk is false.
-    if (!shouldSuppressHeartbeatBroadcast(clientRunId, text)) {
+    const hasToolCalls = chatRunState.runsWithTools.has(clientRunId) || chatRunState.runsWithTools.has(payload.runId);
+    if (!shouldSuppressHeartbeatBroadcast(clientRunId, text, hasToolCalls)) {
       broadcast("chat", payload, { dropIfSlow: true });
     }
     nodeSendToSession(sessionKey, "chat", payload);
   };
 
-  const emitChatFinal = (
-    sessionKey: string,
-    clientRunId: string,
-    seq: number,
-    jobState: "done" | "error",
-    error?: unknown,
-  ) => {
-    const text = chatRunState.buffers.get(clientRunId)?.trim() ?? "";
-    chatRunState.buffers.delete(clientRunId);
-    chatRunState.deltaSentAt.delete(clientRunId);
-    if (jobState === "done") {
+    const emitChatFinal = (
+      sessionKey: string,
+      clientRunId: string,
+      seq: number,
+      jobState: "done" | "error",
+      error?: unknown,
+    ) => {
+      const text = chatRunState.buffers.get(clientRunId)?.trim() ?? "";
+      chatRunState.buffers.delete(clientRunId);
+      chatRunState.deltaSentAt.delete(clientRunId);
+      if (jobState === "done") {
+        const payload = {
+          runId: clientRunId,
+          sessionKey,
+          seq,
+          state: "final" as const,
+          message: text && text !== HEARTBEAT_TOKEN
+            ? {
+                role: "assistant",
+                content: [{ type: "text", text }],
+                timestamp: Date.now(),
+              }
+            : undefined,
+        };
+        // Suppress only heartbeat OK pings when showOk is false.
+        const hasToolCalls = chatRunState.runsWithTools.has(clientRunId) || chatRunState.runsWithTools.has(payload.runId);
+        if (!shouldSuppressHeartbeatBroadcast(clientRunId, text, hasToolCalls)) {
+          broadcast("chat", payload);
+        }
+        nodeSendToSession(sessionKey, "chat", payload);
+        return;
+      }
       const payload = {
         runId: clientRunId,
         sessionKey,
         seq,
-        state: "final" as const,
-        message: text
-          ? {
-              role: "assistant",
-              content: [{ type: "text", text }],
-              timestamp: Date.now(),
-            }
-          : undefined,
+        state: "error" as const,
+        errorMessage: error ? formatForLog(error) : undefined,
       };
-      // Suppress only heartbeat OK pings when showOk is false.
-      if (!shouldSuppressHeartbeatBroadcast(clientRunId, text)) {
-        broadcast("chat", payload);
-      }
+      broadcast("chat", payload);
       nodeSendToSession(sessionKey, "chat", payload);
-      return;
-    }
-    const payload = {
-      runId: clientRunId,
-      sessionKey,
-      seq,
-      state: "error" as const,
-      errorMessage: error ? formatForLog(error) : undefined,
     };
-    broadcast("chat", payload);
-    nodeSendToSession(sessionKey, "chat", payload);
-  };
 
-  const resolveToolVerboseLevel = (runId: string, sessionKey?: string) => {
-    const runContext = getAgentRunContext(runId);
-    const runVerbose = normalizeVerboseLevel(runContext?.verboseLevel);
-    if (runVerbose) {
-      return runVerbose;
-    }
-    if (!sessionKey) {
-      return "off";
-    }
-    try {
-      const { cfg, entry } = loadSessionEntry(sessionKey);
-      const sessionVerbose = normalizeVerboseLevel(entry?.verboseLevel);
-      if (sessionVerbose) {
-        return sessionVerbose;
+    const resolveToolVerboseLevel = (runId: string, sessionKey?: string) => {
+      const runContext = getAgentRunContext(runId);
+      const runVerbose = normalizeVerboseLevel(runContext?.verboseLevel);
+      if (runVerbose) {
+        return runVerbose;
       }
-      const defaultVerbose = normalizeVerboseLevel(cfg.agents?.defaults?.verboseDefault);
-      return defaultVerbose ?? "off";
-    } catch {
-      return "off";
-    }
-  };
-
-  return (evt: AgentEventPayload) => {
-    const chatLink = chatRunState.registry.peek(evt.runId);
-    const sessionKey = chatLink?.sessionKey ?? resolveSessionKeyForRun(evt.runId);
-    const clientRunId = chatLink?.clientRunId ?? evt.runId;
-    const isAborted =
-      chatRunState.abortedRuns.has(clientRunId) || chatRunState.abortedRuns.has(evt.runId);
-    // Include sessionKey so Control UI can filter tool streams per session.
-    const agentPayload = sessionKey ? { ...evt, sessionKey } : evt;
-    const last = agentRunSeq.get(evt.runId) ?? 0;
-    const isToolEvent = evt.stream === "tool";
-    const toolVerbose = isToolEvent ? resolveToolVerboseLevel(evt.runId, sessionKey) : "off";
-    // Build tool payload: strip result/partialResult unless verbose=full
-    const toolPayload =
-      isToolEvent && toolVerbose !== "full"
-        ? (() => {
-            const data = evt.data ? { ...evt.data } : {};
-            delete data.result;
-            delete data.partialResult;
-            return sessionKey ? { ...evt, sessionKey, data } : { ...evt, data };
-          })()
-        : agentPayload;
-    if (evt.seq !== last + 1) {
-      broadcast("agent", {
-        runId: evt.runId,
-        stream: "error",
-        ts: Date.now(),
-        sessionKey,
-        data: {
-          reason: "seq gap",
-          expected: last + 1,
-          received: evt.seq,
-        },
-      });
-    }
-    agentRunSeq.set(evt.runId, evt.seq);
-    if (isToolEvent) {
-      // Always broadcast tool events to registered WS recipients with
-      // tool-events capability, regardless of verboseLevel. The verbose
-      // setting only controls whether tool details are sent as channel
-      // messages to messaging surfaces (Telegram, Discord, etc.).
-      const recipients = toolEventRecipients.get(evt.runId);
-      if (recipients && recipients.size > 0) {
-        broadcastToConnIds("agent", toolPayload, recipients);
+      if (!sessionKey) {
+        return "off";
       }
-    } else {
-      broadcast("agent", agentPayload);
-    }
-
-    const lifecyclePhase =
-      evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
-
-    if (sessionKey) {
-      // Send tool events to node/channel subscribers only when verbose is enabled;
-      // WS clients already received the event above via broadcastToConnIds.
-      if (!isToolEvent || toolVerbose !== "off") {
-        nodeSendToSession(sessionKey, "agent", isToolEvent ? toolPayload : agentPayload);
+      try {
+        const { cfg, entry } = loadSessionEntry(sessionKey);
+        const sessionVerbose = normalizeVerboseLevel(entry?.verboseLevel);
+        if (sessionVerbose) {
+          return sessionVerbose;
+        }
+        const defaultVerbose = normalizeVerboseLevel(cfg.agents?.defaults?.verboseDefault);
+        return defaultVerbose ?? "off";
+      } catch {
+        return "off";
       }
-      if (!isAborted && evt.stream === "assistant" && typeof evt.data?.text === "string") {
-        emitChatDelta(sessionKey, clientRunId, evt.seq, evt.data.text);
-      } else if (!isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
-        if (chatLink) {
-          const finished = chatRunState.registry.shift(evt.runId);
-          if (!finished) {
-            clearAgentRunContext(evt.runId);
-            return;
+    };
+
+    return (evt: AgentEventPayload) => {
+      const chatLink = chatRunState.registry.peek(evt.runId);
+      const sessionKey = chatLink?.sessionKey ?? resolveSessionKeyForRun(evt.runId);
+      const clientRunId = chatLink?.clientRunId ?? evt.runId;
+      const isAborted =
+        chatRunState.abortedRuns.has(clientRunId) || chatRunState.abortedRuns.has(evt.runId);
+      // Include sessionKey so Control UI can filter tool streams per session.
+      const agentPayload = sessionKey ? { ...evt, sessionKey } : evt;
+      const last = agentRunSeq.get(evt.runId) ?? 0;
+      const isToolEvent = evt.stream === "tool";
+      if (isToolEvent) {
+        chatRunState.runsWithTools.add(clientRunId);
+        chatRunState.runsWithTools.add(evt.runId);
+      }
+      const toolVerbose = isToolEvent ? resolveToolVerboseLevel(evt.runId, sessionKey) : "off";
+      // Build tool payload: strip result/partialResult unless verbose=full
+      const toolPayload =
+        isToolEvent && toolVerbose !== "full"
+          ? (() => {
+              const data = evt.data ? { ...evt.data } : {};
+              delete data.result;
+              delete data.partialResult;
+              return sessionKey ? { ...evt, sessionKey, data } : { ...evt, data };
+            })()
+          : agentPayload;
+      if (evt.seq !== last + 1) {
+        broadcast("agent", {
+          runId: evt.runId,
+          stream: "error",
+          ts: Date.now(),
+          sessionKey,
+          data: {
+            reason: "seq gap",
+            expected: last + 1,
+            received: evt.seq,
+          },
+        });
+      }
+      agentRunSeq.set(evt.runId, evt.seq);
+      if (isToolEvent) {
+        // Always broadcast tool events to registered WS recipients with
+        // tool-events capability, regardless of verboseLevel. The verbose
+        // setting only controls whether tool details are sent as channel
+        // messages to messaging surfaces (Telegram, Discord, etc.).
+        const recipients = toolEventRecipients.get(evt.runId);
+        if (recipients && recipients.size > 0) {
+          broadcastToConnIds("agent", toolPayload, recipients);
+        }
+      } else {
+        broadcast("agent", agentPayload);
+      }
+
+      const lifecyclePhase =
+        evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
+
+      if (sessionKey) {
+        // Send tool events to node/channel subscribers only when verbose is enabled;
+        // WS clients already received the event above via broadcastToConnIds.
+        if (!isToolEvent || toolVerbose !== "off") {
+          nodeSendToSession(sessionKey, "agent", isToolEvent ? toolPayload : agentPayload);
+        }
+        if (!isAborted && evt.stream === "assistant" && typeof evt.data?.text === "string") {
+          emitChatDelta(sessionKey, clientRunId, evt.seq, evt.data.text);
+        } else if (!isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
+          if (chatLink) {
+            const finished = chatRunState.registry.shift(evt.runId);
+            if (!finished) {
+              clearAgentRunContext(evt.runId);
+              return;
+            }
+            emitChatFinal(
+              finished.sessionKey,
+              finished.clientRunId,
+              evt.seq,
+              lifecyclePhase === "error" ? "error" : "done",
+              evt.data?.error,
+            );
+          } else {
+            emitChatFinal(
+              sessionKey,
+              evt.runId,
+              evt.seq,
+              lifecyclePhase === "error" ? "error" : "done",
+              evt.data?.error,
+            );
           }
-          emitChatFinal(
-            finished.sessionKey,
-            finished.clientRunId,
-            evt.seq,
-            lifecyclePhase === "error" ? "error" : "done",
-            evt.data?.error,
-          );
-        } else {
-          emitChatFinal(
-            sessionKey,
-            evt.runId,
-            evt.seq,
-            lifecyclePhase === "error" ? "error" : "done",
-            evt.data?.error,
-          );
-        }
-      } else if (isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
-        chatRunState.abortedRuns.delete(clientRunId);
-        chatRunState.abortedRuns.delete(evt.runId);
-        chatRunState.buffers.delete(clientRunId);
-        chatRunState.deltaSentAt.delete(clientRunId);
-        if (chatLink) {
-          chatRunState.registry.remove(evt.runId, clientRunId, sessionKey);
+        } else if (isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
+          chatRunState.abortedRuns.delete(clientRunId);
+          chatRunState.abortedRuns.delete(evt.runId);
+          chatRunState.buffers.delete(clientRunId);
+          chatRunState.deltaSentAt.delete(clientRunId);
+          if (chatLink) {
+            chatRunState.registry.remove(evt.runId, clientRunId, sessionKey);
+          }
         }
       }
-    }
 
-    if (lifecyclePhase === "end" || lifecyclePhase === "error") {
-      toolEventRecipients.markFinal(evt.runId);
-      clearAgentRunContext(evt.runId);
-    }
-  };
-}
+      if (lifecyclePhase === "end" || lifecyclePhase === "error") {
+        toolEventRecipients.markFinal(evt.runId);
+        clearAgentRunContext(evt.runId);
+      }
+    };
+  }

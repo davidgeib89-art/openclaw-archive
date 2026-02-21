@@ -5,6 +5,7 @@ import type { AnyAgentTool } from "./common.js";
 import { loadConfig } from "../../config/config.js";
 import { textToSpeech } from "../../tts/tts.js";
 import { readStringParam } from "./common.js";
+import { saveMediaSource } from "../../media/store.js";
 
 const TtsToolSchema = Type.Object({
   text: Type.String({ description: "Text to convert to speech." }),
@@ -40,10 +41,24 @@ export function createTtsTool(opts?: {
         if (result.voiceCompatible) {
           lines.push("[[audio_as_voice]]");
         }
+        lines.push(`TEXT:${text}`);
+        
+        let mediaId: string | undefined;
+        try {
+          const saved = await saveMediaSource(result.audioPath);
+          mediaId = saved.id;
+        } catch (err) {
+          // Ignore and just use MEDIA
+        }
+        
         lines.push(`MEDIA:${result.audioPath}`);
+        if (mediaId) {
+          lines.push(`URL:/media/${mediaId}`);
+        }
+        
         return {
           content: [{ type: "text", text: lines.join("\n") }],
-          details: { audioPath: result.audioPath, provider: result.provider },
+          details: { audioPath: result.audioPath, provider: result.provider, mediaId },
         };
       }
 

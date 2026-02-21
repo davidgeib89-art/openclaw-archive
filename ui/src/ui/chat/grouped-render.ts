@@ -146,6 +146,47 @@ function extractImages(message: unknown): ImageBlock[] {
   return images;
 }
 
+function getBasePath(): string {
+  const raw = (window as unknown as Record<string, unknown>).__OPENCLAW_CONTROL_UI_BASE_PATH__ ?? "";
+  return typeof raw === "string" ? raw.replace(/\/+$/, "") : "";
+}
+
+function extractAudioUrls(toolCards: import("../types/chat-types.js").ToolCard[]): { urls: string[], texts: string[] } {
+  const urls: string[] = [];
+  const texts: string[] = [];
+  for (const card of toolCards) {
+    if (card.text) {
+      // Find matches for URL:\/media\/...
+      const match = card.text.match(/URL:(\/media\/[a-zA-Z0-9_.-]+(\.mp3|\.wav|\.ogg))/i);
+      if (match) {
+        urls.push(`${getBasePath()}${match[1]}`);
+        
+        // Find TEXT match
+        const textMatch = card.text.match(/TEXT:([\s\S]*?)(?=\nMEDIA:|$)/i);
+        if (textMatch) {
+            texts.push(textMatch[1].trim());
+        }
+      }
+    }
+  }
+  return { urls: [...new Set(urls)], texts: [...new Set(texts)] };
+}
+
+function renderMessageAudio(urls: string[]) {
+  if (urls.length === 0) {
+    return nothing;
+  }
+  return html`
+    <div class="chat-message-audio-list">
+      ${urls.map(
+        (url) => html`
+          <audio controls src="${url}" style="width: 100%; height: 32px; margin-top: 8px;"></audio>
+        `,
+      )}
+    </div>
+  `;
+}
+
 export function renderReadingIndicatorGroup(assistant?: AssistantIdentity) {
   return html`
     <div class="chat-group assistant">
@@ -325,13 +366,28 @@ function renderGroupedMessage(
   const hasToolCards = toolCards.length > 0;
   const images = extractImages(message);
   const hasImages = images.length > 0;
+  const audioData = extractAudioUrls(toolCards);
+  const audioUrls = audioData.urls;
+  const audioTexts = audioData.texts;
+  const hasAudio = audioUrls.length > 0;
 
   const extractedText = extractTextCached(message);
   const extractedThinking =
     opts.showReasoning && role === "assistant" ? extractThinkingCached(message) : null;
   const markdownBase = extractedText?.trim() ? extractedText : null;
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
-  const markdown = markdownBase;
+
+  let markdown = markdownBase;
+  const isTtsResult = isToolResult && hasAudio && audioTexts.length > 0;
+  
+  if (isTtsResult) {
+    markdown = audioTexts.join('\n\n');
+  } else if (markdown && markdown.includes("[[audio_as_voice]]")) {
+    markdown = markdown.replace(/\[\[audio_as_voice\]\]\n?TEXT:[\s\S]*?\n?MEDIA:.*?\n?URL:.*?\n?/gi, "");
+    markdown = markdown.replace(/\[\[audio_as_voice\]\]\n?MEDIA:.*?\n?URL:.*?\n?/gi, "");
+    markdown = markdown.trim() || null;
+  }
+
   const thoughtTrace = role === "assistant" ? extractThoughtTrace(message) : null;
   const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
   const canPlayTts = role === "assistant" && Boolean(markdown?.trim()) && !opts.isStreaming;
@@ -355,11 +411,13 @@ function renderGroupedMessage(
     .filter(Boolean)
     .join(" ");
 
-  if (!markdown && hasToolCards && isToolResult) {
-    return html`${toolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}`;
+  const visibleToolCards = toolCards.filter((card) => card.name !== "tts");
+
+  if (!markdown && visibleToolCards.length > 0 && isToolResult && !hasAudio) {
+    return html`${visibleToolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}`;
   }
 
-  if (!markdown && !hasToolCards && !hasImages) {
+  if (!markdown && visibleToolCards.length === 0 && !hasImages && !hasAudio && !thoughtTrace) {
     return nothing;
   }
 
@@ -395,7 +453,8 @@ function renderGroupedMessage(
           : nothing
       }
       ${canPlayTts ? renderInlineAudioPlayer(ttsKey) : nothing}
-      ${toolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}
+      ${renderMessageAudio(audioUrls)}
+      ${visibleToolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}
     </div>
   `;
 }

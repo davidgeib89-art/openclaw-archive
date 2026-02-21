@@ -51,13 +51,18 @@ export function extractToolCards(message: unknown): ToolCard[] {
 export function renderToolCardSidebar(card: ToolCard, onOpenSidebar?: (content: string) => void) {
   const display = resolveToolDisplay({ name: card.name, args: card.args });
   const detail = formatToolDetail(display);
-  const hasText = Boolean(card.text?.trim());
+  
+  const cleanedText = card.text 
+    ? card.text.replace(/\[\[audio_as_voice\]\]\n?TEXT:[\s\S]*?\n?MEDIA:.*?\n?URL:.*?\n?/g, "").replace(/\[\[audio_as_voice\]\]\n?MEDIA:.*?\n?URL:.*?\n?/g, "").trim()
+    : undefined;
+    
+  const hasText = Boolean(cleanedText?.trim());
 
   const canClick = Boolean(onOpenSidebar);
   const handleClick = canClick
     ? () => {
         if (hasText) {
-          onOpenSidebar!(formatToolOutputForSidebar(card.text!));
+          onOpenSidebar!(formatToolOutputForSidebar(cleanedText!));
           return;
         }
         const info = `## ${display.label}\n\n${
@@ -67,7 +72,12 @@ export function renderToolCardSidebar(card: ToolCard, onOpenSidebar?: (content: 
       }
     : undefined;
 
-  const isShort = hasText && (card.text?.length ?? 0) <= TOOL_INLINE_THRESHOLD;
+function getBasePath(): string {
+  const raw = (window as unknown as Record<string, unknown>).__OPENCLAW_CONTROL_UI_BASE_PATH__ ?? "";
+  return typeof raw === "string" ? raw.replace(/\/+$/, "") : "";
+}
+
+  const isShort = hasText && (cleanedText?.length ?? 0) <= TOOL_INLINE_THRESHOLD;
   const showCollapsed = hasText && !isShort;
   const showInline = hasText && isShort;
   const isEmpty = !hasText;
@@ -115,7 +125,7 @@ export function renderToolCardSidebar(card: ToolCard, onOpenSidebar?: (content: 
           ? html`<div class="chat-tool-card__preview mono">${getTruncatedPreview(card.text!)}</div>`
           : nothing
       }
-      ${showInline ? html`<div class="chat-tool-card__inline mono">${card.text}</div>` : nothing}
+      ${showInline ? html`<div class="chat-tool-card__inline mono">${cleanedText}</div>` : nothing}
     </div>
   `;
 }

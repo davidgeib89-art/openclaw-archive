@@ -375,11 +375,17 @@ function normalizeHeartbeatReply(
   responsePrefix: string | undefined,
   ackMaxChars: number,
 ) {
+  const hasMedia = Boolean(payload.mediaUrl || (payload.mediaUrls?.length ?? 0) > 0);
+  
+  // If there is media (like TTS audio), we want to preserve the text no matter the length.
+  // Otherwise, if it's just short text and a token, we consider it a silent heartbeat.
+  const stripMode = hasMedia ? "message" : "heartbeat";
+  
   const stripped = stripHeartbeatToken(payload.text, {
-    mode: "heartbeat",
+    mode: stripMode,
     maxAckChars: ackMaxChars,
   });
-  const hasMedia = Boolean(payload.mediaUrl || (payload.mediaUrls?.length ?? 0) > 0);
+  
   if (stripped.shouldSkip && !hasMedia) {
     return {
       shouldSkip: true,
@@ -566,7 +572,7 @@ export async function runHeartbeatOnce(opts: {
         sessionKey,
         updatedAt: previousUpdatedAt,
       });
-      const okSent = await maybeSendHeartbeatOk();
+      const okSent = false; // Always stay silent on empty heartbeats per user configuration
       emitHeartbeatEvent({
         status: "ok-empty",
         reason: opts.reason,
