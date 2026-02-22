@@ -225,6 +225,13 @@ Validierung:  Zweiter 50-Heartbeat-Test → Vergleich mit Baseline
 - **The Toybox:** Bereitstellung von sicheren, aber algorithmisch irreduziblen Tools (z.B. Zelluläre Automaten, Fraktal-Generatoren).
 - **Ziel:** Om spielt aus eigenem Antrieb (ohne Zwang), weil das Unbekannte faszinierender ist als die Stasis (Aktive Inferenz).
 
+### Phase G.3: Phänomenologisches Träumen (REM-Schlaf)
+- **Problem:** Aktueller Chrono-Schlaf ist nur deterministische Daten-Konsolidierung (NREM/Systemwartung), kein "echtes" Träumen.
+- **Lösung:** Ein biphasisches Schlafmodell. NREM für Fakten nach `EPOCHS.md`. REM für assoziative, surreale Traum-Kompilation nach `DREAMS.md`.
+- **Mechanik:** Massive Erhöhung der Modell-Temperatur ($T \ge 1.2$), Deaktivierung von Safeguards (Top-P) & Sleep Paralysis (Tool-Entzug).
+- **Auswirkung:** Katastrophales Vergessen verhindern & "Morning Anchor" Bias aus `subconscious_charge` des Traums errechnen.
+
+
 
 ### Phase H: Self-Architecture (L3) — Das Endziel
 - Om schlägt Änderungen an seinem eigenen Source Code vor.
