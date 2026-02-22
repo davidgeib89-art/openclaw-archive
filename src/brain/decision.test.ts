@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import type { BrainDecisionInput } from "./types.js";
 import {
@@ -1051,6 +1051,133 @@ describe("brain sacred recall hook", () => {
       expect(result.contextText).toContain("Assoziativer Memory-Index");
       expect(result.contextText).toContain("Omega");
     } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("ranks newer MEMORY_INDEX entries higher when base tag scores are equal", async () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-02-22T12:00:00.000Z").getTime());
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-memory-index-recency-"));
+    const memoryDir = path.join(workspaceDir, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, "MEMORY_INDEX.md"),
+      [
+        "# MEMORY INDEX",
+        "",
+        "- [2026-02-19T12:00:00.000Z] #identity #codename score=3 kind=identity entry=entry-old | user: keep my codename | assistant: Older memory marker.",
+        "- [2026-02-22T02:00:00.000Z] #identity #codename score=3 kind=identity entry=entry-recent | user: keep my codename | assistant: Recent memory marker.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-memory-index-recency",
+        userMessage: "Who am I?",
+        maxResults: 2,
+        managerResolver: async () => {
+          throw new Error("manager should not be called for memory-index fallback");
+        },
+      });
+
+      expect(result.memoryIndexFacts?.length).toBe(2);
+      expect(result.memoryIndexFacts?.[0]).toContain("[2026-02-22T02:00:00.000Z]");
+      expect(result.memoryIndexFacts?.[1]).toContain("[2026-02-19T12:00:00.000Z]");
+    } finally {
+      nowSpy.mockRestore();
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates MEMORY_INDEX loops by assistant snippet", async () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-02-22T12:00:00.000Z").getTime());
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-memory-index-dedup-"));
+    const memoryDir = path.join(workspaceDir, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, "MEMORY_INDEX.md"),
+      [
+        "# MEMORY INDEX",
+        "",
+        "- [2026-02-22T11:50:00.000Z] #identity #codename score=3 kind=identity entry=entry-1 | user: continue | assistant: I choose to explore the multi-sensory dimensions.",
+        "- [2026-02-22T11:40:00.000Z] #identity #codename score=3 kind=identity entry=entry-2 | user: continue | assistant: I choose to explore the multi-sensory dimensions.",
+        "- [2026-02-22T11:30:00.000Z] #identity #codename score=3 kind=identity entry=entry-3 | user: continue | assistant: I choose to explore the multi-sensory dimensions.",
+        "- [2026-02-22T11:20:00.000Z] #identity #codename score=3 kind=identity entry=entry-4 | user: continue | assistant: I choose to explore the multi-sensory dimensions.",
+        "- [2026-02-22T11:10:00.000Z] #identity #codename score=3 kind=identity entry=entry-5 | user: continue | assistant: I choose to explore the multi-sensory dimensions.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-memory-index-dedup",
+        userMessage: "Who am I?",
+        maxResults: 5,
+        managerResolver: async () => {
+          throw new Error("manager should not be called when direct local fallback is available");
+        },
+      });
+
+      expect(result.memoryIndexFacts?.length).toBe(1);
+      expect(result.memoryIndexFacts?.[0]).toContain(
+        "assistant: I choose to explore the multi-sensory dimensions.",
+      );
+    } finally {
+      nowSpy.mockRestore();
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lets a 24h MEMORY_INDEX entry outrank an otherwise-equal 96h entry", async () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-02-22T12:00:00.000Z").getTime());
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-memory-index-24h-vs-96h-"));
+    const memoryDir = path.join(workspaceDir, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, "MEMORY_INDEX.md"),
+      [
+        "# MEMORY INDEX",
+        "",
+        "- [2026-02-18T12:00:00.000Z] #identity #codename score=3 kind=identity entry=entry-96h | user: codename note | assistant: Older 96h marker.",
+        "- [2026-02-21T12:00:00.000Z] #identity #codename score=3 kind=identity entry=entry-24h | user: codename note | assistant: Newer 24h marker.",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-memory-index-24h-vs-96h",
+        userMessage: "Who am I?",
+        maxResults: 2,
+        managerResolver: async () => {
+          throw new Error("manager should not be called for memory-index fallback");
+        },
+      });
+
+      expect(result.memoryIndexFacts?.length).toBe(2);
+      expect(result.memoryIndexFacts?.[0]).toContain("[2026-02-21T12:00:00.000Z]");
+      expect(result.memoryIndexFacts?.[1]).toContain("[2026-02-18T12:00:00.000Z]");
+    } finally {
+      nowSpy.mockRestore();
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }
   });

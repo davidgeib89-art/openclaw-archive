@@ -1106,6 +1106,7 @@ function loadMemoryIndexFactsForRecall(params: {
 
     const queryTokens = extractRecallQueryTokens(params.query);
     const tagHints = routeTagHints(params.routePlan.route);
+    const nowMs = Date.now();
     const ranked = lines
       .map((line) => {
         const lower = line.toLowerCase();
@@ -1120,15 +1121,46 @@ function loadMemoryIndexFactsForRecall(params: {
             score += 1;
           }
         }
+
+        // Recency weighting: fresher memories should surface before stale loops.
+        const tsMatch = line.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/);
+        if (tsMatch?.[1]) {
+          const entryTime = new Date(tsMatch[1]);
+          if (Number.isFinite(entryTime.getTime())) {
+            const ageHours = Math.max(0, nowMs - entryTime.getTime()) / (1000 * 60 * 60);
+            if (ageHours <= 24) {
+              score += 4;
+            } else if (ageHours <= 48) {
+              score += 2;
+            } else if (ageHours <= 72) {
+              score += 1;
+            }
+            if (ageHours > 96) {
+              score -= 1;
+            }
+          }
+        }
+
         return { line: formatMemoryIndexFactLine(line), score };
       })
       .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        const aTs = a.line.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? "";
+        const bTs = b.line.match(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? "";
+        return bTs.localeCompare(aTs);
+      })
       .slice(0, params.maxFacts);
 
     const deduped: string[] = [];
+    const seenSnippets = new Set<string>();
     for (const row of ranked) {
-      if (!deduped.includes(row.line)) {
+      const snippetMatch = row.line.match(/assistant:\s*(.{0,80})/i);
+      const snippet = snippetMatch?.[1]?.trim().toLowerCase() ?? row.line.toLowerCase();
+      if (!seenSnippets.has(snippet)) {
+        seenSnippets.add(snippet);
         deduped.push(row.line);
       }
     }
