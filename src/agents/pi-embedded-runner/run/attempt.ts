@@ -28,6 +28,7 @@ import {
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
+import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
@@ -2312,6 +2313,25 @@ export async function runEmbeddedAttempt(
             `path=${energyResult.path}`,
           source: "proto33-r060.energy",
         });
+        if (params.isHeartbeat === true) {
+          try {
+            const sleepResult = await maybeSleepConsolidate({
+              workspaceDir: effectiveWorkspace,
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              energyLevel: energyResult.snapshot.level,
+            });
+            if (sleepResult.triggered) {
+              omLog(
+                "BRAIN-SLEEP",
+                "CONSOLIDATION",
+                `runId=${params.runId}; dreams=${sleepResult.dreamsEntriesConsolidated ?? 0}; epoch=${sleepResult.epochPath ?? "n/a"}; reason=${sleepResult.reason}`,
+              );
+            }
+          } catch (sleepErr) {
+            log.warn(`brain sleep consolidation fail-open: ${String(sleepErr)}`);
+          }
+        }
         if (params.isHeartbeat === true) {
           omLog(
             "BRAIN-CHOICE",
