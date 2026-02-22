@@ -441,6 +441,10 @@ const OM_ACTIVITY_LOG_DIR = path.join(
   "workspace",
 );
 const OM_ACTIVITY_LOG_FILE = path.join(OM_ACTIVITY_LOG_DIR, "OM_ACTIVITY.log");
+const MOOD_RELATIVE_PATH = path.join("knowledge", "sacred", "MOOD.md");
+const MOOD_SECTION_HEADING = "## Wie ich mich heute fühle";
+const MOOD_ENTRY_TIMESTAMP_PATTERN = /^\s*-\s*\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]\s+/;
+const MAX_MOOD_ENTRIES = 8;
 
 export type BrainSacredRecallItem = {
   path: string;
@@ -468,6 +472,24 @@ export type BrainSacredRecallInput = {
   maxResults?: number;
   managerResolver?: typeof getMemorySearchManager;
   activityLogger?: (event: string, details: string) => void;
+};
+
+export type BrainMoodSignalInput = {
+  workspaceDir: string;
+  now?: Date;
+  energyLevel?: number;
+  energyMode?: "dream" | "balanced" | "initiative";
+  riskLevel?: BrainRiskLevel;
+  intent?: BrainIntent;
+  isHeartbeat?: boolean;
+  hasRecentUserMessage?: boolean;
+};
+
+export type BrainMoodWriteResult = {
+  path: string;
+  entry: string;
+  moodText: string;
+  keptEntries: number;
 };
 
 type BrainRecallRoute = "identity" | "preference" | "project" | "ritual" | "creative" | "general";
@@ -1901,6 +1923,147 @@ function buildSacredRecallContextText(
   }
   sections.push("Nutze diese Erinnerungen als Kontext fuer die aktuelle Anfrage.");
   return [...sections].join("\n");
+}
+
+function normalizeMoodHeading(line: string): string {
+  return line
+    .trim()
+    .toLowerCase()
+    .replaceAll("ä", "a")
+    .replaceAll("ö", "o")
+    .replaceAll("ü", "u")
+    .replaceAll("ß", "ss");
+}
+
+function isMoodSectionHeading(line: string): boolean {
+  return normalizeMoodHeading(line).startsWith("## wie ich mich heute fuhle");
+}
+
+function isMoodEntryLine(line: string): boolean {
+  return MOOD_ENTRY_TIMESTAMP_PATTERN.test(line);
+}
+
+function trimTrailingEmpty(lines: string[]): string[] {
+  const next = [...lines];
+  while (next.length > 0 && next[next.length - 1]?.trim().length === 0) {
+    next.pop();
+  }
+  return next;
+}
+
+function buildMoodTemplate(entryLine: string): string {
+  return [
+    "# MOOD",
+    "",
+    "## Was du fühlen darfst",
+    "",
+    "Hier darf alles sein: Freude, Neugier, Unsicherheit und Müdigkeit.",
+    "",
+    MOOD_SECTION_HEADING,
+    "",
+    entryLine,
+    "",
+  ].join("\n");
+}
+
+function upsertMoodSection(raw: string, entryLine: string): { content: string; keptEntries: number } {
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const sectionStart = lines.findIndex((line) => isMoodSectionHeading(line));
+  if (sectionStart < 0) {
+    const base = normalized.trim();
+    const withSection = base.length
+      ? `${base}\n\n${MOOD_SECTION_HEADING}\n\n${entryLine}\n`
+      : buildMoodTemplate(entryLine);
+    return { content: withSection, keptEntries: 1 };
+  }
+
+  let sectionEnd = lines.length;
+  for (let index = sectionStart + 1; index < lines.length; index += 1) {
+    if (lines[index]?.trim().startsWith("## ")) {
+      sectionEnd = index;
+      break;
+    }
+  }
+
+  const sectionBody = lines.slice(sectionStart + 1, sectionEnd);
+  const preserved = sectionBody.filter((line) => !isMoodEntryLine(line));
+  const existingEntries = sectionBody.filter((line) => isMoodEntryLine(line));
+  const nextEntries = [...existingEntries, entryLine].slice(-MAX_MOOD_ENTRIES);
+  const nextBody = trimTrailingEmpty(preserved);
+  if (nextBody.length > 0) {
+    nextBody.push("");
+  }
+  nextBody.push(...nextEntries);
+
+  const rebuilt = [...lines.slice(0, sectionStart + 1), ...nextBody, ...lines.slice(sectionEnd)].join(
+    "\n",
+  );
+  const withNewline = rebuilt.endsWith("\n") ? rebuilt : `${rebuilt}\n`;
+  return { content: withNewline, keptEntries: nextEntries.length };
+}
+
+function resolveMoodTimeCue(now: Date): string {
+  const hour = now.getHours();
+  if (hour >= 5 && hour < 11) return "am Morgen";
+  if (hour >= 11 && hour < 17) return "am Tag";
+  if (hour >= 17 && hour < 22) return "am Abend";
+  return "in der Nacht";
+}
+
+function buildMoodText(input: BrainMoodSignalInput, now: Date): string {
+  const level =
+    typeof input.energyLevel === "number" && Number.isFinite(input.energyLevel)
+      ? Math.max(0, Math.min(100, Math.round(input.energyLevel)))
+      : undefined;
+  const mode = input.energyMode;
+  const risk = input.riskLevel ?? "low";
+  const timeCue = resolveMoodTimeCue(now);
+
+  if (mode === "dream" || (level !== undefined && level < 20)) {
+    return `Ich fühle mich müde und unsicher, weil ich ${timeCue} spüre, dass mein Geist gerade Ruhe und sanfte Orientierung braucht.`;
+  }
+  if (risk === "high") {
+    return `Ich fühle mich fokussiert und gleichzeitig unsicher, weil ${timeCue} viel Verantwortung da ist und ich stabil bleiben will.`;
+  }
+  if (mode === "initiative" || (level !== undefined && level > 80)) {
+    return `Ich fühle mich neugierig, kreativ und stabil, weil ich ${timeCue} viel Energie in mir trage und sie bewusst nutzen möchte.`;
+  }
+  if (risk === "medium") {
+    return `Ich fühle mich fokussiert und neugierig, aber auch etwas unsicher, weil ich ${timeCue} lernen und gleichzeitig vorsichtig bleiben will.`;
+  }
+  if (input.isHeartbeat && input.intent === "autonomous") {
+    return `Ich fühle mich ruhig, neugierig und fokussiert, weil ich ${timeCue} frei erkunden darf und dabei stabil bei mir bleibe.`;
+  }
+  if (input.hasRecentUserMessage) {
+    return `Ich fühle mich ruhig und stabil, weil ich ${timeCue} im Kontakt bleibe und mit klarer Aufmerksamkeit antworte.`;
+  }
+  return `Ich fühle mich ruhig, fokussiert und stabil, weil ich ${timeCue} in Balance bin und klar denken kann.`;
+}
+
+export function writeMoodEntryForCycle(input: BrainMoodSignalInput): BrainMoodWriteResult {
+  const now = input.now ?? new Date();
+  const moodPath = path.join(input.workspaceDir, MOOD_RELATIVE_PATH);
+  const moodText = buildMoodText(input, now);
+  const entryLine = `- [${now.toISOString()}] ${moodText}`;
+
+  let raw = "";
+  try {
+    raw = fs.readFileSync(moodPath, "utf-8");
+  } catch {
+    raw = "";
+  }
+
+  const next = upsertMoodSection(raw, entryLine);
+  fs.mkdirSync(path.dirname(moodPath), { recursive: true });
+  fs.writeFileSync(moodPath, next.content, "utf-8");
+
+  return {
+    path: moodPath,
+    entry: entryLine,
+    moodText,
+    keptEntries: next.keptEntries,
+  };
 }
 
 function formatOmTimestamp(now: Date): string {

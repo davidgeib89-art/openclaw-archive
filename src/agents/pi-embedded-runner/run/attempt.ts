@@ -17,6 +17,7 @@ import {
   createBrainDecision,
   createBrainRitualOutputContract,
   logBrainDecisionObserver,
+  writeMoodEntryForCycle,
 } from "../../../brain/decision.js";
 import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
@@ -1813,6 +1814,34 @@ export async function runEmbeddedAttempt(
               label: "RECALL",
               summary: "no relevant sacred memory found",
               source: "proto33-r031.recall",
+            });
+          }
+          try {
+            const moodWrite = writeMoodEntryForCycle({
+              workspaceDir: effectiveWorkspace,
+              now: new Date(promptStartedAt),
+              energyLevel: preRunEnergyHint?.level,
+              energyMode: preRunEnergyHint?.mode,
+              riskLevel: brainDecision.riskLevel,
+              intent: brainDecision.intent,
+              isHeartbeat: params.isHeartbeat === true,
+              hasRecentUserMessage: params.prompt.trim().length > 0,
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "mood",
+              label: "MOOD",
+              summary: `MOOD.md updated (${moodWrite.keptEntries} entries kept)`,
+              detail: moodWrite.entry,
+              risk: brainDecision.riskLevel,
+              source: "proto33-r072.mood",
+            });
+          } catch (moodErr) {
+            emitBrainReasoningEvent(params, {
+              phase: "mood",
+              label: "MOOD",
+              summary: `fail-open: ${String(moodErr)}`,
+              risk: brainDecision.riskLevel,
+              source: "proto33-r072.mood",
             });
           }
           const brainLogPath = logBrainDecisionObserver(brainInput, brainDecision, {

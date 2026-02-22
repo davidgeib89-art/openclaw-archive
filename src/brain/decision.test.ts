@@ -14,6 +14,7 @@ import {
   createBrainObserverEntry,
   logBrainDecisionObserver,
   logBrainGuidanceObserver,
+  writeMoodEntryForCycle,
 } from "./decision.js";
 
 describe("brain decision generator", () => {
@@ -369,6 +370,115 @@ describe("brain decision generator", () => {
       "Please summarize the architecture changes from yesterday.",
     );
     expect(contract).toBeNull();
+  });
+});
+
+describe("brain mood write", () => {
+  it("writes a fresh mood entry into MOOD.md", () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-write-"));
+    const sacredDir = path.join(workspace, "knowledge", "sacred");
+    fs.mkdirSync(sacredDir, { recursive: true });
+    const moodPath = path.join(sacredDir, "MOOD.md");
+    fs.writeFileSync(
+      moodPath,
+      [
+        "# MOOD",
+        "",
+        "## Was du fühlen darfst",
+        "",
+        "Alles darf sein.",
+        "",
+        "## Wie ich mich heute fühle",
+        "",
+        "(Erlaubnis: Du darfst das hier aufschreiben, wenn du willst)",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const now = new Date("2026-02-22T06:15:00.000Z");
+    const result = writeMoodEntryForCycle({
+      workspaceDir: workspace,
+      now,
+      energyLevel: 92,
+      energyMode: "initiative",
+      riskLevel: "low",
+      intent: "autonomous",
+      isHeartbeat: true,
+      hasRecentUserMessage: true,
+    });
+
+    const updated = fs.readFileSync(moodPath, "utf-8");
+    expect(result.path).toBe(moodPath);
+    expect(result.entry).toContain("[2026-02-22T06:15:00.000Z]");
+    expect(updated).toContain("## Wie ich mich heute fühle");
+    expect(updated).toContain(result.entry);
+    expect(updated.toLowerCase()).toContain("neugierig");
+  });
+
+  it("keeps only the latest mood entries", () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-trim-"));
+    const sacredDir = path.join(workspace, "knowledge", "sacred");
+    fs.mkdirSync(sacredDir, { recursive: true });
+    const moodPath = path.join(sacredDir, "MOOD.md");
+    const existingEntries = Array.from({ length: 10 }, (_, index) => {
+      const minute = String(index).padStart(2, "0");
+      return `- [2026-02-20T10:${minute}:00.000Z] Ich fühle mich ruhig und stabil, weil ich fokussiert bleibe.`;
+    });
+    fs.writeFileSync(
+      moodPath,
+      [
+        "# MOOD",
+        "",
+        "## Wie ich mich heute fühle",
+        "",
+        ...existingEntries,
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = writeMoodEntryForCycle({
+      workspaceDir: workspace,
+      now: new Date("2026-02-22T07:30:00.000Z"),
+      energyLevel: 40,
+      energyMode: "balanced",
+      riskLevel: "medium",
+      intent: "autonomous",
+      isHeartbeat: true,
+      hasRecentUserMessage: false,
+    });
+
+    const updated = fs.readFileSync(moodPath, "utf-8");
+    const entryLines = updated
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("- [2026-"));
+    expect(result.keptEntries).toBe(8);
+    expect(entryLines).toHaveLength(8);
+    expect(entryLines.some((line) => line.includes("2026-02-20T10:00:00.000Z"))).toBe(false);
+    expect(entryLines.at(-1)).toContain("2026-02-22T07:30:00.000Z");
+  });
+
+  it("creates MOOD.md when missing", () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-create-"));
+    const result = writeMoodEntryForCycle({
+      workspaceDir: workspace,
+      now: new Date("2026-02-22T09:00:00.000Z"),
+      energyLevel: 15,
+      energyMode: "dream",
+      riskLevel: "low",
+      intent: "autonomous",
+      isHeartbeat: true,
+      hasRecentUserMessage: false,
+    });
+
+    const moodPath = path.join(workspace, "knowledge", "sacred", "MOOD.md");
+    const created = fs.readFileSync(moodPath, "utf-8");
+    expect(result.path).toBe(moodPath);
+    expect(created).toContain("# MOOD");
+    expect(created).toContain("## Wie ich mich heute fühle");
+    expect(created).toContain("müde");
+    expect(created).toContain(result.entry);
   });
 });
 
