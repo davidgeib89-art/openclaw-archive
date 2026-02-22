@@ -43,6 +43,7 @@ export type BrainSubconsciousBrief = {
   mustAskUser: boolean;
   recommendedMode: BrainSubconsciousMode;
   notes: string;
+  charge: number;
 };
 
 export type BrainHomeostasisTelemetry = {

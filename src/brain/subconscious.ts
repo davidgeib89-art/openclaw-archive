@@ -30,6 +30,8 @@ const MAX_GOAL_CHARS = 240;
 const DEFAULT_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 500;
 const MIN_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 120;
 const MAX_SUBCONSCIOUS_CONTEXT_MAX_CHARS = 4_000;
+const MIN_SUBCONSCIOUS_CHARGE = -9;
+const MAX_SUBCONSCIOUS_CHARGE = 9;
 const SUBCONSCIOUS_CONTEXT_OPEN_TAG = "<subconscious_context>";
 const SUBCONSCIOUS_CONTEXT_CLOSE_TAG = "</subconscious_context>";
 const OM_ACTIVITY_LOG_DIR = path.join(
@@ -46,6 +48,7 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
     mustAskUser: z.boolean(),
     recommendedMode: z.enum(["answer_direct", "ask_clarify", "plan_then_answer"]),
     notes: z.string().max(MAX_NOTES_CHARS).optional().default(""),
+    charge: z.number().int().min(MIN_SUBCONSCIOUS_CHARGE).max(MAX_SUBCONSCIOUS_CHARGE).optional().default(0),
   })
   .strict();
 
@@ -75,6 +78,7 @@ const SILENT_OBSERVER_FALLBACK_BRIEF: BrainSubconsciousBrief = {
   mustAskUser: false,
   recommendedMode: "answer_direct",
   notes: SILENT_OBSERVER_FALLBACK_TEXT,
+  charge: 0,
 };
 
 function buildTelemetrySignature(telemetry: BrainHomeostasisTelemetry): string {
@@ -136,6 +140,7 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
         `homeostasis:${telemetrySignature};sensation=${sensation};guidance=epistemic-fasting`,
         MAX_NOTES_CHARS,
       ),
+      charge: 0,
     };
   }
 
@@ -149,6 +154,7 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
         `homeostasis:${telemetrySignature};sensation=${sensation};guidance=reduce-pressure-before-action`,
         MAX_NOTES_CHARS,
       ),
+      charge: 0,
     };
   }
 
@@ -162,6 +168,7 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
         `homeostasis:${telemetrySignature};sensation=${sensation};guidance=one-safe-step`,
         MAX_NOTES_CHARS,
       ),
+      charge: 0,
     };
   }
 
@@ -174,6 +181,7 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
       `homeostasis:${telemetrySignature};sensation=${sensation};guidance=steady-progress`,
       MAX_NOTES_CHARS,
     ),
+    charge: 0,
   };
 }
 
@@ -209,6 +217,7 @@ function buildFallbackBrief(
       mustAskUser: false,
       recommendedMode: "answer_direct",
       notes,
+      charge: 0,
     };
   }
   if (telemetry) {
@@ -267,6 +276,25 @@ function ensureCreativeEgoBrief(
     goal: nextGoal,
     notes: trimToLimit(nextNotesSeed, MAX_NOTES_CHARS),
   };
+}
+
+function normalizeSubconsciousCharge(value: number): number {
+  return Math.max(
+    MIN_SUBCONSCIOUS_CHARGE,
+    Math.min(MAX_SUBCONSCIOUS_CHARGE, Math.round(value)),
+  );
+}
+
+function parseSubconsciousCharge(raw: string): number {
+  const match = raw.match(/<subconscious_charge>([-+]?\d+)<\/subconscious_charge>/i);
+  if (!match?.[1]) {
+    return 0;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return normalizeSubconsciousCharge(parsed);
 }
 
 type BrainSubconsciousModelResolverResult = {
@@ -683,6 +711,7 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
     ...brief,
     goal: brief.goal.trim(),
     notes: brief.notes.trim(),
+    charge: parseSubconsciousCharge(raw),
   };
 }
 
@@ -760,6 +789,14 @@ function buildSubconsciousPrompt(
     ...antiGuardrailsBlock,
     ...curiosityBlock,
     "",
+    "End your observation with a charge tag:",
+    "<subconscious_charge>N</subconscious_charge>",
+    "where N is an integer from -9 to +9 reflecting your gut feeling about the system's current state.",
+    "Negative = something feels off, stagnant, or chaotic.",
+    "Positive = flow state, resonance, connection.",
+    "Zero = genuinely neutral (not default caution).",
+    "Do not default to 0 out of caution. If the system is highly resonant, use +7 to +9. If it feels stagnant or chaotic, use -7 to -9. Express the true variance of the subconscious.",
+    "",
     "Benutzeranfrage:",
     userMessage.trim(),
   ].join("\n");
@@ -813,6 +850,7 @@ export function buildSubconsciousContextBlock(
     recommendedMode: brief.recommendedMode,
     goal: brief.goal,
     notes: brief.notes,
+    charge: brief.charge,
   };
   const compactPayload = {
     source: "subconscious_observer",
@@ -822,6 +860,7 @@ export function buildSubconsciousContextBlock(
     recommendedMode: brief.recommendedMode,
     goal: truncateForContext(brief.goal, 120),
     notes: truncateForContext(brief.notes, 120),
+    charge: brief.charge,
   };
   const noNotesPayload = {
     source: "subconscious_observer",
@@ -830,6 +869,7 @@ export function buildSubconsciousContextBlock(
     mustAskUser: brief.mustAskUser,
     recommendedMode: brief.recommendedMode,
     goal: truncateForContext(brief.goal, 80),
+    charge: brief.charge,
   };
   const minimalPayload = {
     source: "subconscious_observer",
@@ -837,6 +877,7 @@ export function buildSubconsciousContextBlock(
     risk: brief.risk,
     mustAskUser: brief.mustAskUser,
     recommendedMode: brief.recommendedMode,
+    charge: brief.charge,
   };
 
   const candidates = [fullPayload, compactPayload, noNotesPayload, minimalPayload];
@@ -1030,6 +1071,7 @@ export async function runBrainSubconsciousObserver(
           "reason=empty_output",
           `risk=${brief.risk}`,
           `mode=${brief.recommendedMode}`,
+          `charge=${brief.charge}`,
         ].join(";"),
       );
       return {
@@ -1065,6 +1107,7 @@ export async function runBrainSubconsciousObserver(
           `error=${normalizeErrorMessage(err)}`,
           `risk=${fallbackBrief.risk}`,
           `mode=${fallbackBrief.recommendedMode}`,
+          `charge=${fallbackBrief.charge}`,
         ].join(";"),
       );
       return {
@@ -1088,6 +1131,7 @@ export async function runBrainSubconsciousObserver(
         `risk=${brief.risk}`,
         `mode=${brief.recommendedMode}`,
         `mustAskUser=${brief.mustAskUser ? "yes" : "no"}`,
+        `charge=${brief.charge}`,
       ].join(";"),
     );
     return {

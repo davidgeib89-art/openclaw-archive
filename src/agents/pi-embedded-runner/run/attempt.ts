@@ -546,6 +546,7 @@ function buildSubconsciousContextPreview(contextBlock: string): string {
       source: parsed.source,
       status: parsed.status,
       risk: parsed.risk,
+      charge: parsed.charge,
       mustAskUser: parsed.mustAskUser,
       recommendedMode: parsed.recommendedMode,
       goal: parsed.goal,
@@ -1594,6 +1595,7 @@ export async function runEmbeddedAttempt(
       let promptError: unknown = null;
       let preRunEnergyHint: EnergyStateHint | undefined;
       let latestMoodSummary = "n/a";
+      let subconsciousChargeForRun: number | undefined;
       try {
         const promptStartedAt = Date.now();
 
@@ -1914,6 +1916,7 @@ export async function runEmbeddedAttempt(
             homeostasis: subconsciousHomeostasis,
             curiosity: subconsciousCuriosity,
           });
+          subconsciousChargeForRun = subconsciousResult.brief?.charge;
           emitBrainReasoningEvent(params, {
             phase: "subconscious",
             label: "SUBCONSCIOUS",
@@ -1921,6 +1924,16 @@ export async function runEmbeddedAttempt(
             risk: subconsciousResult.brief?.risk,
             source: "proto33-r031.subconscious",
           });
+          omLog(
+            "BRAIN-CHARGE",
+            "STATE",
+            [
+              `runId=${params.runId}`,
+              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
+              `charge=${subconsciousResult.brief?.charge ?? 0}`,
+              `status=${subconsciousResult.status}`,
+            ].join("; "),
+          );
           const subconsciousContextBlock = buildSubconsciousContextBlock(subconsciousResult, 500);
           if (subconsciousContextBlock) {
             effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
@@ -2252,6 +2265,7 @@ export async function runEmbeddedAttempt(
           workspaceDir: effectiveWorkspace,
           runId: params.runId,
           sessionKey: params.sessionKey ?? params.sessionId,
+          subconsciousCharge: subconsciousChargeForRun,
           toolStats: {
             total: toolCounts.total,
             successful: toolCounts.successful,

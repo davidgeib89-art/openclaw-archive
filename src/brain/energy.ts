@@ -35,6 +35,7 @@ export type CalculateEnergyInput = {
   };
   previousLevel?: number;
   previousUpdatedAt?: Date;
+  subconsciousCharge?: number;
   now?: Date;
 };
 
@@ -47,6 +48,7 @@ export type UpdateEnergyParams = {
     successful?: number;
     failed?: number;
   };
+  subconsciousCharge?: number;
   now?: Date;
 };
 
@@ -169,8 +171,12 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
   let smoothed =
     previousLevel === undefined ? blended : Math.round(previousLevel * (1/3) + blended * (2/3)); // 3-6-9 Magic
 
-  // Biological Noise (Entropy): Random fluctuation +/- 6 points (multiples of 3)
-  const noise = Math.floor(Math.random() * 13) - 6;
+  // Biological Noise (Entropy): use subconscious charge when available, else fallback to random drift.
+  const normalizedCharge =
+    typeof input.subconsciousCharge === "number" && Number.isFinite(input.subconsciousCharge)
+      ? Math.max(-9, Math.min(9, Math.round(input.subconsciousCharge)))
+      : undefined;
+  const noise = normalizedCharge ?? (Math.floor(Math.random() * 13) - 6);
   smoothed += noise;
 
   const level = clamp(smoothed, MIN_ENERGY, MAX_ENERGY);
@@ -280,6 +286,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
     toolStats: params.toolStats,
     previousLevel,
     previousUpdatedAt,
+    subconsciousCharge: params.subconsciousCharge,
     now,
   });
 
