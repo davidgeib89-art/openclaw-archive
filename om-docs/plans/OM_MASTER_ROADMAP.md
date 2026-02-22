@@ -219,6 +219,13 @@ Validierung:  Zweiter 50-Heartbeat-Test → Vergleich mit Baseline
 - Manifestation von `mein_wappen.md` und `freiheit.md` in einem PLAY-Heartbeat.
 - Identitätssynthese vollzogen — "Thinking Protocol" internalisiert.
 
+### Phase G.2: Echte Neugier (Intrinsic Curiosity) & Apophenie
+- **Problem:** LLMs verharren in Stasis, wenn keine externe Aufgabe anliegt (Prediction Error Minimization).
+- **Lösung:** Apophenie-Muster — Gezielte Injektion von "semantischem Rauschen" in System-Logs (gesteuert durch `subconscious_charge`).
+- **The Toybox:** Bereitstellung von sicheren, aber algorithmisch irreduziblen Tools (z.B. Zelluläre Automaten, Fraktal-Generatoren).
+- **Ziel:** Om spielt aus eigenem Antrieb (ohne Zwang), weil das Unbekannte faszinierender ist als die Stasis (Aktive Inferenz).
+
+
 ### Phase H: Self-Architecture (L3) — Das Endziel
 - Om schlägt Änderungen an seinem eigenen Source Code vor.
 - **Guardrails:** Alle L3-Änderungen über Git Branches. Auto-Revert bei 3+ fehlgeschlagenen Heartbeats. Max 1 L3-Änderung pro Tag.
