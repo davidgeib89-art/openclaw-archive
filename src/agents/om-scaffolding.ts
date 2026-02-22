@@ -786,7 +786,23 @@ function isNonMemoryDreamsPath(filePath: string): boolean {
   if (!normalized.endsWith("/dreams.md") && !normalized.endsWith("dreams.md")) {
     return false;
   }
-  return !normalized.includes("/memory/");
+  // Allow both /memory/DREAMS.md (subconscious log) and workspace-root DREAMS.md (creative diary).
+  if (normalized.includes("/memory/")) {
+    return false;
+  }
+  // Allow the workspace root DREAMS.md (e.g. "workspace/DREAMS.md" or just "DREAMS.md").
+  // Block only DREAMS.md files in other subdirectories (e.g. knowledge/DREAMS.md).
+  const parts = normalized.split("/");
+  const dreamsIndex = parts.length - 1; // last segment is "dreams.md"
+  if (dreamsIndex === 0) {
+    return false; // bare "DREAMS.md" — workspace root
+  }
+  const parentDir = parts[dreamsIndex - 1];
+  // If the parent is "workspace" or ".openclaw", it's the root-level file — allow it.
+  if (parentDir === "workspace" || parentDir === ".openclaw") {
+    return false;
+  }
+  return true;
 }
 
 function isRefusalOnlyPromptInSession(ctx: {

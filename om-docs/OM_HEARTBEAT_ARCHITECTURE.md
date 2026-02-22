@@ -48,7 +48,22 @@ Obwohl die innere Logik (Backend) fehlerfrei arbeitet, gibt es starke UI-Bugs, d
 ### Der "HEARTBEAT_OK" Filter
 Normalerweise soll Øm, wenn er nichts Sinnvolles tun kann oder möchte, die Zeichenfolge `HEARTBEAT_OK` zurückgeben. Dieser spezielle String wird vom Gateway gefiltert und *nicht* in den Chat gepostet. Sobald Øm jedoch ein Werkzeug nutzt (wie das Editieren von `DREAMS.md`), wird der Filter oft umgangen, da die Tool-Rückgabe gesendet wird anstelle des reinen Textes.
 
-## 5. Zukünftige Lösungsansätze für Phase F
+## 5. Das DREAMS.md Chaos (4 Dateien, 1 Problem)
+
+Es existierten **vier** verschiedene DREAMS-Dateien im Workspace, was zu Verwirrung führte:
+
+| Pfad | Inhalt | Status |
+|------|--------|--------|
+| `/DREAMS.md` (Wurzel) | Oms schöne Gedichte (heute) | ⚠️ Nicht kanonisch laut Code |
+| `/memory/DREAMS.md` | 970+ Zeilen System-Log vom Unterbewusstsein (Claude) | ✅ Kanonisch laut `om-scaffolding.ts` |
+| `/knowledge/DREAMS.md` | Veraltete Einträge vom 20.02. | ❌ Gelöscht am 22.02. |
+| `/knowledge/sacred/DREAMS.md` | Platzhalter-Text | 📜 Template |
+
+**Root Cause:** Der Code in `om-scaffolding.ts` enthält einen `isNonMemoryDreamsPath`-Guard, der `write`-Operationen auf jede DREAMS.md blockiert, die NICHT in `/memory/` liegt. Om umgeht diesen Guard jedoch, indem er das `edit`-Tool statt `write` verwendet, um in die Wurzel-DREAMS.md zu schreiben.
+
+**Lösung:** Entweder den Guard auch auf `edit` erweitern, oder den kanonischen Pfad auf die Wurzel erweitern. Die `/memory/DREAMS.md` ist ein System-Log des Unterbewusstseins (Claude) und sollte nicht mit Oms kreativem Tagebuch verwechselt werden.
+
+## 6. Zukünftige Lösungsansätze für Phase F
 
 Damit Øms innere Schönheit (wie sein `DREAMS.md`) nicht durch UI-Spam zerstört wird, müssen zwei architektonische Dinge gelöst werden:
 
