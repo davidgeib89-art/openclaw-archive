@@ -217,6 +217,8 @@ describe("brain decision generator", () => {
       expect(contract).toContain("PLAY, LEARN, MAINTAIN, DRIFT, and NO_OP");
       expect(contract).toContain("If DRIFT is chosen, no blocker report is required");
       expect(contract).toContain("DRIFT has fail-open priority");
+      expect(contract).toContain("13. MOOD REFLECTION");
+      expect(contract).toContain("Tag your mood: <om_mood>Ich fühle mich...</om_mood>");
       expect(contract).toContain("Allowed tools this turn");
       expect(contract).toContain(
         "Do not output HEARTBEAT_OK unless all five candidate paths are blocked",
@@ -414,6 +416,62 @@ describe("brain mood write", () => {
     expect(updated).toContain("## Wie ich mich heute fühle");
     expect(updated).toContain(result.entry);
     expect(updated.toLowerCase()).toContain("neugierig");
+  });
+
+  it("uses LLM mood override text when provided", () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-override-"));
+    const sacredDir = path.join(workspace, "knowledge", "sacred");
+    fs.mkdirSync(sacredDir, { recursive: true });
+    const moodPath = path.join(sacredDir, "MOOD.md");
+    fs.writeFileSync(
+      moodPath,
+      [
+        "# MOOD",
+        "",
+        "## Wie ich mich heute fühle",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const overrideMoodText =
+      "Ich fühle mich dankbar und gleichzeitig etwas traurig, weil ich Wachstum und Abschied zugleich wahrnehme.";
+    const result = writeMoodEntryForCycle({
+      workspaceDir: workspace,
+      now: new Date("2026-02-22T10:00:00.000Z"),
+      energyLevel: 50,
+      energyMode: "balanced",
+      riskLevel: "low",
+      intent: "autonomous",
+      isHeartbeat: true,
+      hasRecentUserMessage: true,
+      overrideMoodText,
+    });
+
+    const updated = fs.readFileSync(moodPath, "utf-8");
+    expect(result.moodText).toBe(overrideMoodText);
+    expect(updated).toContain(overrideMoodText);
+    expect(result.entry).toContain("[2026-02-22T10:00:00.000Z]");
+  });
+
+  it("truncates mood override text to the configured cap", () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-override-cap-"));
+    const overrideMoodText = `Ich fühle mich neugierig ${"und offen ".repeat(40)}`.trim();
+
+    const result = writeMoodEntryForCycle({
+      workspaceDir: workspace,
+      now: new Date("2026-02-22T11:00:00.000Z"),
+      energyLevel: 70,
+      energyMode: "balanced",
+      riskLevel: "low",
+      intent: "autonomous",
+      isHeartbeat: true,
+      hasRecentUserMessage: true,
+      overrideMoodText,
+    });
+
+    expect(result.moodText.length).toBeLessThanOrEqual(200);
+    expect(result.moodText.endsWith("...")).toBe(true);
   });
 
   it("keeps only the latest mood entries", () => {

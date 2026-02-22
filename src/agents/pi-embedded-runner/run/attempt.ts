@@ -6,7 +6,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {
+  BrainIntent,
   BrainHomeostasisTelemetry,
+  BrainRiskLevel,
   BrainSubconsciousCuriositySignals,
 } from "../../../brain/types.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
@@ -452,6 +454,7 @@ type AutonomyPath = (typeof AUTONOMY_PATHS)[number];
 const AUTONOMY_PATH_PATTERN = /\b(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/gi;
 const AUTONOMY_EXPLICIT_CHOICE_PATTERN =
   /\b(?:i\s+choose|i\s+chose|ich\s+w(?:ä|ae)hle|ich\s+habe\s+mich\s+f(?:ü|ue)r|choice|path)\s*[:=-]?\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/i;
+const OM_MOOD_TAG_PATTERN = /<om_mood>([\s\S]*?)<\/om_mood>/i;
 
 function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "UNKNOWN" {
   const trimmed = text.trim();
@@ -478,6 +481,12 @@ function summarizeMoodForChoiceLog(moodText: string): string {
   if (!compact) return "n/a";
   if (compact.length <= 90) return compact;
   return `${compact.slice(0, 87)}...`;
+}
+
+function extractMoodFromAssistantOutput(text: string): string | undefined {
+  const match = OM_MOOD_TAG_PATTERN.exec(text);
+  const mood = match?.[1]?.replace(/\s+/g, " ").trim();
+  return mood ? mood : undefined;
 }
 
 function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
@@ -1596,6 +1605,8 @@ export async function runEmbeddedAttempt(
       let preRunEnergyHint: EnergyStateHint | undefined;
       let latestMoodSummary = "n/a";
       let subconsciousChargeForRun: number | undefined;
+      let latestDecisionRiskLevel: BrainRiskLevel | undefined;
+      let latestDecisionIntent: BrainIntent | undefined;
       try {
         const promptStartedAt = Date.now();
 
@@ -1679,6 +1690,8 @@ export async function runEmbeddedAttempt(
             source: "proto33-r069.trace",
           });
           const brainDecision = createBrainDecision(brainInput);
+          latestDecisionRiskLevel = brainDecision.riskLevel;
+          latestDecisionIntent = brainDecision.intent;
           emitBrainReasoningEvent(params, {
             phase: "intent",
             label: "INTENT",
@@ -1849,35 +1862,6 @@ export async function runEmbeddedAttempt(
               label: "RECALL",
               summary: "no relevant sacred memory found",
               source: "proto33-r031.recall",
-            });
-          }
-          try {
-            const moodWrite = writeMoodEntryForCycle({
-              workspaceDir: effectiveWorkspace,
-              now: new Date(promptStartedAt),
-              energyLevel: preRunEnergyHint?.level,
-              energyMode: preRunEnergyHint?.mode,
-              riskLevel: brainDecision.riskLevel,
-              intent: brainDecision.intent,
-              isHeartbeat: params.isHeartbeat === true,
-              hasRecentUserMessage: params.prompt.trim().length > 0,
-            });
-            emitBrainReasoningEvent(params, {
-              phase: "mood",
-              label: "MOOD",
-              summary: `MOOD.md updated (${moodWrite.keptEntries} entries kept)`,
-              detail: moodWrite.entry,
-              risk: brainDecision.riskLevel,
-              source: "proto33-r072.mood",
-            });
-            latestMoodSummary = summarizeMoodForChoiceLog(moodWrite.moodText);
-          } catch (moodErr) {
-            emitBrainReasoningEvent(params, {
-              phase: "mood",
-              label: "MOOD",
-              summary: `fail-open: ${String(moodErr)}`,
-              risk: brainDecision.riskLevel,
-              source: "proto33-r072.mood",
             });
           }
           const brainLogPath = logBrainDecisionObserver(brainInput, brainDecision, {
@@ -2205,6 +2189,40 @@ export async function runEmbeddedAttempt(
           : ("UNKNOWN" as const);
       const canPersistEpisodic = !aborted && !timedOut && !promptError;
       const toolCounts = getToolExecutionCounts();
+      const parsedMoodText = extractMoodFromAssistantOutput(assistantText);
+      try {
+        const moodWrite = writeMoodEntryForCycle({
+          workspaceDir: effectiveWorkspace,
+          now: new Date(runStartedAt),
+          energyLevel: preRunEnergyHint?.level,
+          energyMode: preRunEnergyHint?.mode,
+          riskLevel: latestDecisionRiskLevel,
+          intent: latestDecisionIntent,
+          isHeartbeat: params.isHeartbeat === true,
+          hasRecentUserMessage: params.prompt.trim().length > 0,
+          overrideMoodText: parsedMoodText,
+        });
+        emitBrainReasoningEvent(params, {
+          phase: "mood",
+          label: "MOOD",
+          summary:
+            parsedMoodText && parsedMoodText.length > 0
+              ? `MOOD.md updated from <om_mood> (${moodWrite.keptEntries} entries kept)`
+              : `MOOD.md updated with fallback mood (${moodWrite.keptEntries} entries kept)`,
+          detail: moodWrite.entry,
+          risk: latestDecisionRiskLevel,
+          source: "proto33-r072.mood",
+        });
+        latestMoodSummary = summarizeMoodForChoiceLog(moodWrite.moodText);
+      } catch (moodErr) {
+        emitBrainReasoningEvent(params, {
+          phase: "mood",
+          label: "MOOD",
+          summary: `fail-open: ${String(moodErr)}`,
+          risk: latestDecisionRiskLevel,
+          source: "proto33-r072.mood",
+        });
+      }
       if (canPersistEpisodic && assistantText) {
         try {
           const episodicHomeostasis =
