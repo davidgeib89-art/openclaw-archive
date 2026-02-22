@@ -447,6 +447,38 @@ const DREAM_NOVELTY_CATALOG = [
   "artifact: write to a different workspace file than the previous cycle.",
   "constraint: keep the next action to one measurable, verifiable step.",
 ] as const;
+const AUTONOMY_PATHS = ["PLAY", "LEARN", "MAINTAIN", "DRIFT", "NO_OP"] as const;
+type AutonomyPath = (typeof AUTONOMY_PATHS)[number];
+const AUTONOMY_PATH_PATTERN = /\b(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/gi;
+const AUTONOMY_EXPLICIT_CHOICE_PATTERN =
+  /\b(?:i\s+choose|i\s+chose|ich\s+w(?:ä|ae)hle|ich\s+habe\s+mich\s+f(?:ü|ue)r|choice|path)\s*[:=-]?\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/i;
+
+function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "UNKNOWN" {
+  const trimmed = text.trim();
+  if (!trimmed) return "UNKNOWN";
+
+  const explicit = AUTONOMY_EXPLICIT_CHOICE_PATTERN.exec(trimmed);
+  if (explicit?.[1]) {
+    return explicit[1].toUpperCase() as AutonomyPath;
+  }
+
+  const allMatches = [...trimmed.matchAll(AUTONOMY_PATH_PATTERN)].map((match) =>
+    match[1].toUpperCase(),
+  );
+  if (allMatches.length === 0) return "UNKNOWN";
+  const unique = [...new Set(allMatches)];
+  if (unique.length === 1) {
+    return unique[0] as AutonomyPath;
+  }
+  return "UNKNOWN";
+}
+
+function summarizeMoodForChoiceLog(moodText: string): string {
+  const compact = moodText.replace(/\s+/g, " ").trim();
+  if (!compact) return "n/a";
+  if (compact.length <= 90) return compact;
+  return `${compact.slice(0, 87)}...`;
+}
 
 function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
   return [
@@ -1561,6 +1593,7 @@ export async function runEmbeddedAttempt(
 
       let promptError: unknown = null;
       let preRunEnergyHint: EnergyStateHint | undefined;
+      let latestMoodSummary = "n/a";
       try {
         const promptStartedAt = Date.now();
 
@@ -1835,6 +1868,7 @@ export async function runEmbeddedAttempt(
               risk: brainDecision.riskLevel,
               source: "proto33-r072.mood",
             });
+            latestMoodSummary = summarizeMoodForChoiceLog(moodWrite.moodText);
           } catch (moodErr) {
             emitBrainReasoningEvent(params, {
               phase: "mood",
@@ -2152,6 +2186,10 @@ export async function runEmbeddedAttempt(
           .toReversed()
           .find((entry) => entry.trim().length > 0) ?? "";
       const assistantText = assistantTextFromSnapshot || assistantTextFromStream;
+      const chosenPath =
+        params.isHeartbeat === true
+          ? extractAutonomyPathFromAssistantOutput(assistantText)
+          : ("UNKNOWN" as const);
       const canPersistEpisodic = !aborted && !timedOut && !promptError;
       const toolCounts = getToolExecutionCounts();
       if (canPersistEpisodic && assistantText) {
@@ -2231,6 +2269,20 @@ export async function runEmbeddedAttempt(
             `path=${energyResult.path}`,
           source: "proto33-r060.energy",
         });
+        if (params.isHeartbeat === true) {
+          omLog(
+            "BRAIN-CHOICE",
+            "SELECTED_PATH",
+            [
+              `runId=${params.runId}`,
+              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
+              `path=${chosenPath}`,
+              `energy=${energyResult.snapshot.level}`,
+              `mode=${energyResult.snapshot.mode}`,
+              `mood=${latestMoodSummary}`,
+            ].join("; "),
+          );
+        }
       } catch (energyErr) {
         emitBrainReasoningEvent(params, {
           phase: "energy",
@@ -2239,6 +2291,20 @@ export async function runEmbeddedAttempt(
           source: "proto33-r060.energy",
         });
         log.warn(`brain energy fail-open: ${String(energyErr)}`);
+        if (params.isHeartbeat === true) {
+          omLog(
+            "BRAIN-CHOICE",
+            "SELECTED_PATH",
+            [
+              `runId=${params.runId}`,
+              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
+              `path=${chosenPath}`,
+              `energy=${preRunEnergyHint?.level ?? "unknown"}`,
+              `mode=${preRunEnergyHint?.mode ?? "unknown"}`,
+              `mood=${latestMoodSummary}`,
+            ].join("; "),
+          );
+        }
       }
 
       const toolMetasNormalized = toolMetas
