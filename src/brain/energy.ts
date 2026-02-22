@@ -34,6 +34,8 @@ export type CalculateEnergyInput = {
     failed?: number;
   };
   previousLevel?: number;
+  previousUpdatedAt?: Date;
+  now?: Date;
 };
 
 export type UpdateEnergyParams = {
@@ -74,6 +76,15 @@ function parsePreviousLevel(raw: string): number | undefined {
     return undefined;
   }
   return clamp(parsed, MIN_ENERGY, MAX_ENERGY);
+}
+
+function parseUpdatedAt(raw: string): Date | undefined {
+  const match = raw.match(/^- updated_at:\s*(.+)$/im);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = new Date(match[1].trim());
+  return Number.isFinite(parsed.getTime()) ? parsed : undefined;
 }
 
 function parseMode(raw: string): EnergyMode | undefined {
@@ -129,10 +140,25 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
   const blendedRaw = successRate * (2/3) + toolLoad * (1/3); // 3-6-9 Magic
   let blended = Math.round(blendedRaw);
 
-  // Homeostasis: Regenerate energy when resting or doing very little
+  // Homeostasis: Only reward true rest (elapsed wall-clock time), not repetitive low-action loops.
+  const now = input.now ?? new Date();
+  const elapsedMs = input.previousUpdatedAt
+    ? Math.max(0, now.getTime() - input.previousUpdatedAt.getTime())
+    : undefined;
+  const elapsedMinutes = elapsedMs === undefined ? undefined : elapsedMs / 60_000;
+
   if (toolStats.total <= 1) {
-    const regenBoost = Math.floor(Math.random() * 10) + 9; // +9 to +18 points (multiples of 9)
-    blended += regenBoost;
+    if (elapsedMinutes !== undefined && elapsedMinutes >= 30) {
+      // True rest: scale regeneration by rest duration.
+      const restTier = elapsedMinutes >= 120 ? 3 : elapsedMinutes >= 60 ? 2 : 1;
+      const baseBoost = restTier * 3; // +3 / +6 / +9
+      const regenBoost = baseBoost + Math.floor(Math.random() * (restTier * 3 + 1));
+      blended += regenBoost;
+    } else if (elapsedMinutes !== undefined) {
+      // Monotony drain: repeated inactivity in short loops should slowly tire the system.
+      const monotonyDrain = Math.floor(Math.random() * 4) + 3; // -3 to -6
+      blended -= monotonyDrain;
+    }
   }
 
   const previousLevel =
@@ -240,16 +266,21 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   const energyPath = path.join(params.workspaceDir, ENERGY_RELATIVE_PATH);
 
   let previousLevel: number | undefined;
+  let previousUpdatedAt: Date | undefined;
   try {
     const existingEnergy = await fs.readFile(energyPath, "utf-8");
     previousLevel = parsePreviousLevel(existingEnergy);
+    previousUpdatedAt = parseUpdatedAt(existingEnergy);
   } catch {
     previousLevel = undefined;
+    previousUpdatedAt = undefined;
   }
 
   const snapshot = calculateEnergy({
     toolStats: params.toolStats,
     previousLevel,
+    previousUpdatedAt,
+    now,
   });
 
   await fs.mkdir(path.dirname(energyPath), { recursive: true });
