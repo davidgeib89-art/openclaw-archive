@@ -8,7 +8,7 @@ import type { AnyAgentTool } from "./common.js";
 import { readNumberParam, readStringParam } from "./common.js";
 import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 
-const DEFAULT_COMFY_TIMEOUT_MS = 180_000;
+const DEFAULT_COMFY_TIMEOUT_MS = 576_000;
 const DEFAULT_COMFY_POLL_MS = 1_000;
 const DEFAULT_PROCESS_GRACE_MS = 30_000;
 const DEFAULT_VISION_MODEL = "google/gemma-3-27b-it:free";
