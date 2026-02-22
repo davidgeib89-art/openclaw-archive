@@ -20,13 +20,15 @@ const CURRENT_MESSAGE_MARKER = "[Current message - respond to this]";
 const RECALL_CONTEXT_ANCHOR_RE =
   /Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\./gi;
 const INTERNAL_PROMPT_HINT_RE =
-  /<subconscious_context>|<brain_output_contract>|<dream_context>|<autonomous_cycle>|Wisdom Layer \(read-only advisory, suggestions only\):|Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):/i;
+  /<subconscious_context>|<brain_output_contract>|<dream_context>|<autonomous_cycle>|<brain_autonomy_choice>|<energy_state>|Wisdom Layer \(read-only advisory, suggestions only\):|Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):/i;
 const INTERNAL_PROMPT_STRIP_PATTERNS: readonly RegExp[] = [
   /<subconscious_context>[\s\S]*?<\/subconscious_context>\s*/gi,
   /<brain_output_contract>[\s\S]*?<\/brain_output_contract>\s*/gi,
   /<dream_context>[\s\S]*?<\/dream_context>\s*/gi,
   /<autonomous_cycle>[\s\S]*?<\/autonomous_cycle>\s*/gi,
   /<safety_directive>[\s\S]*?<\/safety_directive>\s*/gi,
+  /<brain_autonomy_choice>[\s\S]*?<\/brain_autonomy_choice>\s*/gi,
+  /<energy_state>[\s\S]*?<\/energy_state>\s*/gi,
   /Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi,
   /Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
   /Wisdom Layer \(read-only advisory, suggestions only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
