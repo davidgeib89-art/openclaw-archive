@@ -106,6 +106,36 @@ describe("calculateEnergy", () => {
 
     expect(monotony.level).toBeLessThan(firstRun.level);
   });
+
+  it("cycles inhale/hold/exhale phases from previous heartbeat count", () => {
+    const baseInput = {
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      previousLevel: 50,
+      subconsciousCharge: 0,
+    };
+
+    const inhale = calculateEnergy({
+      ...baseInput,
+      previousHeartbeatCount: 0,
+    });
+    const hold = calculateEnergy({
+      ...baseInput,
+      previousHeartbeatCount: 2,
+    });
+    const exhale = calculateEnergy({
+      ...baseInput,
+      previousHeartbeatCount: 8,
+    });
+
+    expect(inhale.heartbeatCount).toBe(1);
+    expect(hold.heartbeatCount).toBe(3);
+    expect(exhale.heartbeatCount).toBe(9);
+    expect(inhale.breathPhase).toBe("inhale");
+    expect(hold.breathPhase).toBe("hold");
+    expect(exhale.breathPhase).toBe("exhale");
+    expect(inhale.level).toBeGreaterThan(hold.level);
+    expect(hold.level).toBeGreaterThan(exhale.level);
+  });
 });
 
 describe("updateEnergy", () => {
@@ -130,5 +160,32 @@ describe("updateEnergy", () => {
     expect(content).toContain("- level:");
     expect(content).toContain("- mode:");
     expect(content).toContain("- suggest_own_tasks:");
+    expect(content).toContain("- heartbeat_count:");
+    expect(content).toContain("- breath_phase:");
+  });
+
+  it("increments heartbeat_count across consecutive updates", async () => {
+    const workspace = await createWorkspace();
+
+    const first = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-first",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      subconsciousCharge: 0,
+      now: new Date("2026-02-22T12:00:00.000Z"),
+    });
+    const second = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-second",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      subconsciousCharge: 0,
+      now: new Date("2026-02-22T12:10:00.000Z"),
+    });
+
+    expect(first.snapshot.heartbeatCount).toBe(1);
+    expect(second.snapshot.heartbeatCount).toBe(2);
+    expect(second.snapshot.breathPhase).toBe("inhale");
   });
 });

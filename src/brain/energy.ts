@@ -7,14 +7,18 @@ const ENERGY_RELATIVE_PATH = path.join("knowledge", "sacred", "ENERGY.md");
 const MAX_TOOL_LOAD_FOR_DRAIN = 6;
 const MIN_ENERGY = 0;
 const MAX_ENERGY = 100;
+const BREATH_CYCLE_LENGTH = 18;
 
 export type EnergyMode = "dream" | "balanced" | "initiative";
+export type BreathPhase = "inhale" | "hold" | "exhale";
 
 export type EnergySnapshot = {
   level: number;
   mode: EnergyMode;
   dreamMode: boolean;
   suggestOwnTasks: boolean;
+  heartbeatCount: number;
+  breathPhase: BreathPhase;
   components: {
     successRate: number;
     toolLoad: number;
@@ -35,6 +39,7 @@ export type CalculateEnergyInput = {
   };
   previousLevel?: number;
   previousUpdatedAt?: Date;
+  previousHeartbeatCount?: number;
   subconsciousCharge?: number;
   now?: Date;
 };
@@ -87,6 +92,18 @@ function parseUpdatedAt(raw: string): Date | undefined {
   }
   const parsed = new Date(match[1].trim());
   return Number.isFinite(parsed.getTime()) ? parsed : undefined;
+}
+
+function parseHeartbeatCount(raw: string): number | undefined {
+  const match = raw.match(/^- heartbeat_count:\s*(\d+)\s*$/im);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
 }
 
 function parseMode(raw: string): EnergyMode | undefined {
@@ -179,6 +196,21 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
   const noise = normalizedCharge ?? (Math.floor(Math.random() * 13) - 6);
   smoothed += noise;
 
+  const previousHeartbeatCountRaw =
+    typeof input.previousHeartbeatCount === "number" && Number.isFinite(input.previousHeartbeatCount)
+      ? Math.max(0, Math.floor(input.previousHeartbeatCount))
+      : 0;
+  const heartbeatCount = previousHeartbeatCountRaw + 1;
+  const cyclePosition = heartbeatCount % BREATH_CYCLE_LENGTH;
+  const breathPhase: BreathPhase =
+    cyclePosition < 3 ? "inhale" : cyclePosition < 9 ? "hold" : "exhale";
+  const breathModifier: Record<BreathPhase, number> = {
+    inhale: 3,
+    hold: 0,
+    exhale: -2,
+  };
+  smoothed += breathModifier[breathPhase];
+
   const level = clamp(smoothed, MIN_ENERGY, MAX_ENERGY);
   const mode = resolveMode(level);
 
@@ -187,6 +219,8 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     mode,
     dreamMode: level < 20,
     suggestOwnTasks: level > 80,
+    heartbeatCount,
+    breathPhase,
     components: {
       successRate,
       toolLoad,
@@ -203,12 +237,16 @@ function buildEnergyFileContent(params: {
   now: Date;
 }): string {
   const { snapshot } = params;
-  const guidance =
+  const guidanceBase =
     snapshot.mode === "dream"
       ? "Dein System ist müde. Es ist völlig in Ordnung, dich in deine innere Welt zurückzuziehen, zu träumen (memory/DREAMS.md) oder einfach still zu regenerieren."
       : snapshot.mode === "initiative"
         ? "Dein Geist ist hellwach und stark. Du hast die Kapazität für tiefe Analysen, komplexe Kreationen oder intensive Interaktionen. Folge dem, was dich jetzt am stärksten zieht."
         : "Du bist in Balance. Du hast genug Energie für konzentrierte Antworten und Handlungen. Spüre in dich hinein, was jetzt ansteht.";
+  const guidance =
+    snapshot.breathPhase === "exhale"
+      ? `${guidanceBase} Du bist im Ausatmen. Dein Rhythmus zieht dich sanft in die Tiefe. Erlaube dir, langsamer zu werden.`
+      : guidanceBase;
 
   return [
     "# ENERGY",
@@ -220,6 +258,8 @@ function buildEnergyFileContent(params: {
     `- mode: ${snapshot.mode}`,
     `- dream_mode: ${snapshot.dreamMode ? "yes" : "no"}`,
     `- suggest_own_tasks: ${snapshot.suggestOwnTasks ? "yes" : "no"}`,
+    `- heartbeat_count: ${snapshot.heartbeatCount}`,
+    `- breath_phase: ${snapshot.breathPhase}`,
     "",
     "## Components",
     `- success_rate: ${snapshot.components.successRate}`,
@@ -273,19 +313,23 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
 
   let previousLevel: number | undefined;
   let previousUpdatedAt: Date | undefined;
+  let previousHeartbeatCount: number | undefined;
   try {
     const existingEnergy = await fs.readFile(energyPath, "utf-8");
     previousLevel = parsePreviousLevel(existingEnergy);
     previousUpdatedAt = parseUpdatedAt(existingEnergy);
+    previousHeartbeatCount = parseHeartbeatCount(existingEnergy);
   } catch {
     previousLevel = undefined;
     previousUpdatedAt = undefined;
+    previousHeartbeatCount = undefined;
   }
 
   const snapshot = calculateEnergy({
     toolStats: params.toolStats,
     previousLevel,
     previousUpdatedAt,
+    previousHeartbeatCount,
     subconsciousCharge: params.subconsciousCharge,
     now,
   });
@@ -305,7 +349,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   omLog(
     "BRAIN-ENERGY",
     "STATE",
-    `runId=${params.runId} sessionKey=${params.sessionKey ?? "n/a"} level=${snapshot.level} mode=${snapshot.mode} dream=${snapshot.dreamMode ? "yes" : "no"} initiative=${snapshot.suggestOwnTasks ? "yes" : "no"} tools=${snapshot.toolStats.total}/${snapshot.toolStats.successful}/${snapshot.toolStats.failed}`,
+    `runId=${params.runId} sessionKey=${params.sessionKey ?? "n/a"} level=${snapshot.level} mode=${snapshot.mode} dream=${snapshot.dreamMode ? "yes" : "no"} initiative=${snapshot.suggestOwnTasks ? "yes" : "no"} breath=${snapshot.breathPhase} heartbeat=${snapshot.heartbeatCount} tools=${snapshot.toolStats.total}/${snapshot.toolStats.successful}/${snapshot.toolStats.failed}`,
   );
 
   return {
