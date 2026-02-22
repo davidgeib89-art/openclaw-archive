@@ -29,6 +29,7 @@ const INTERNAL_PROMPT_STRIP_PATTERNS: readonly RegExp[] = [
   /<safety_directive>[\s\S]*?<\/safety_directive>\s*/gi,
   /<brain_autonomy_choice>[\s\S]*?<\/brain_autonomy_choice>\s*/gi,
   /<energy_state>[\s\S]*?<\/energy_state>\s*/gi,
+  /<om_mood>[\s\S]*?<\/om_mood>\s*/gi,
   /Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi,
   /Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
   /Wisdom Layer \(read-only advisory, suggestions only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
