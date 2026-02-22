@@ -32,6 +32,7 @@ export interface SleepConsolidationInput {
   runId: string;
   sessionKey: string;
   energyLevel: number;
+  isSleeping?: boolean;
   now?: Date;
 }
 
@@ -198,10 +199,15 @@ async function ensureEpochsFile(epochPath: string): Promise<void> {
 export async function maybeSleepConsolidate(
   input: SleepConsolidationInput,
 ): Promise<SleepConsolidationResult> {
-  if (!Number.isFinite(input.energyLevel) || input.energyLevel >= 15) {
+  const shouldConsolidate =
+    typeof input.isSleeping === "boolean"
+      ? input.isSleeping
+      : Number.isFinite(input.energyLevel) && input.energyLevel < 15;
+
+  if (!shouldConsolidate) {
     return {
       triggered: false,
-      reason: "energy_above_threshold",
+      reason: input.isSleeping === false ? "chrono_awake" : "energy_above_threshold",
     };
   }
 
