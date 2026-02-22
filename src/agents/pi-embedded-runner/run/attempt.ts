@@ -28,6 +28,7 @@ import {
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
+import { evaluateAndPersistChronoState } from "../../../brain/chrono.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
@@ -2313,6 +2314,44 @@ export async function runEmbeddedAttempt(
             `path=${energyResult.path}`,
           source: "proto33-r060.energy",
         });
+        let chronoIsSleeping: boolean | undefined;
+        if (params.isHeartbeat === true) {
+          try {
+            // Heartbeat runs are autonomous ticks. User-originated runs are handled outside this block.
+            const chronoResult = await evaluateAndPersistChronoState({
+              workspaceDir: effectiveWorkspace,
+              runId: params.runId,
+              currentEnergy: energyResult.snapshot.level,
+              isUserMessage: params.isHeartbeat !== true,
+            });
+            chronoIsSleeping = chronoResult.state.isSleeping;
+            emitBrainReasoningEvent(params, {
+              phase: "sleep",
+              label: "CHRONO",
+              summary:
+                `sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; ` +
+                `S=${chronoResult.state.processS.toFixed(1)}; C=${chronoResult.processC.toFixed(1)}; ` +
+                `threshold=${chronoResult.dynamicThreshold.toFixed(1)}; ` +
+                `transition=${chronoResult.transitioned ? (chronoResult.transitionType ?? "yes") : "no"}; ` +
+                `reason=${chronoResult.reason}`,
+              source: "proto33-f3.chrono",
+            });
+            if (chronoResult.transitioned) {
+              omLog(
+                "BRAIN-SLEEP",
+                "CHRONO_TRANSITION",
+                `runId=${params.runId}; type=${chronoResult.transitionType ?? "n/a"}; sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; reason=${chronoResult.reason}`,
+              );
+            }
+          } catch (chronoErr) {
+            emitBrainReasoningEvent(params, {
+              phase: "sleep",
+              label: "CHRONO",
+              summary: `fail-open: ${String(chronoErr)}`,
+              source: "proto33-f3.chrono",
+            });
+          }
+        }
         if (params.isHeartbeat === true) {
           try {
             const sleepResult = await maybeSleepConsolidate({
@@ -2320,6 +2359,7 @@ export async function runEmbeddedAttempt(
               runId: params.runId,
               sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
               energyLevel: energyResult.snapshot.level,
+              isSleeping: chronoIsSleeping,
             });
             if (sleepResult.triggered) {
               omLog(
