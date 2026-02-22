@@ -732,25 +732,36 @@ async function loadLatestDreamContext(workspaceDir: string): Promise<{
   const sourcePath = path.join(workspaceDir, DREAMS_RELATIVE_PATH);
   try {
     const raw = await fs.readFile(sourcePath, "utf-8");
-    const latest = parseDreamEntries(raw).at(-1);
-    if (!latest?.insight) {
+    const allEntries = parseDreamEntries(raw);
+    const recentEntries = allEntries.slice(-3);
+    if (recentEntries.length === 0) {
       return null;
     }
-    const insight = normalizeDreamText(stripHeartbeatAckArtifacts(latest.insight), 420);
-    if (!insight) {
+
+    const trailLines: string[] = [];
+    for (const entry of recentEntries) {
+      const insight = normalizeDreamText(stripHeartbeatAckArtifacts(entry.insight), 300);
+      if (!insight) {
+        continue;
+      }
+      trailLines.push(insight);
+    }
+    if (trailLines.length === 0) {
       return null;
     }
-    const action = normalizeDreamText(stripHeartbeatAckArtifacts(latest.actionHint), 220);
-    const novelty = normalizeDreamText(stripHeartbeatAckArtifacts(latest.noveltyDelta), 220);
-    const lines = [`Previous dream insight: ${insight}`];
+
+    const mostRecentEntry = recentEntries.at(-1);
+    const action = normalizeDreamText(stripHeartbeatAckArtifacts(mostRecentEntry?.actionHint ?? ""), 220);
+    const lines = ["Recent dream trail (oldest → newest):"];
+    for (let index = 0; index < trailLines.length; index += 1) {
+      lines.push(`${index + 1}. ${trailLines[index]}`);
+    }
     if (action) {
       lines.push(`Carry-forward action: ${action}`);
     }
-    if (novelty) {
-      lines.push(`Novelty delta for this cycle: ${novelty}`);
-    }
+
     return {
-      summary: normalizeDreamText(lines.join("\n"), 520),
+      summary: normalizeDreamText(lines.join("\n"), 700),
       sourcePath,
     };
   } catch {
