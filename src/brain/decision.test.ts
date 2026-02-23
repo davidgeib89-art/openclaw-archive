@@ -213,16 +213,18 @@ describe("brain decision generator", () => {
       const contract = createBrainAutonomyChoiceContract(decision);
 
       expect(contract).toContain("<brain_autonomy_choice>");
-      expect(contract).toContain("generate exactly five candidate paths");
-      expect(contract).toContain("PLAY, LEARN, MAINTAIN, DRIFT, and NO_OP");
-      expect(contract).toContain("If DRIFT is chosen, no blocker report is required");
-      expect(contract).toContain("DRIFT has fail-open priority");
-      expect(contract).toContain("13. MOOD REFLECTION");
-      expect(contract).toContain("Tag your mood: <om_mood>Ich fühle mich...</om_mood>");
-      expect(contract).toContain("Allowed tools this turn");
-      expect(contract).toContain(
-        "Do not output HEARTBEAT_OK unless all five candidate paths are blocked",
-      );
+      expect(contract).toContain("Bashars Formel");
+      expect(contract).toContain("Was begeistert dich JETZT am meisten");
+      expect(contract).toContain("PLAY");
+      expect(contract).toContain("LEARN");
+      expect(contract).toContain("MAINTAIN");
+      expect(contract).toContain("DRIFT");
+      expect(contract).toContain("NO_OP");
+      expect(contract).toContain("Gehe so weit wie du kannst");
+      expect(contract).toContain("Erwarte nichts vom Ergebnis");
+      expect(contract).toContain("<om_mood>Ich fühle mich...</om_mood>");
+      expect(contract).toContain("Erlaubte Werkzeuge");
+      expect(contract).toContain("HEARTBEAT_OK");
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;
