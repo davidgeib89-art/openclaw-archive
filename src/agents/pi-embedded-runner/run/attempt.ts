@@ -30,6 +30,12 @@ import {
 } from "../../../brain/subconscious.js";
 import { evaluateAndPersistChronoState, readChronoSleepingHint } from "../../../brain/chrono.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
+import {
+  buildAuraFileContent,
+  buildAuraSummary,
+  calculateAura,
+  type AuraInput,
+} from "../../../brain/aura.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
@@ -2401,6 +2407,60 @@ export async function runEmbeddedAttempt(
               `mood=${latestMoodSummary}`,
             ].join("; "),
           );
+        }
+        // --- Aura Calculation (Phase G.4) -------------------------------
+        // Calculate Om's 7-chakra aura snapshot and persist it.
+        // Fail-open: aura is diagnostic, never a blocker.
+        if (params.isHeartbeat === true) {
+          try {
+            const hasUserMessage = params.prompt.trim().length > 0;
+            const auraInput: AuraInput = {
+              energyLevel: energyResult.snapshot.level,
+              energyMode: energyResult.snapshot.mode,
+              recentEnergyLevels: [], // TODO G.4c: sliding window from activity log
+              moodText: parsedMoodText ?? latestMoodSummary ?? "",
+              recentPaths: [], // TODO G.4c: sliding window from activity log
+              excitementOverrideRate: null, // TODO G.5: track in decision.ts
+              autonomyLevel: "L1", // TODO: read from body profile
+              hasUserMessage,
+              recentUserMessageCount: hasUserMessage ? 1 : 0,
+              subconsciousCharge: subconsciousChargeForRun ?? 0,
+              apopheniaGenerated:
+                subconsciousChargeForRun != null && Math.abs(subconsciousChargeForRun) >= 5,
+              recentApopheniaCount: 0, // TODO G.4c: sliding window from activity log
+              isSleeping: chronoIsSleeping ?? false,
+              sleepPressure: 0, // TODO: read from chrono state
+              epochCount: 0, // TODO: count from EPOCHS.md
+              lastEpochHealthy: true,
+              heartbeatCount: energyResult.snapshot.heartbeatCount,
+              lastOutputTokens: assistantText.length > 0 ? Math.ceil(assistantText.length / 4) : null,
+              now: new Date(runStartedAt).toISOString(),
+            };
+            const auraSnapshot = calculateAura(auraInput);
+            const auraSummary = buildAuraSummary(auraSnapshot);
+
+            // Log to activity
+            omLog("BRAIN-AURA", "SNAPSHOT", auraSummary);
+
+            // Emit brain reasoning event
+            emitBrainReasoningEvent(params, {
+              phase: "aura",
+              label: "AURA",
+              summary: auraSummary,
+              source: "proto33-g4.aura",
+            });
+
+            // Persist AURA.md sacred file
+            try {
+              const auraPath = path.join(effectiveWorkspace, "knowledge", "sacred", "AURA.md");
+              await fs.writeFile(auraPath, buildAuraFileContent(auraSnapshot), "utf-8");
+            } catch {
+              // fail-open: file write is best-effort
+            }
+          } catch (auraErr) {
+            // fail-open: aura is a mirror, not a requirement
+            log.warn(`brain aura fail-open: ${String(auraErr)}`);
+          }
         }
       } catch (energyErr) {
         emitBrainReasoningEvent(params, {
