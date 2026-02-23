@@ -1931,7 +1931,11 @@ export async function runEmbeddedAttempt(
               `status=${subconsciousResult.status}`,
             ].join("; "),
           );
-          const subconsciousContextBlock = buildSubconsciousContextBlock(subconsciousResult, 500);
+          const subconsciousContextBlock = buildSubconsciousContextBlock(
+            subconsciousResult,
+            500,
+            params.isHeartbeat === true,
+          );
           if (subconsciousContextBlock) {
             effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
             emitBrainReasoningEvent(params, {

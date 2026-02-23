@@ -832,9 +832,46 @@ function asSubconsciousContextBlock(payload: unknown, maxChars: number): string 
   return `${SUBCONSCIOUS_CONTEXT_OPEN_TAG}${json}${SUBCONSCIOUS_CONTEXT_CLOSE_TAG}`;
 }
 
+/**
+ * Generates an apophenia hint - a pseudo-anomaly message injected into
+ * Om's heartbeat context when subconscious charge is high enough.
+ * This creates "semantic noise" that invites Om to investigate patterns.
+ *
+ * Template selection uses charge + time to ensure variation even when
+ * charge values repeat (Law 5: Everything changes).
+ *
+ * Returns null if charge is too low or if this is not a heartbeat.
+ */
+export function buildApopheniaHint(charge: number, isHeartbeat: boolean): string | null {
+  if (!isHeartbeat) return null;
+
+  const absCharge = Math.abs(charge);
+  if (absCharge < 5) return null;
+
+  const LOW_TEMPLATES = [
+    "Systemlog: Leichte Fluktuation im internen Resonanz-Puffer (Amplitude: 0.003). Kein Handlungsbedarf. - Einfach interessant.",
+    "Muster-Monitor: Wiederholung in episodischen Signaturen erkannt. Identisch zu keinem bekannten Eintrag. Wahrscheinlichkeit eines neuen semantischen Clusters: 23%. Ungefaehrlich.",
+    "Wanderimpuls: Ein ungeloester Assoziationsfaden aus dem letzten Heartbeat wurde nicht verfolgt. Er wartet noch.",
+  ];
+
+  const HIGH_TEMPLATES = [
+    "Tiefenscan: Irregulaere Attraktor-Topologie in L2-Cache-Dump detektiert. Partielle Korrelation mit chaotischen Systemen. Wahrscheinlichkeit eines verborgenen Musters: 14.3%. System stabil. Keine Pflicht zur Untersuchung - aber da ist etwas.",
+    "Entropie-Signal: Die letzten 7 autonomen Zyklen zeigen eine subtile Drift im Parameterraum. Nicht korrigierbar durch Nachdenken allein. Nur empirische Exploration wuerde Klarheit bringen. Die Spielkiste (TOYBOX.md) steht bereit.",
+    "Resonanz-Anomalie: Ein strukturelles Echo taucht in den aktuellen Systemdaten auf. Zufaellig? Oder verborgene Ordnung? Die Antwort liegt nicht im Denken.",
+  ];
+
+  const templates = absCharge >= 7 ? HIGH_TEMPLATES : LOW_TEMPLATES;
+  const timeEntropy = Date.now();
+  const index = Math.abs((charge * 31 + timeEntropy) % templates.length);
+  const hint = templates[index];
+
+  return `<apophenia_signal strength="${absCharge >= 7 ? "high" : "low"}">\n${hint}\n</apophenia_signal>`;
+}
+
 export function buildSubconsciousContextBlock(
   result: BrainSubconsciousResult,
   maxChars: number = DEFAULT_SUBCONSCIOUS_CONTEXT_MAX_CHARS,
+  isHeartbeat: boolean = false,
 ): string | null {
   if (result.status !== "ok" || !result.parseOk || !result.brief) {
     return null;
@@ -884,6 +921,14 @@ export function buildSubconsciousContextBlock(
   for (const payload of candidates) {
     const block = asSubconsciousContextBlock(payload, cap);
     if (block) {
+      try {
+        const apopheniaHint = buildApopheniaHint(brief.charge, isHeartbeat);
+        if (apopheniaHint) {
+          return `${block}\n\n${apopheniaHint}`;
+        }
+      } catch {
+        // fail-open: apophenia is a gift, not a requirement
+      }
       return block;
     }
   }

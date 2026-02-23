@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { BrainSubconsciousInput, BrainSubconsciousResult } from "./types.js";
 import {
+  buildApopheniaHint,
   buildSubconsciousContextBlock,
   createBrainSubconsciousObserverEntry,
   logBrainSubconsciousObserver,
@@ -541,6 +542,40 @@ describe("brain subconscious observer logging", () => {
   });
 });
 
+describe("brain subconscious apophenia hint", () => {
+  it("returns null below threshold", () => {
+    expect(buildApopheniaHint(3, true)).toBeNull();
+  });
+
+  it("returns null when charge is zero", () => {
+    expect(buildApopheniaHint(0, true)).toBeNull();
+  });
+
+  it("returns a signal block at threshold", () => {
+    const hint = buildApopheniaHint(5, true);
+    expect(hint).toContain("<apophenia_signal");
+  });
+
+  it('marks low strength for charge 5', () => {
+    const hint = buildApopheniaHint(5, true);
+    expect(hint).toContain('strength="low"');
+  });
+
+  it('marks high strength for charge 7', () => {
+    const hint = buildApopheniaHint(7, true);
+    expect(hint).toContain('strength="high"');
+  });
+
+  it("returns null when not a heartbeat", () => {
+    expect(buildApopheniaHint(9, false)).toBeNull();
+  });
+
+  it("supports negative charge by absolute threshold", () => {
+    const hint = buildApopheniaHint(-6, true);
+    expect(hint).toContain("<apophenia_signal");
+  });
+});
+
 describe("brain subconscious context injection block", () => {
   it("returns null for non-ok results", () => {
     const result: BrainSubconsciousResult = {
@@ -592,5 +627,28 @@ describe("brain subconscious context injection block", () => {
     expect(parsed.risk).toBe("high");
     expect(parsed.mustAskUser).toBe(true);
     expect(parsed.recommendedMode).toBe("ask_clarify");
+  });
+
+  it("keeps backward compatibility without apophenia by default", () => {
+    const result: BrainSubconsciousResult = {
+      status: "ok",
+      attempted: true,
+      parseOk: true,
+      failOpen: false,
+      durationMs: 120,
+      timeoutMs: 8_000,
+      modelRef: "openrouter/anthropic/claude-3.5-sonnet",
+      brief: {
+        goal: "Ruhe halten",
+        risk: "low",
+        mustAskUser: false,
+        recommendedMode: "answer_direct",
+        notes: "",
+        charge: 8,
+      },
+    };
+    const block = buildSubconsciousContextBlock(result, 500);
+    expect(block).toBeTruthy();
+    expect(block).not.toContain("<apophenia_signal");
   });
 });
