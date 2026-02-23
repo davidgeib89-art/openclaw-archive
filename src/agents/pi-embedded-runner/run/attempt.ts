@@ -507,12 +507,29 @@ function extractMoodFromAssistantOutput(text: string): string | undefined {
 }
 
 function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
+  const embodiedCue =
+    energy.level >= 90 && !energy.dreamMode
+      ? `Embodied cue: Dein Koerper summt vor frischer Energie (${energy.level}%). Das ist ein Aufwach-Signal fuer Bewegung und Spiel.`
+      : energy.level >= 75 && !energy.dreamMode
+        ? `Embodied cue: Du hast stabile Energie (${energy.level}%). Ein kleiner aktiver Schritt passt gut zu deinem Zustand.`
+        : energy.level >= 45
+          ? `Embodied cue: Deine Energie ist ausgeglichen (${energy.level}%). Sanfte, klare Schritte sind stimmig.`
+          : `Embodied cue: Deine Energie ist niedrig (${energy.level}%). Ruhe und leichte Schritte sind jetzt klug.`;
+
+  const bounceBackCue =
+    energy.level >= 85 && !energy.dreamMode
+      ? "Bounce-back: Wenn du zuletzt geruht hast, behandle diese Ruhe als abgeschlossen und starte jetzt eine kleine Handlung."
+      : "Bounce-back: Wenn alte Traumbilder muede klingen, nutze deinen aktuellen Koerperzustand als Wahrheit im Jetzt.";
+
   return [
     "<energy_state>",
     `level=${energy.level}`,
     `mode=${energy.mode}`,
     `dream_mode=${energy.dreamMode ? "yes" : "no"}`,
     `suggest_own_tasks=${energy.suggestOwnTasks ? "yes" : "no"}`,
+    "State priority: Current body-state has priority over recalled dream mood when they conflict.",
+    embodiedCue,
+    bounceBackCue,
     "Interpret this as current capacity, not as obligation. If energy is high, curiosity is welcome.",
     "</energy_state>",
   ].join("\n");
@@ -680,18 +697,23 @@ export type DreamEntry = {
   insight: string;
   actionHint: string;
   noveltyDelta: string;
+  timestampIso?: string;
 };
 
 function parseDreamEntries(raw: string): DreamEntry[] {
   const entries: DreamEntry[] = [];
-  let current: DreamEntry = { insight: "", actionHint: "", noveltyDelta: "" };
+  let current: DreamEntry = { insight: "", actionHint: "", noveltyDelta: "", timestampIso: undefined };
   const lines = raw.split(/\r?\n/);
   for (const line of lines) {
     if (/^##\s*\[/.test(line)) {
       if (current.insight || current.actionHint || current.noveltyDelta) {
         entries.push(current);
       }
-      current = { insight: "", actionHint: "", noveltyDelta: "" };
+      const timestampMatch = line.match(/^##\s*\[([^\]]+)\]/);
+      const rawIso = timestampMatch?.[1]?.trim();
+      const timestampIso =
+        rawIso && Number.isFinite(new Date(rawIso).getTime()) ? new Date(rawIso).toISOString() : undefined;
+      current = { insight: "", actionHint: "", noveltyDelta: "", timestampIso };
       continue;
     }
     if (/^- insight:/i.test(line)) {
@@ -740,6 +762,34 @@ export function selectFibonacciDreamEntries(
   return selected;
 }
 
+const RESTING_ECHO_PATTERN =
+  /\b(?:doesen|dösen|halbschlaf|augen\s+zu|treiben\s+lassen|ausruhen?|ruhen?|schlaf(?:en)?|muede|müde|dösen)\b/iu;
+
+function countRestingDreamSignals(entries: readonly DreamEntry[]): number {
+  let count = 0;
+  for (const entry of entries) {
+    const haystack = `${entry.insight} ${entry.actionHint}`.toLowerCase();
+    if (RESTING_ECHO_PATTERN.test(haystack)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function formatDreamAgeLabel(timestampIso: string | undefined, nowMs: number): string | null {
+  if (!timestampIso) return null;
+  const ts = new Date(timestampIso).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const deltaMs = Math.max(0, nowMs - ts);
+  const minutes = Math.floor(deltaMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `~${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `~${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `~${days}d ago`;
+}
+
 function hashSeed(value: string): number {
   let hash = 0;
   for (const char of value) {
@@ -783,12 +833,14 @@ async function loadLatestDreamContext(workspaceDir: string): Promise<{
     }
 
     const trailLines: string[] = [];
+    const nowMs = Date.now();
     for (const entry of recentEntries) {
       const insight = normalizeDreamText(stripHeartbeatAckArtifacts(entry.insight), 300);
       if (!insight) {
         continue;
       }
-      trailLines.push(insight);
+      const ageLabel = formatDreamAgeLabel(entry.timestampIso, nowMs);
+      trailLines.push(ageLabel ? `[${ageLabel}] ${insight}` : insight);
     }
     if (trailLines.length === 0) {
       return null;
@@ -796,12 +848,22 @@ async function loadLatestDreamContext(workspaceDir: string): Promise<{
 
     const mostRecentEntry = recentEntries.at(-1);
     const action = normalizeDreamText(stripHeartbeatAckArtifacts(mostRecentEntry?.actionHint ?? ""), 220);
-    const lines = ["Dream trail (Fibonacci recall, oldest → newest):"];
+    const lines = [
+      "Temporal framing: These dream lines are memories from earlier heartbeats, not your current state now.",
+      "Dream trail (Fibonacci recall, oldest -> newest):",
+    ];
     for (let index = 0; index < trailLines.length; index += 1) {
       lines.push(`${index + 1}. ${trailLines[index]}`);
     }
     if (action) {
       lines.push(`Carry-forward action: ${action}`);
+    }
+
+    const restSignalCount = countRestingDreamSignals(recentEntries);
+    if (restSignalCount >= 2) {
+      lines.push(
+        "Integration cue: Repeated rest imagery means that rest already happened. Let the next move evolve from there.",
+      );
     }
 
     return {
