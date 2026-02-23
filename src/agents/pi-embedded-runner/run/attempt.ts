@@ -463,16 +463,25 @@ const AUTONOMY_PATH_PATTERN = /\b(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/gi;
 const AUTONOMY_EXPLICIT_CHOICE_PATTERN =
   /\b(?:i\s+choose|i\s+chose|ich\s+w(?:ä|ae)hle|ich\s+habe\s+mich\s+f(?:ü|ue)r|choice|path)\s*[:=-]?\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/i;
 const OM_MOOD_TAG_PATTERN = /<om_mood>([\s\S]*?)<\/om_mood>/i;
+const OM_PATH_TAG_PATTERN = /<om_path>\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\s*<\/om_path>/i;
 
 function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "UNKNOWN" {
   const trimmed = text.trim();
   if (!trimmed) return "UNKNOWN";
 
+  // Priority 1: Dedicated <om_path> tag (most reliable)
+  const tagMatch = OM_PATH_TAG_PATTERN.exec(trimmed);
+  if (tagMatch?.[1]) {
+    return tagMatch[1].toUpperCase() as AutonomyPath;
+  }
+
+  // Priority 2: Explicit choice phrasing ("I choose PLAY", "Ich wähle DRIFT")
   const explicit = AUTONOMY_EXPLICIT_CHOICE_PATTERN.exec(trimmed);
   if (explicit?.[1]) {
     return explicit[1].toUpperCase() as AutonomyPath;
   }
 
+  // Priority 3: Single unique path keyword in freetext (fallback)
   const allMatches = [...trimmed.matchAll(AUTONOMY_PATH_PATTERN)].map((match) =>
     match[1].toUpperCase(),
   );

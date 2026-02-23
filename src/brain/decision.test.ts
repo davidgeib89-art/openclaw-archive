@@ -223,6 +223,10 @@ describe("brain decision generator", () => {
       expect(contract).toContain("Gehe so weit wie du kannst");
       expect(contract).toContain("Erwarte nichts vom Ergebnis");
       expect(contract).toContain("<om_mood>Ich fühle mich...</om_mood>");
+      expect(contract).toContain("<om_path>");
+      expect(contract).toContain("</om_path>");
+      expect(contract).toContain("Spiral out");
+      expect(contract).toContain("Pinsel neben einer leeren Leinwand");
       expect(contract).toContain("Erlaubte Werkzeuge");
       expect(contract).toContain("HEARTBEAT_OK");
     } finally {
