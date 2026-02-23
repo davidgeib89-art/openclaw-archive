@@ -11,18 +11,14 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { type BodyProfile, BODY_DEFAULTS, readBodyProfile } from "./body.js";
 
-// 3-6-9 constants
+// Architectural constants (invariant across development stages)
 const THRESHOLD_BASE = 69;
-const BASE_ACCUMULATION = 0.69;
-const EFFORT_PENALTY = 0.93;
-const DECAY_RATE = 3.69;
-const CYCLE_TICKS = 6;
-const HARD_SLEEP_HOUR = 20;
-const HARD_WAKE_HOUR = 7;
+const CIRCADIAN_INFLUENCE = 0.36;
 const MAX_SLEEP_TICKS = 72;
 const MAX_WAKE_TICKS = 54;
-const CIRCADIAN_INFLUENCE = 0.36;
+const EFFORT_PENALTY_SCALE = 0.36;
 
 const CHRONO_RELATIVE_PATH = path.join("knowledge", "sacred", "CHRONO.md");
 
@@ -152,12 +148,14 @@ export function evaluateChronoState(
   currentEnergy: number,
   isUserMessage: boolean,
   now: Date,
+  body: BodyProfile = BODY_DEFAULTS,
 ): Omit<ChronoEvalResult, "state"> & { nextState: ChronoState } {
   const nextState = { ...current };
   const hour = now.getHours();
   const processC = calculateProcessC(hour);
   const dynamicThreshold = THRESHOLD_BASE + processC * CIRCADIAN_INFLUENCE;
 
+  // --- Papa override: direct user message wakes Om immediately ---
   if (isUserMessage && current.isSleeping) {
     nextState.isSleeping = false;
     nextState.sleepTicksElapsed = 0;
@@ -174,11 +172,13 @@ export function evaluateChronoState(
     };
   }
 
+  // --- SLEEPING branch ---
   if (current.isSleeping) {
     nextState.sleepTicksElapsed = current.sleepTicksElapsed + 1;
     nextState.wakeTicksElapsed = 0;
-    nextState.processS = Math.max(0, current.processS - DECAY_RATE);
+    nextState.processS = Math.max(0, current.processS - body.sleepPressureDecayPerTick);
 
+    // Safety cap: hard wake after MAX_SLEEP_TICKS
     if (nextState.sleepTicksElapsed >= MAX_SLEEP_TICKS) {
       nextState.isSleeping = false;
       nextState.sleepTicksElapsed = 0;
@@ -194,7 +194,8 @@ export function evaluateChronoState(
       };
     }
 
-    const isCycleComplete = nextState.sleepTicksElapsed % CYCLE_TICKS === 0;
+    // Natural wake: cycle complete AND pressure cleared
+    const isCycleComplete = nextState.sleepTicksElapsed % body.sleepCycleTicks === 0;
     const isPressureCleared = nextState.processS < 9;
 
     if (isPressureCleared && isCycleComplete) {
@@ -221,16 +222,19 @@ export function evaluateChronoState(
     };
   }
 
+  // --- AWAKE branch ---
   nextState.wakeTicksElapsed = current.wakeTicksElapsed + 1;
   nextState.sleepTicksElapsed = 0;
 
+  // Sleep pressure accumulation (body-driven gain + energy-deficit bonus)
   const energyDeficit = (100 - Math.max(0, Math.min(100, currentEnergy))) / 100;
-  const gain = BASE_ACCUMULATION + energyDeficit * EFFORT_PENALTY;
+  const gain = body.sleepPressureGainPerTick * (1 + energyDeficit * EFFORT_PENALTY_SCALE);
   nextState.processS = Math.min(100, current.processS + gain);
 
-  const isNight = hour >= HARD_SLEEP_HOUR || hour < HARD_WAKE_HOUR;
+  const isNight = hour >= body.hardSleepHour || hour < body.hardWakeHour;
   const isExhausted = nextState.wakeTicksElapsed >= MAX_WAKE_TICKS;
 
+  // Night/exhaustion trigger (with minimum pressure)
   if (isNight || isExhausted) {
     const minimumSleepPressure = 15;
     if (nextState.processS >= minimumSleepPressure) {
@@ -251,6 +255,24 @@ export function evaluateChronoState(
     }
   }
 
+  // Night drowsiness cap: toddlers can't stay awake long at night
+  if (isNight && nextState.wakeTicksElapsed >= body.maxWakeDuringNightTicks) {
+    nextState.isSleeping = true;
+    nextState.wakeTicksElapsed = 0;
+    nextState.sleepTicksElapsed = 0;
+    nextState.processS = Math.max(nextState.processS, dynamicThreshold * 0.5);
+    nextState.lastSleepStartIso = now.toISOString();
+    return {
+      nextState,
+      transitioned: true,
+      transitionType: "fell_asleep",
+      processC,
+      dynamicThreshold,
+      reason: `Night drowsiness cap: awake ${nextState.wakeTicksElapsed} ticks >= max ${body.maxWakeDuringNightTicks} at hour=${hour}.`,
+    };
+  }
+
+  // Normal biological threshold trigger
   if (nextState.processS > dynamicThreshold) {
     nextState.isSleeping = true;
     nextState.wakeTicksElapsed = 0;
@@ -280,12 +302,16 @@ export async function evaluateAndPersistChronoState(
 ): Promise<ChronoEvalResult & { error?: string }> {
   const now = input.now ?? new Date();
   try {
-    const currentState = await readChronoState(input.workspaceDir);
+    const [currentState, body] = await Promise.all([
+      readChronoState(input.workspaceDir),
+      readBodyProfile(input.workspaceDir),
+    ]);
     const result = evaluateChronoState(
       currentState,
       input.currentEnergy,
       input.isUserMessage,
       now,
+      body,
     );
 
     await writeChronoState(input.workspaceDir, result.nextState, input.runId, now);

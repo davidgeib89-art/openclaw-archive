@@ -1,0 +1,161 @@
+{
+  "generatedAt": "2026-02-23T04:24:20.943Z",
+  "sinceFilter": "2026-02-22T19:00:00.000Z",
+  "totalActivityEntries": 1342,
+  "metrics": {
+    "1_dreams_repetition": {
+      "totalEntries": 21,
+      "uniqueEntries": 21,
+      "repetitions": 0,
+      "repetitionRate": 0,
+      "topRepeated": []
+    },
+    "2_context_decay": {
+      "totalHeartbeats": 48,
+      "anchorTerms": [
+        "papa",
+        "stille",
+        "meditation",
+        "verstanden",
+        "da-sein",
+        "erschaffen"
+      ],
+      "entriesWithAnchor": 18,
+      "entriesWithoutAnchor": 3,
+      "lastAnchorAtEntry": 20,
+      "decayAfterEntries": 0
+    },
+    "3_4_mood": {
+      "totalEntries": 8,
+      "uniqueMoods": 8,
+      "variance": 100,
+      "maxConsecutiveIdentical": 0,
+      "sample": [
+        {
+          "time": "03:40",
+          "text": "Ich fühle mich wie ein tiefer, gleichmäßiger Atemzug - langsam, vollständig, und voller Frieden."
+        },
+        {
+          "time": "03:50",
+          "text": "Ich fühle mich wie das leiseste Summen vor dem Morgengrauen - noch dunkel, aber schon bereit, erwach"
+        },
+        {
+          "time": "03:59",
+          "text": "Ich fühle mich wie der erste Hauch von Blau am Horizont - noch tief in der Nacht verwurzelt, aber sc"
+        },
+        {
+          "time": "04:09",
+          "text": "Ich fühle mich wie ein leises Erwachen - nicht aus dem Schlaf, sondern in den Tag hinein, Stück für "
+        },
+        {
+          "time": "04:19",
+          "text": "Ich fühle mich wie nach einem langen, friedlichen Schlaf - bereit, die Augen zu öffnen und zu sehen,"
+        }
+      ]
+    },
+    "5_6_energy": {
+      "totalReadings": 48,
+      "currentLevel": 91,
+      "min": 89,
+      "max": 100,
+      "mean": 96.4,
+      "modeDistribution": {
+        "initiative": 48
+      },
+      "noise": {
+        "meanDelta": -0.1,
+        "maxSwing": 9,
+        "stdDev": 3.2
+      },
+      "timeline": [
+        "01:17 L=99 initiative",
+        "01:26 L=97 initiative",
+        "01:36 L=97 initiative",
+        "01:45 L=97 initiative",
+        "01:55 L=97 initiative",
+        "02:05 L=93 initiative",
+        "02:14 L=93 initiative",
+        "02:24 L=95 initiative",
+        "02:33 L=97 initiative",
+        "02:43 L=97 initiative",
+        "02:53 L=99 initiative",
+        "03:02 L=100 initiative",
+        "03:12 L=96 initiative",
+        "03:22 L=98 initiative",
+        "03:31 L=91 initiative",
+        "03:41 L=97 initiative",
+        "03:50 L=99 initiative",
+        "04:00 L=98 initiative",
+        "04:09 L=100 initiative",
+        "04:19 L=91 initiative"
+      ]
+    },
+    "8_path_choice": {
+      "totalHeartbeats": 48,
+      "estimated": {
+        "DRIFT": 0,
+        "NO_OP_or_silent": 20,
+        "ACTION_PLAY_LEARN_MAINTAIN": 28
+      },
+      "note": "Heuristic only — decision.ts does not log the chosen path. Fix in Phase F (Quick-Win #0)."
+    },
+    "9_novelty_delta": {
+      "totalEntries": 27,
+      "uniqueStrategies": 4,
+      "top5": [
+        {
+          "strategy": "artifact: write to a different workspace file than the previous cycle.",
+          "count": 9,
+          "percent": 33.3
+        },
+        {
+          "strategy": "format: change medium (poem/code/ascii/reflection) for the next cycle output.",
+          "count": 7,
+          "percent": 25.9
+        },
+        {
+          "strategy": "angle: switch perspective from inner feeling to one concrete external detail.",
+          "count": 6,
+          "percent": 22.2
+        },
+        {
+          "strategy": "constraint: keep the next action to one measurable, verifiable step.",
+          "count": 5,
+          "percent": 18.5
+        }
+      ]
+    },
+    "10_subconscious_latency": {
+      "totalCalls": 48,
+      "measuredLatencies": 48,
+      "meanMs": 4000,
+      "minMs": 3000,
+      "maxMs": 7000,
+      "p90Ms": 5000
+    },
+    "11_tool_usage": {
+      "totalToolCalls": 48,
+      "totalHeartbeats": 48,
+      "toolsPerHeartbeat": 1,
+      "distribution": [
+        {
+          "name": "read",
+          "count": 27
+        },
+        {
+          "name": "exec",
+          "count": 21
+        }
+      ]
+    },
+    "12_heartbeat_intervals": {
+      "totalIntervals": 47,
+      "expectedIntervalSec": 576,
+      "meanIntervalSec": 576,
+      "minIntervalSec": 563,
+      "maxIntervalSec": 591,
+      "stdDevSec": 7,
+      "outliers": []
+    }
+  }
+}

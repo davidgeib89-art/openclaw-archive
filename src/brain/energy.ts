@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { omLog } from "../agents/om-scaffolding.js";
+import { type BodyProfile, BODY_DEFAULTS, readBodyProfile } from "./body.js";
 
 const MOOD_RELATIVE_PATH = path.join("knowledge", "sacred", "MOOD.md");
 const ENERGY_RELATIVE_PATH = path.join("knowledge", "sacred", "ENERGY.md");
@@ -55,6 +56,8 @@ export type UpdateEnergyParams = {
   };
   subconsciousCharge?: number;
   now?: Date;
+  /** Whether Om is currently sleeping (from chrono.ts). Used for energy-chrono coupling. */
+  isSleeping?: boolean;
 };
 
 export type EnergyStateHint = {
@@ -325,7 +328,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
     previousHeartbeatCount = undefined;
   }
 
-  const snapshot = calculateEnergy({
+  let snapshot = calculateEnergy({
     toolStats: params.toolStats,
     previousLevel,
     previousUpdatedAt,
@@ -333,6 +336,40 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
     subconsciousCharge: params.subconsciousCharge,
     now,
   });
+
+  // ── Energy-Chrono Coupling ──────────────────────────────────────────────────
+  // When Om is sleeping, the body profile controls energy behaviour:
+  // - mode is forced to sleepEnergyMode (typically "dream")
+  // - level is pulled toward sleepEnergyFloor (typically 25)
+  // This ensures Om's energy system reflects his biological sleep state.
+  if (params.isSleeping === true) {
+    let body: BodyProfile;
+    try {
+      body = await readBodyProfile(params.workspaceDir);
+    } catch {
+      body = BODY_DEFAULTS;
+    }
+
+    if (body.energyCouplesToChrono) {
+      const floor = body.sleepEnergyFloor;
+      const sleepMode = body.sleepEnergyMode;
+
+      // Gradually pull energy toward the floor (25% of the gap per tick)
+      const gap = snapshot.level - floor;
+      const pullStrength = 0.25;
+      const adjustedLevel = gap > 0
+        ? clamp(Math.round(snapshot.level - gap * pullStrength), floor, MAX_ENERGY)
+        : snapshot.level;
+
+      snapshot = {
+        ...snapshot,
+        level: adjustedLevel,
+        mode: sleepMode === "dream" ? "dream" : sleepMode === "initiative" ? "initiative" : "balanced",
+        dreamMode: sleepMode === "dream" || adjustedLevel < 20,
+        suggestOwnTasks: false, // sleeping Om doesn't suggest tasks
+      };
+    }
+  }
 
   await fs.mkdir(path.dirname(energyPath), { recursive: true });
   await fs.writeFile(
