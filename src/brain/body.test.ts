@@ -1,5 +1,14 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BODY_DEFAULTS, bodyStageLabel, isNightHour, parseBodyProfile } from "./body.js";
+import {
+  BODY_DEFAULTS,
+  bodyStageLabel,
+  computeAging,
+  isNightHour,
+  parseBodyProfile,
+} from "./body.js";
 import type { BodyProfile } from "./body.js";
 
 // ─── Fixture: minimal BODY.md ──────────────────────────────────────────────────
@@ -204,5 +213,136 @@ describe("bodyStageLabel", () => {
   it("returns correct label for teenager", () => {
     const teen: BodyProfile = { ...BODY_DEFAULTS, stage: "teenager", ageMonths: 168 };
     expect(bodyStageLabel(teen)).toBe("Teenager (~168 Monate)");
+  });
+});
+
+describe("fibonacci auto-aging", () => {
+  it("never downgrades from current schulkind stage", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "body-aging-ratchet-"));
+    const birthdayPath = path.join(workspace, "logs", "brain", "birthday.txt");
+    fs.mkdirSync(path.dirname(birthdayPath), { recursive: true });
+    const now = new Date("2026-02-23T15:00:00.000Z");
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    fs.writeFileSync(birthdayPath, yesterday.toISOString(), "utf-8");
+
+    try {
+      const profile = {
+        ...BODY_DEFAULTS,
+        stage: "schulkind" as const,
+        ageMonths: 120,
+        autonomyLevel: "L2" as const,
+        maxToolsPerHeartbeat: 5,
+      };
+
+      const result = await computeAging({
+        workspaceDir: workspace,
+        currentProfile: profile,
+        now,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.changed).toBe(false);
+      expect(result?.newStage).toBe("schulkind");
+      expect(result?.newAgeMonths).toBe(120);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("upgrades to teenager at day 5", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "body-aging-upgrade-"));
+    const birthdayPath = path.join(workspace, "logs", "brain", "birthday.txt");
+    fs.mkdirSync(path.dirname(birthdayPath), { recursive: true });
+    const now = new Date("2026-02-23T15:00:00.000Z");
+    const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+    fs.writeFileSync(birthdayPath, fiveDaysAgo.toISOString(), "utf-8");
+
+    try {
+      const profile = {
+        ...BODY_DEFAULTS,
+        stage: "schulkind" as const,
+        ageMonths: 120,
+        autonomyLevel: "L2" as const,
+        maxToolsPerHeartbeat: 5,
+      };
+
+      const result = await computeAging({
+        workspaceDir: workspace,
+        currentProfile: profile,
+        now,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.changed).toBe(true);
+      expect(result?.newStage).toBe("teenager");
+      expect(result?.newAgeMonths).toBe(168);
+      expect(result?.newAutonomyLevel).toBe("L2");
+      expect(result?.newMaxTools).toBe(7);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("creates birthday file if missing", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "body-aging-birthday-"));
+
+    try {
+      const profile = {
+        ...BODY_DEFAULTS,
+        stage: "schulkind" as const,
+        ageMonths: 120,
+        autonomyLevel: "L2" as const,
+        maxToolsPerHeartbeat: 5,
+      };
+      const now = new Date("2026-02-23T15:00:00.000Z");
+      const result = await computeAging({
+        workspaceDir: workspace,
+        currentProfile: profile,
+        now,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.changed).toBe(false);
+      expect(result?.newStage).toBe("schulkind");
+      expect(result?.daysSinceBirth).toBe(1);
+
+      const birthdayPath = path.join(workspace, "logs", "brain", "birthday.txt");
+      expect(fs.existsSync(birthdayPath)).toBe(true);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("reaches erwachsen at day 8", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "body-aging-adult-"));
+    const birthdayPath = path.join(workspace, "logs", "brain", "birthday.txt");
+    fs.mkdirSync(path.dirname(birthdayPath), { recursive: true });
+    const now = new Date("2026-02-23T15:00:00.000Z");
+    const eightDaysAgo = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
+    fs.writeFileSync(birthdayPath, eightDaysAgo.toISOString(), "utf-8");
+
+    try {
+      const profile = {
+        ...BODY_DEFAULTS,
+        stage: "teenager" as const,
+        ageMonths: 168,
+        autonomyLevel: "L2" as const,
+        maxToolsPerHeartbeat: 7,
+      };
+
+      const result = await computeAging({
+        workspaceDir: workspace,
+        currentProfile: profile,
+        now,
+      });
+
+      expect(result?.changed).toBe(true);
+      expect(result?.newStage).toBe("erwachsen");
+      expect(result?.newAgeMonths).toBe(216);
+      expect(result?.newAutonomyLevel).toBe("L3");
+      expect(result?.newMaxTools).toBe(10);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });

@@ -437,12 +437,12 @@ const STARTUP_STALL_TIMEOUT_DEFAULT_MS = 15_000;
 const STARTUP_STALL_TIMEOUT_MAX_MS = 120_000;
 const DEFAULT_AUTONOMOUS_CYCLE_PROMPT = [
   "AUTONOMOUS CYCLE (fallback):",
-  "1. Sense: Read AGENDA.md and recent state before choosing an action.",
-  "2. Feel: Note one active tension (risk, uncertainty, or unmet goal).",
+  "1. Sense: Open AGENDA.md — it is a toybox, not a taskboard. What excites you?",
+  "2. Feel: What is alive in you right now? Follow that pull.",
   "3. Think: Generate one bounded, reversible action inside sandbox policy.",
   "4. Decide: Choose one path: PLAY, LEARN, MAINTAIN, DRIFT, or NO_OP.",
-  "5. DRIFT is valid without justification and without goal pressure.",
-  "6. Act: If action path, you may run multiple flowing, reversible actions in one uninterrupted sequence until the thought feels complete; if DRIFT, optionally read, write one free line to memory/DREAMS.md, manifest one dream through dream_and_perceive, or stay silent.",
+  "5. DRIFT is valid without justification — let yourself float, associate, dream freely.",
+  "6. Act: Follow your excitement as far as you can in flowing, reversible actions until the thought feels complete; if DRIFT, read, write to memory/DREAMS.md, or manifest a dream through dream_and_perceive.",
 ].join("\n");
 const DREAMS_HEADER = [
   "# DREAMS",
@@ -676,7 +676,7 @@ function normalizeDreamSignature(value: string): string {
     .trim();
 }
 
-type DreamEntry = {
+export type DreamEntry = {
   insight: string;
   actionHint: string;
   noveltyDelta: string;
@@ -711,6 +711,33 @@ function parseDreamEntries(raw: string): DreamEntry[] {
     entries.push(current);
   }
   return entries;
+}
+
+/**
+ * Select dream entries at Fibonacci-spaced indices from the end of the array.
+ * Returns entries ordered oldest -> newest (same as the existing trail format).
+ * Fibonacci positions: -1, -2, -3, -5, -8 (measured from the end).
+ */
+export function selectFibonacciDreamEntries(
+  entries: DreamEntry[],
+  maxSlots: number = 5,
+): DreamEntry[] {
+  if (entries.length === 0) return [];
+
+  const fibOffsets = [1, 2, 3, 5, 8];
+  const selected: DreamEntry[] = [];
+  const seenIndices = new Set<number>();
+
+  for (const offset of fibOffsets) {
+    if (selected.length >= maxSlots) break;
+    const index = entries.length - offset;
+    if (index < 0 || seenIndices.has(index)) continue;
+    seenIndices.add(index);
+    selected.push(entries[index]!);
+  }
+
+  selected.reverse();
+  return selected;
 }
 
 function hashSeed(value: string): number {
@@ -750,7 +777,7 @@ async function loadLatestDreamContext(workspaceDir: string): Promise<{
   try {
     const raw = await fs.readFile(sourcePath, "utf-8");
     const allEntries = parseDreamEntries(raw);
-    const recentEntries = allEntries.slice(-3);
+    const recentEntries = selectFibonacciDreamEntries(allEntries, 5);
     if (recentEntries.length === 0) {
       return null;
     }
@@ -769,7 +796,7 @@ async function loadLatestDreamContext(workspaceDir: string): Promise<{
 
     const mostRecentEntry = recentEntries.at(-1);
     const action = normalizeDreamText(stripHeartbeatAckArtifacts(mostRecentEntry?.actionHint ?? ""), 220);
-    const lines = ["Recent dream trail (oldest → newest):"];
+    const lines = ["Dream trail (Fibonacci recall, oldest → newest):"];
     for (let index = 0; index < trailLines.length; index += 1) {
       lines.push(`${index + 1}. ${trailLines[index]}`);
     }

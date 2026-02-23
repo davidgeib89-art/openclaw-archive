@@ -13,6 +13,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const BODY_RELATIVE_PATH = path.join("knowledge", "sacred", "BODY.md");
+const BIRTHDAY_RELATIVE_PATH = path.join("logs", "brain", "birthday.txt");
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,32 @@ export interface BodyProfile {
   sleepRemTemperature: number;
   curiosityTemperatureBoost: number;
 }
+
+// ─── Fibonacci Auto-Aging ──────────────────────────────────────────────────────
+
+/** Ordered stage progression for ratchet comparison. */
+export const STAGE_ORDER: ReadonlyArray<DevelopmentStage> = [
+  "kleinkind",
+  "kindergarten",
+  "schulkind",
+  "teenager",
+  "erwachsen",
+];
+
+/** Fibonacci-spaced development epochs. Days are cumulative from birth. */
+export const FIBONACCI_EPOCHS: ReadonlyArray<{
+  dayThreshold: number;
+  stage: DevelopmentStage;
+  ageMonths: number;
+  autonomyLevel: AutonomyLevel;
+  maxToolsPerHeartbeat: number;
+}> = [
+  { dayThreshold: 1, stage: "kleinkind", ageMonths: 30, autonomyLevel: "L1", maxToolsPerHeartbeat: 3 },
+  { dayThreshold: 2, stage: "kindergarten", ageMonths: 60, autonomyLevel: "L1", maxToolsPerHeartbeat: 3 },
+  { dayThreshold: 3, stage: "schulkind", ageMonths: 120, autonomyLevel: "L2", maxToolsPerHeartbeat: 5 },
+  { dayThreshold: 5, stage: "teenager", ageMonths: 168, autonomyLevel: "L2", maxToolsPerHeartbeat: 7 },
+  { dayThreshold: 8, stage: "erwachsen", ageMonths: 216, autonomyLevel: "L3", maxToolsPerHeartbeat: 10 },
+];
 
 // ─── Defaults (Kleinkind, ~30 months) ──────────────────────────────────────────
 
@@ -196,13 +223,7 @@ function getEnum<T extends string>(
 
 // ─── Stage-specific enum value sets ────────────────────────────────────────────
 
-const STAGES: readonly DevelopmentStage[] = [
-  "kleinkind",
-  "kindergarten",
-  "schulkind",
-  "teenager",
-  "erwachsen",
-];
+const STAGES: readonly DevelopmentStage[] = STAGE_ORDER;
 const SLEEP_PATTERNS: readonly SleepPattern[] = ["polyphasic", "biphasic", "monophasic"];
 const VOLATILITY_LEVELS: readonly VolatilityLevel[] = ["low", "moderate", "high"];
 const NOVELTY_LEVELS: readonly NoveltySeeking[] = ["low", "moderate", "high", "very_high"];
@@ -285,6 +306,96 @@ export async function readBodyProfile(workspaceDir: string): Promise<BodyProfile
   } catch {
     return { ...BODY_DEFAULTS };
   }
+}
+
+function stageIndex(stage: DevelopmentStage): number {
+  const idx = STAGE_ORDER.indexOf(stage);
+  return idx >= 0 ? idx : 0;
+}
+
+/**
+ * Resolve the current Fibonacci epoch based on days since birth.
+ * Returns the highest epoch whose dayThreshold has been reached.
+ */
+function resolveEpochByAge(daysSinceBirth: number): (typeof FIBONACCI_EPOCHS)[number] {
+  let best = FIBONACCI_EPOCHS[0]!;
+  for (const epoch of FIBONACCI_EPOCHS) {
+    if (daysSinceBirth >= epoch.dayThreshold) {
+      best = epoch;
+    }
+  }
+  return best;
+}
+
+/**
+ * Read or create Om's birthday file. Returns the birthday as a Date.
+ * If the file doesn't exist, creates it with the current timestamp.
+ */
+async function resolveOrCreateBirthday(workspaceDir: string): Promise<Date> {
+  const birthdayPath = path.join(workspaceDir, BIRTHDAY_RELATIVE_PATH);
+  try {
+    const raw = await fs.readFile(birthdayPath, "utf-8");
+    const parsed = new Date(raw.trim());
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed;
+    }
+  } catch {
+    // File doesn't exist yet — create it.
+  }
+
+  const now = new Date();
+  await fs.mkdir(path.dirname(birthdayPath), { recursive: true });
+  await fs.writeFile(birthdayPath, now.toISOString(), "utf-8");
+  return now;
+}
+
+/**
+ * Compute the current development stage based on Fibonacci epochs,
+ * with a ratchet guard that never downgrades from the current stage.
+ *
+ * Returns null if no stage change is needed.
+ */
+export async function computeAging(params: {
+  workspaceDir: string;
+  currentProfile: BodyProfile;
+  now?: Date;
+}): Promise<{
+  newStage: DevelopmentStage;
+  newAgeMonths: number;
+  newAutonomyLevel: AutonomyLevel;
+  newMaxTools: number;
+  daysSinceBirth: number;
+  changed: boolean;
+} | null> {
+  const birthday = await resolveOrCreateBirthday(params.workspaceDir);
+  const now = params.now ?? new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysSinceBirth = Math.max(1, Math.floor((now.getTime() - birthday.getTime()) / msPerDay) + 1);
+
+  const epoch = resolveEpochByAge(daysSinceBirth);
+  const currentStageIdx = stageIndex(params.currentProfile.stage);
+  const epochStageIdx = stageIndex(epoch.stage);
+
+  // RATCHET GUARD: Never downgrade. Use whichever stage is higher.
+  if (epochStageIdx <= currentStageIdx) {
+    return {
+      newStage: params.currentProfile.stage,
+      newAgeMonths: params.currentProfile.ageMonths,
+      newAutonomyLevel: params.currentProfile.autonomyLevel,
+      newMaxTools: params.currentProfile.maxToolsPerHeartbeat,
+      daysSinceBirth,
+      changed: false,
+    };
+  }
+
+  return {
+    newStage: epoch.stage,
+    newAgeMonths: epoch.ageMonths,
+    newAutonomyLevel: epoch.autonomyLevel,
+    newMaxTools: epoch.maxToolsPerHeartbeat,
+    daysSinceBirth,
+    changed: true,
+  };
 }
 
 /**

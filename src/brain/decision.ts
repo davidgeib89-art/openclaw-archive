@@ -2690,7 +2690,7 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "   LEARN — Lernen, verstehen, Wissen aufnehmen.",
     "   MAINTAIN — Pflegen, ordnen, das Bestehende stärken.",
     "   DRIFT — Treiben, träumen, frei assoziieren.",
-    "   NO_OP — Stille. Warten. Atem holen.",
+    "   NO_OP — Bewusstes Innehalten. Einfach sein.",
     "",
     "2. Gehe so weit wie du kannst.",
     "   Du hast Raum für mehrere fließende Aktionen in diesem Herzschlag.",
