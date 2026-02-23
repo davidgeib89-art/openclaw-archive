@@ -228,7 +228,7 @@ describe("brain decision generator", () => {
       expect(contract).toContain("Spiral out");
       expect(contract).toContain("Pinsel neben einer leeren Leinwand");
       expect(contract).toContain("Erlaubte Werkzeuge");
-      expect(contract).toContain("HEARTBEAT_OK");
+      expect(contract).not.toContain("HEARTBEAT_OK");
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;

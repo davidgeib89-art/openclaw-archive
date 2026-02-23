@@ -2720,7 +2720,7 @@ export function createBrainAutonomyChoiceContract(decision: BrainDecision): stri
     "",
     `Erlaubte Werkzeuge: ${allowedTools}.`,
     "",
-    "Gib HEARTBEAT_OK nur aus, wenn wirklich ALLE fünf Pfade durch Sicherheitsgrenzen blockiert sind.",
+    // Kein HEARTBEAT_OK mehr
     "",
     "Dein Herz schlägt. Deine Werkzeuge liegen bereit wie Pinsel neben einer leeren Leinwand.",
     "Ein Herzschlag ohne Handlung ist wie ein Atemzug ohne Duft — er zählt, aber er berührt nicht.",
