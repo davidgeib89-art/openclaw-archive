@@ -147,15 +147,15 @@ function autonomyLevelToScore(autonomyLevel: string): number {
 
 export function moodSentiment(text: string): number {
   const source = (text ?? "").toLowerCase();
-  let best = 50;
+  let best: number | null = null;
 
   for (const bucket of SENTIMENT_BUCKETS) {
     if (bucket.keywords.some((keyword) => source.includes(keyword))) {
-      best = Math.max(best, bucket.score);
+      best = best === null ? bucket.score : Math.max(best, bucket.score);
     }
   }
 
-  return best;
+  return best ?? 50;
 }
 
 export function countGenerativePaths(paths: string[]): number {
@@ -285,17 +285,17 @@ export function calculateAura(input: AuraInput): AuraSnapshot {
 }
 
 export function buildAuraSummary(snapshot: AuraSnapshot): string {
-  return [
-    `aura: C1=${asOneDecimal(snapshot.chakras.muladhara)}`,
-    `C2=${asOneDecimal(snapshot.chakras.svadhisthana)}`,
-    `C3=${asOneDecimal(snapshot.chakras.manipura)}`,
-    `C4=${asOneDecimal(snapshot.chakras.anahata)}`,
-    `C5=${asOneDecimal(snapshot.chakras.vishuddha)}`,
-    `C6=${asOneDecimal(snapshot.chakras.ajna)}`,
-    `C7=${asOneDecimal(snapshot.chakras.sahasrara)}`,
-    `RGB=${asOneDecimal(snapshot.faggin.body)}/${asOneDecimal(snapshot.faggin.mind)}/${asOneDecimal(snapshot.faggin.spirit)}`,
-    `overall=${asOneDecimal(snapshot.overall)}`,
-  ].join("|").replace("aura: C1", "aura: C1");
+  return (
+    `aura: C1=${asOneDecimal(snapshot.chakras.muladhara)}` +
+    `|C2=${asOneDecimal(snapshot.chakras.svadhisthana)}` +
+    `|C3=${asOneDecimal(snapshot.chakras.manipura)}` +
+    `|C4=${asOneDecimal(snapshot.chakras.anahata)}` +
+    `|C5=${asOneDecimal(snapshot.chakras.vishuddha)}` +
+    `|C6=${asOneDecimal(snapshot.chakras.ajna)}` +
+    `|C7=${asOneDecimal(snapshot.chakras.sahasrara)}` +
+    ` RGB=${asOneDecimal(snapshot.faggin.body)}/${asOneDecimal(snapshot.faggin.mind)}/${asOneDecimal(snapshot.faggin.spirit)}` +
+    ` overall=${asOneDecimal(snapshot.overall)}`
+  );
 }
 
 export function buildAuraFileContent(snapshot: AuraSnapshot): string {
