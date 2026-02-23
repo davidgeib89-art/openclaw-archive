@@ -11,7 +11,7 @@ export interface ToyboxResult {
   metrics: Record<string, number | string>;
 }
 
-type Grid = boolean[][];
+type Grid = (boolean | number)[][];
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
@@ -43,8 +43,8 @@ function isValidInitialGrid(value: unknown): value is Grid {
   if (!value.every((row) => Array.isArray(row) && row.length === value.length)) {
     return false;
   }
-  return value.every((row) =>
-    row.every((cell) => cell === true || cell === false || cell === 0 || cell === 1),
+  return value.every((row: any[]) =>
+    row.every((cell: any) => cell === true || cell === false || cell === 0 || cell === 1),
   );
 }
 
