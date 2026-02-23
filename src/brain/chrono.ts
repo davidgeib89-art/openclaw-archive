@@ -123,6 +123,19 @@ async function readChronoState(workspaceDir: string): Promise<ChronoState> {
   }
 }
 
+/**
+ * Read just the sleeping flag from CHRONO.md, for use before energy calculation.
+ * Fail-open: returns false if file is missing or broken.
+ */
+export async function readChronoSleepingHint(workspaceDir: string): Promise<boolean> {
+  try {
+    const state = await readChronoState(workspaceDir);
+    return state.isSleeping;
+  } catch {
+    return false;
+  }
+}
+
 async function writeChronoState(
   workspaceDir: string,
   state: ChronoState,

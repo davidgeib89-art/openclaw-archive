@@ -28,7 +28,7 @@ import {
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
-import { evaluateAndPersistChronoState } from "../../../brain/chrono.js";
+import { evaluateAndPersistChronoState, readChronoSleepingHint } from "../../../brain/chrono.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
@@ -2292,6 +2292,17 @@ export async function runEmbeddedAttempt(
       }
 
       try {
+        // Read the PREVIOUS chrono sleeping state before energy calculation.
+        // This allows energy-chrono coupling: when Om was sleeping at the start
+        // of this heartbeat, energy is pulled toward the sleep floor.
+        let preRunSleeping = false;
+        if (params.isHeartbeat === true) {
+          try {
+            preRunSleeping = await readChronoSleepingHint(effectiveWorkspace);
+          } catch {
+            // fail-open: assume awake
+          }
+        }
         const energyResult = await updateEnergy({
           workspaceDir: effectiveWorkspace,
           runId: params.runId,
@@ -2302,6 +2313,7 @@ export async function runEmbeddedAttempt(
             successful: toolCounts.successful,
             failed: toolCounts.failed,
           },
+          isSleeping: preRunSleeping,
         });
         emitBrainReasoningEvent(params, {
           phase: "energy",
