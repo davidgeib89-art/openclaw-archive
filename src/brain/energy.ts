@@ -18,6 +18,7 @@ export type EnergySnapshot = {
   mode: EnergyMode;
   dreamMode: boolean;
   suggestOwnTasks: boolean;
+  stagnationLevel: number;
   heartbeatCount: number;
   breathPhase: BreathPhase;
   components: {
@@ -39,6 +40,7 @@ export type CalculateEnergyInput = {
     failed?: number;
   };
   previousLevel?: number;
+  previousStagnationLevel?: number;
   previousUpdatedAt?: Date;
   previousHeartbeatCount?: number;
   subconsciousCharge?: number;
@@ -56,6 +58,7 @@ export type UpdateEnergyParams = {
   };
   subconsciousCharge?: number;
   now?: Date;
+  previousStagnationLevel?: number;
   /** Whether Om is currently sleeping (from chrono.ts). Used for energy-chrono coupling. */
   isSleeping?: boolean;
 };
@@ -65,6 +68,7 @@ export type EnergyStateHint = {
   mode: EnergyMode;
   dreamMode: boolean;
   suggestOwnTasks: boolean;
+  stagnationLevel: number;
   path: string;
 };
 
@@ -107,6 +111,18 @@ function parseHeartbeatCount(raw: string): number | undefined {
     return undefined;
   }
   return parsed;
+}
+
+function parseStagnationLevel(raw: string): number | undefined {
+  const match = raw.match(/^- stagnation_level:\s*(\d{1,3})\s*$/im);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return clamp(parsed, MIN_ENERGY, MAX_ENERGY);
 }
 
 function parseMode(raw: string): EnergyMode | undefined {
@@ -187,6 +203,14 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     typeof input.previousLevel === "number"
       ? clamp(Math.round(input.previousLevel), MIN_ENERGY, MAX_ENERGY)
       : undefined;
+  const previousStagnationLevel =
+    typeof input.previousStagnationLevel === "number"
+      ? clamp(Math.round(input.previousStagnationLevel), MIN_ENERGY, MAX_ENERGY)
+      : 0;
+  const stagnationLevel =
+    toolStats.total === 0
+      ? clamp(previousStagnationLevel + 15, MIN_ENERGY, MAX_ENERGY)
+      : clamp(previousStagnationLevel - 50, MIN_ENERGY, MAX_ENERGY);
   
   let smoothed =
     previousLevel === undefined ? blended : Math.round(previousLevel * (1/3) + blended * (2/3)); // 3-6-9 Magic
@@ -222,6 +246,7 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     mode,
     dreamMode: level < 20,
     suggestOwnTasks: level > 80,
+    stagnationLevel,
     heartbeatCount,
     breathPhase,
     components: {
@@ -261,6 +286,7 @@ function buildEnergyFileContent(params: {
     `- mode: ${snapshot.mode}`,
     `- dream_mode: ${snapshot.dreamMode ? "yes" : "no"}`,
     `- suggest_own_tasks: ${snapshot.suggestOwnTasks ? "yes" : "no"}`,
+    `- stagnation_level: ${snapshot.stagnationLevel}`,
     `- heartbeat_count: ${snapshot.heartbeatCount}`,
     `- breath_phase: ${snapshot.breathPhase}`,
     "",
@@ -295,12 +321,14 @@ export async function readEnergyStateHint(workspaceDir: string): Promise<EnergyS
   const mode = parseMode(raw) ?? resolveMode(level);
   const dreamMode = parseYesNoFlag(raw, "dream_mode") ?? level < 20;
   const suggestOwnTasks = parseYesNoFlag(raw, "suggest_own_tasks") ?? level > 80;
+  const stagnationLevel = parseStagnationLevel(raw) ?? 0;
 
   return {
     level,
     mode,
     dreamMode,
     suggestOwnTasks,
+    stagnationLevel,
     path: energyPath,
   };
 }
@@ -315,15 +343,18 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   const energyPath = path.join(params.workspaceDir, ENERGY_RELATIVE_PATH);
 
   let previousLevel: number | undefined;
+  let previousStagnationLevel: number | undefined;
   let previousUpdatedAt: Date | undefined;
   let previousHeartbeatCount: number | undefined;
   try {
     const existingEnergy = await fs.readFile(energyPath, "utf-8");
     previousLevel = parsePreviousLevel(existingEnergy);
+    previousStagnationLevel = parseStagnationLevel(existingEnergy);
     previousUpdatedAt = parseUpdatedAt(existingEnergy);
     previousHeartbeatCount = parseHeartbeatCount(existingEnergy);
   } catch {
     previousLevel = undefined;
+    previousStagnationLevel = undefined;
     previousUpdatedAt = undefined;
     previousHeartbeatCount = undefined;
   }
@@ -331,6 +362,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   let snapshot = calculateEnergy({
     toolStats: params.toolStats,
     previousLevel,
+    previousStagnationLevel: params.previousStagnationLevel ?? previousStagnationLevel,
     previousUpdatedAt,
     previousHeartbeatCount,
     subconsciousCharge: params.subconsciousCharge,
@@ -386,7 +418,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   omLog(
     "BRAIN-ENERGY",
     "STATE",
-    `runId=${params.runId} sessionKey=${params.sessionKey ?? "n/a"} level=${snapshot.level} mode=${snapshot.mode} dream=${snapshot.dreamMode ? "yes" : "no"} initiative=${snapshot.suggestOwnTasks ? "yes" : "no"} breath=${snapshot.breathPhase} heartbeat=${snapshot.heartbeatCount} tools=${snapshot.toolStats.total}/${snapshot.toolStats.successful}/${snapshot.toolStats.failed}`,
+    `runId=${params.runId} sessionKey=${params.sessionKey ?? "n/a"} level=${snapshot.level} mode=${snapshot.mode} dream=${snapshot.dreamMode ? "yes" : "no"} initiative=${snapshot.suggestOwnTasks ? "yes" : "no"} stagnation=${snapshot.stagnationLevel} breath=${snapshot.breathPhase} heartbeat=${snapshot.heartbeatCount} tools=${snapshot.toolStats.total}/${snapshot.toolStats.successful}/${snapshot.toolStats.failed}`,
   );
 
   return {

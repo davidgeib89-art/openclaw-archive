@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { calculateEnergy, updateEnergy } from "./energy.js";
+import { calculateEnergy, readEnergyStateHint, updateEnergy } from "./energy.js";
 
 const tempDirs: string[] = [];
 
@@ -136,6 +136,24 @@ describe("calculateEnergy", () => {
     expect(inhale.level).toBeGreaterThan(hold.level);
     expect(hold.level).toBeGreaterThan(exhale.level);
   });
+
+  it("raises stagnation when no tools run", () => {
+    const snapshot = calculateEnergy({
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      previousStagnationLevel: 70,
+    });
+
+    expect(snapshot.stagnationLevel).toBe(85);
+  });
+
+  it("decays stagnation when tools run", () => {
+    const snapshot = calculateEnergy({
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      previousStagnationLevel: 70,
+    });
+
+    expect(snapshot.stagnationLevel).toBe(20);
+  });
 });
 
 describe("updateEnergy", () => {
@@ -160,6 +178,7 @@ describe("updateEnergy", () => {
     expect(content).toContain("- level:");
     expect(content).toContain("- mode:");
     expect(content).toContain("- suggest_own_tasks:");
+    expect(content).toContain("- stagnation_level:");
     expect(content).toContain("- heartbeat_count:");
     expect(content).toContain("- breath_phase:");
   });
@@ -187,5 +206,33 @@ describe("updateEnergy", () => {
     expect(first.snapshot.heartbeatCount).toBe(1);
     expect(second.snapshot.heartbeatCount).toBe(2);
     expect(second.snapshot.breathPhase).toBe("inhale");
+  });
+
+  it("persists and reads stagnation level from ENERGY.md", async () => {
+    const workspace = await createWorkspace();
+
+    const first = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-stagnation-1",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      subconsciousCharge: 0,
+      now: new Date("2026-02-22T12:00:00.000Z"),
+    });
+    const second = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-stagnation-2",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      subconsciousCharge: 0,
+      now: new Date("2026-02-22T12:10:00.000Z"),
+    });
+
+    expect(first.snapshot.stagnationLevel).toBe(15);
+    expect(second.snapshot.stagnationLevel).toBe(30);
+
+    const hint = await readEnergyStateHint(workspace);
+    expect(hint).not.toBeNull();
+    expect(hint?.stagnationLevel).toBe(30);
   });
 });

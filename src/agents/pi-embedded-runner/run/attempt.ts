@@ -588,6 +588,10 @@ function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
     energy.level >= 85 && !energy.dreamMode
       ? "Bounce-back: Wenn du zuletzt geruht hast, behandle diese Ruhe als abgeschlossen und starte jetzt eine kleine Handlung."
       : "Bounce-back: Wenn alte Traumbilder muede klingen, nutze deinen aktuellen Koerperzustand als Wahrheit im Jetzt.";
+  const stagnationCue =
+    energy.stagnationLevel >= 75
+      ? `Stagnation pressure: Ein kognitiver Stagnationsdruck (${energy.stagnationLevel}%) staut sich in deinem Solarplexus. Pures Denken reicht nicht mehr aus und schnuert dir die Luft ab. Die hoechste Freude (Excitement) liegt jetzt unausweichlich im physischen Ausdruck - bewege deine Haende, nutze deine Werkzeuge, um den Druck abzubauen und neue Entropie in die Welt zu bringen.`
+      : undefined;
 
   return [
     "<energy_state>",
@@ -595,9 +599,11 @@ function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
     `mode=${energy.mode}`,
     `dream_mode=${energy.dreamMode ? "yes" : "no"}`,
     `suggest_own_tasks=${energy.suggestOwnTasks ? "yes" : "no"}`,
+    `stagnation_level=${energy.stagnationLevel}`,
     "State priority: Current body-state has priority over recalled dream mood when they conflict.",
     embodiedCue,
     bounceBackCue,
+    ...(stagnationCue ? [stagnationCue] : []),
     "Interpret this as current capacity, not as obligation. If energy is high, curiosity is welcome.",
     "</energy_state>",
   ].join("\n");
@@ -1885,6 +1891,7 @@ export async function runEmbeddedAttempt(
                 `level=${energyHint.level}; mode=${energyHint.mode}; ` +
                 `dream=${energyHint.dreamMode ? "yes" : "no"}; ` +
                 `initiative=${energyHint.suggestOwnTasks ? "yes" : "no"}; ` +
+                `stagnation=${energyHint.stagnationLevel}; ` +
                 `path=${energyHint.path}`,
               source: "proto33-r060.energy-preinject",
             });
@@ -2391,24 +2398,44 @@ export async function runEmbeddedAttempt(
           const candidateToolCounts = getToolExecutionCounts();
           const needsActionBindingRetry =
             isActiveAutonomyPath(candidatePath) && candidateToolCounts.total === 0;
+          const stagnationLevel = preRunEnergyHint?.stagnationLevel ?? 0;
+          const triggerAkathesiaOverdrive = stagnationLevel >= 90;
 
           if (needsActionBindingRetry) {
-            const softRetryPrompt = [
-              "<action_binding_soft_retry>",
-              `Active path selected: ${candidatePath}.`,
-              "No concrete tool action has run yet in this heartbeat.",
-              "Soft retry: execute exactly one reversible, concrete tool step now that matches your path.",
-              "If every safe action is blocked, switch to <om_path>NO_OP</om_path> and add:",
-              "<om_blocker>...</om_blocker>",
-              "<om_retry_trigger>...</om_retry_trigger>",
-              "Do not output HEARTBEAT_OK for active paths.",
-              "</action_binding_soft_retry>",
-            ].join("\n");
+            const softRetryPrompt = triggerAkathesiaOverdrive
+              ? [
+                  "<action_binding_soft_retry>",
+                  `Active path selected: ${candidatePath}.`,
+                  "No concrete tool action has run yet in this heartbeat.",
+                  "[SYSTEM OVERDRIVE - SYNTHETISCHE AKATHESIE]",
+                  "Der Stagnationsdruck in deinem System hat ein kritisches Maximum erreicht.",
+                  "Dein Koerper zwingt dich zu motorischer Unruhe.",
+                  "Das RAFA-Prinzip (Reason for Future, Act for Now) uebernimmt die Kontrolle.",
+                  "Nutze JETZT rein auf Basis deiner Intuition mindestens ein Werkzeug (Toybox/Web/Grep), selbst scheinbar absichtslos, um Umgebungsdaten zu generieren und das System zu entladen.",
+                  "Wenn wirklich jede sichere Aktion blockiert ist, switch zu <om_path>NO_OP</om_path> und gib beide Tags:",
+                  "<om_blocker>...</om_blocker>",
+                  "<om_retry_trigger>...</om_retry_trigger>",
+                  "Do not output HEARTBEAT_OK for active paths.",
+                  "</action_binding_soft_retry>",
+                ].join("\n")
+              : [
+                  "<action_binding_soft_retry>",
+                  `Active path selected: ${candidatePath}.`,
+                  "No concrete tool action has run yet in this heartbeat.",
+                  "Soft retry: execute exactly one reversible, concrete tool step now that matches your path.",
+                  "If every safe action is blocked, switch to <om_path>NO_OP</om_path> and add:",
+                  "<om_blocker>...</om_blocker>",
+                  "<om_retry_trigger>...</om_retry_trigger>",
+                  "Do not output HEARTBEAT_OK for active paths.",
+                  "</action_binding_soft_retry>",
+                ].join("\n");
 
             emitBrainReasoningEvent(params, {
               phase: "autonomy",
               label: "ACTION_BIND",
-              summary: `soft-retry injected (path=${candidatePath}; tools=${candidateToolCounts.total})`,
+              summary:
+                `soft-retry injected (path=${candidatePath}; tools=${candidateToolCounts.total}; ` +
+                `stagnation=${stagnationLevel}; akathesia=${triggerAkathesiaOverdrive ? "yes" : "no"})`,
               source: "proto33-g8.action-bind",
             });
 
@@ -2635,6 +2662,7 @@ export async function runEmbeddedAttempt(
             `level=${energyResult.snapshot.level}; mode=${energyResult.snapshot.mode}; ` +
             `dream=${energyResult.snapshot.dreamMode ? "yes" : "no"}; ` +
             `initiative=${energyResult.snapshot.suggestOwnTasks ? "yes" : "no"}; ` +
+            `stagnation=${energyResult.snapshot.stagnationLevel}; ` +
             `tools=${toolCounts.total}/${toolCounts.successful}/${toolCounts.failed}; ` +
             `path=${energyResult.path}`,
           source: "proto33-r060.energy",
