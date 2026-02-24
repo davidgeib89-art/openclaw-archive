@@ -412,6 +412,31 @@ function extractAssistantText(message: AssistantMessage | undefined): string {
   return parts.join("\n").trim();
 }
 
+function collectAssistantTextsFromMessages(messages: readonly AgentMessage[]): string[] {
+  const texts: string[] = [];
+  for (const message of messages) {
+    if (message?.role !== "assistant") {
+      continue;
+    }
+    const text = extractAssistantText(message as AssistantMessage).trim();
+    if (text.length > 0) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function collectRunAssistantTexts(
+  messages: readonly AgentMessage[],
+  startIndex: number,
+): string[] {
+  if (messages.length === 0) {
+    return [];
+  }
+  const safeStart = Math.max(0, Math.min(messages.length, Math.floor(startIndex)));
+  return collectAssistantTextsFromMessages(messages.slice(safeStart));
+}
+
 const REASONING_SUMMARY_LIMIT = 420;
 const REASONING_DETAIL_LIMIT = 1_800;
 const USER_PROMPT_TEASER_LIMIT = 220;
@@ -713,8 +738,11 @@ function computeRepetitionPressure(signals: {
   playDreamStreak: number;
 }): number {
   let pressure = 0;
+  if (signals.repeatedPathStreak >= 2) {
+    pressure += 20;
+  }
   if (signals.repeatedPathStreak >= 3) {
-    pressure += 30;
+    pressure += 20;
   }
   if (signals.recentPaths.length >= 4) {
     const firstFour = signals.recentPaths.slice(0, 4);
@@ -794,6 +822,11 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
       recentApopheniaFlags.push(charge !== undefined && Math.abs(charge) >= 5);
     }
 
+    if (layer === "TOOL-START" && recentPlayDreamFlags.length < HEARTBEAT_SIGNAL_WINDOW) {
+      const toolEvent = typeof entry.event === "string" ? entry.event.toLowerCase() : "";
+      recentPlayDreamFlags.push(toolEvent.includes("dream_and_perceive"));
+    }
+
     if (
       layer === "BRAIN-METRICS" &&
       event === "HEARTBEAT_TELEMETRY" &&
@@ -803,8 +836,9 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
       const toolNames = extractToolNamesFromDurationSamples(entry.toolDurationSamples);
       const allDreamAndPerceive =
         totalCalls > 0 &&
-        toolNames.length > 0 &&
-        toolNames.every((name) => name.toLowerCase() === "dream_and_perceive");
+        (toolNames.length === 0 ||
+          // Some providers don't expose per-tool duration samples; treat this as unknown, not false.
+          toolNames.every((name) => name.toLowerCase() === "dream_and_perceive"));
       recentPlayDreamFlags.push(allDreamAndPerceive);
     }
 
@@ -2260,6 +2294,7 @@ export async function runEmbeddedAttempt(
       let latestDecisionRiskLevel: BrainRiskLevel | undefined;
       let latestDecisionIntent: BrainIntent | undefined;
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
+      const prePromptMessageCount = activeSession.messages.length;
       try {
         const promptStartedAt = Date.now();
 
@@ -2859,8 +2894,16 @@ export async function runEmbeddedAttempt(
           };
 
           const candidateAssistantText = resolveLatestAssistantText();
+          const candidateRunAssistantTexts = collectRunAssistantTexts(
+            activeSession.messages,
+            prePromptMessageCount,
+          );
+          const candidatePathFromRunMessages =
+            extractLatchedAutonomyPathFromAssistantTexts(candidateRunAssistantTexts);
           const candidatePathFromHistory =
-            extractLatchedAutonomyPathFromAssistantTexts(assistantTexts);
+            candidatePathFromRunMessages !== "UNKNOWN"
+              ? candidatePathFromRunMessages
+              : extractLatchedAutonomyPathFromAssistantTexts(assistantTexts);
           const candidatePath =
             candidatePathFromHistory !== "UNKNOWN"
               ? candidatePathFromHistory
@@ -3003,7 +3046,12 @@ export async function runEmbeddedAttempt(
           .toReversed()
           .find((entry) => entry.trim().length > 0) ?? "";
       let assistantText = assistantTextFromSnapshot || assistantTextFromStream;
+      const runAssistantTexts = collectRunAssistantTexts(messagesSnapshot, prePromptMessageCount);
       const latchedPath =
+        params.isHeartbeat === true
+          ? extractLatchedAutonomyPathFromAssistantTexts(runAssistantTexts)
+          : ("UNKNOWN" as const);
+      const latchedPathFromStream =
         params.isHeartbeat === true
           ? extractLatchedAutonomyPathFromAssistantTexts(assistantTexts)
           : ("UNKNOWN" as const);
@@ -3011,13 +3059,17 @@ export async function runEmbeddedAttempt(
         params.isHeartbeat === true
           ? latchedPath !== "UNKNOWN"
             ? latchedPath
-            : extractAutonomyPathFromAssistantOutput(assistantText)
+            : latchedPathFromStream !== "UNKNOWN"
+              ? latchedPathFromStream
+              : extractAutonomyPathFromAssistantOutput(assistantText)
           : ("UNKNOWN" as const);
       const chosenPathSource =
         params.isHeartbeat === true
           ? latchedPath !== "UNKNOWN"
-            ? "latched_assistant_stream"
-            : "final_assistant_text"
+            ? "latched_run_messages"
+            : latchedPathFromStream !== "UNKNOWN"
+              ? "latched_assistant_stream"
+              : "final_assistant_text"
           : "not_heartbeat";
       const heartbeatAckContract = enforceHeartbeatAckContract({
         text: assistantText,
@@ -3036,6 +3088,7 @@ export async function runEmbeddedAttempt(
       const canPersistEpisodic = !aborted && !timedOut && !promptError;
       const toolCounts = getToolExecutionCounts();
       const parsedMoodText =
+        extractLatchedMoodFromAssistantTexts(runAssistantTexts) ??
         extractLatchedMoodFromAssistantTexts(assistantTexts) ??
         extractMoodFromAssistantOutput(assistantText);
       try {
