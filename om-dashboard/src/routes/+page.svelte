@@ -1,10 +1,23 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { chatMessages, isLoading, gatewayConnected, addUserMessage, addAssistantMessage, clearChat, energy, mood, mode } from '$lib/stores';
-  import { sendMessage, triggerHeartbeat, startNewSession, checkGatewayStatus } from '$lib/api';
+  import { onMount, onDestroy } from 'svelte';
+  import {
+    chatMessages,
+    isLoading,
+    gatewayConnected,
+    addUserMessage,
+    addAssistantMessage,
+    clearChat,
+    energy,
+    mood,
+    mode
+  } from '$lib/stores';
+  import { getGatewayClient } from '$lib/gateway';
+  import EnergyBar from '$lib/components/EnergyBar.svelte';
+  import MoodCard from '$lib/components/MoodCard.svelte';
 
   let inputText = '';
   let messagesContainer: HTMLDivElement;
+  let client: ReturnType<typeof getGatewayClient>;
 
   // Automatisch scrollen bei neuen Nachrichten
   $: if ($chatMessages && messagesContainer) {
@@ -13,10 +26,21 @@
     }, 50);
   }
 
-  // Gateway Status beim Start prüfen
+  // Gateway beim Start verbinden
   onMount(async () => {
-    const status = await checkGatewayStatus();
-    gatewayConnected.set(status);
+    try {
+      client = getGatewayClient();
+      await client.connect();
+      gatewayConnected.set(true);
+      console.log('[Dashboard] Gateway verbunden');
+    } catch (e) {
+      console.error('[Dashboard] Gateway-Verbindung fehlgeschlagen:', e);
+      gatewayConnected.set(false);
+    }
+  });
+
+  onDestroy(() => {
+    client?.disconnect();
   });
 
   // Nachricht senden
@@ -30,11 +54,7 @@
     addUserMessage(text);
 
     try {
-      await sendMessage(text);
-      // Kurze Pause für Response
-      await new Promise(r => setTimeout(r, 1500));
-      // TODO: Echte Response vom Gateway holen
-      addAssistantMessage('Øm antwortet... (Demo)');
+      await client.sendMessage(text);
     } catch (e) {
       addAssistantMessage(`Fehler: ${e}`);
     } finally {
@@ -46,7 +66,7 @@
   async function handleHeartbeat() {
     isLoading.set(true);
     try {
-      await triggerHeartbeat();
+      await client.triggerHeartbeat();
       addAssistantMessage('💓 Heartbeat ausgelöst');
     } catch (e) {
       addAssistantMessage(`Heartbeat-Fehler: ${e}`);
@@ -60,7 +80,7 @@
     isLoading.set(true);
     clearChat();
     try {
-      await startNewSession();
+      await client.sendMessage('');
       addAssistantMessage('🆕 Neue Session gestartet');
     } catch (e) {
       addAssistantMessage(`Session-Fehler: ${e}`);
@@ -88,38 +108,46 @@
     </div>
   </header>
 
-  <!-- Chat-Bereich -->
-  <main class="chat-area">
-    <div class="messages" bind:this={messagesContainer}>
-      {#if $chatMessages.length === 0}
-        <div class="welcome">
-          <p>Willkommen bei Øms Dashboard</p>
-          <p class="hint">Sende eine Nachricht oder löse einen Heartbeat aus</p>
-        </div>
-      {/if}
+  <div class="main-layout">
+    <!-- Sidebar mit Vitalzeichen -->
+    <aside class="sidebar">
+      <EnergyBar level={$energy} />
+      <MoodCard mood={$mood} mode={$mode} />
+    </aside>
 
-      {#each $chatMessages as msg (msg.id)}
-        <div class="message {msg.role}">
-          <div class="avatar">
-            {msg.role === 'user' ? '👤' : '🦊'}
+    <!-- Chat-Bereich -->
+    <main class="chat-area">
+      <div class="messages" bind:this={messagesContainer}>
+        {#if $chatMessages.length === 0}
+          <div class="welcome">
+            <p>Willkommen bei Øms Dashboard</p>
+            <p class="hint">Sende eine Nachricht oder löse einen Heartbeat aus</p>
           </div>
-          <div class="content">
-            {msg.content}
-          </div>
-        </div>
-      {/each}
+        {/if}
 
-      {#if $isLoading}
-        <div class="message assistant">
-          <div class="avatar">🦊</div>
-          <div class="content typing">
-            <span>Øm denkt nach</span>
-            <span class="dots">...</span>
+        {#each $chatMessages as msg (msg.id)}
+          <div class="message {msg.role}">
+            <div class="avatar">
+              {msg.role === 'user' ? '👤' : '🦊'}
+            </div>
+            <div class="content">
+              {msg.content}
+            </div>
           </div>
-        </div>
-      {/if}
-    </div>
-  </main>
+        {/each}
+
+        {#if $isLoading}
+          <div class="message assistant">
+            <div class="avatar">🦊</div>
+            <div class="content typing">
+              <span>Øm denkt nach</span>
+              <span class="dots">...</span>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </main>
+  </div>
 
   <!-- Eingabe-Bereich -->
   <footer class="input-area">
@@ -159,7 +187,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 0 1rem;
   }
@@ -198,6 +226,24 @@
     background: #22c55e;
   }
 
+  /* Main Layout */
+  .main-layout {
+    display: flex;
+    flex: 1;
+    gap: 1rem;
+    overflow: hidden;
+    padding: 1rem 0;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
   /* Chat */
   .chat-area {
     flex: 1;
@@ -209,7 +255,7 @@
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem 0;
+    padding: 0.5rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;

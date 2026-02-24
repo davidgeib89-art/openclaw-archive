@@ -28,6 +28,15 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+function fallback(value, fallback2, lazy = false) {
+  return value === void 0 ? lazy ? (
+    /** @type {() => V} */
+    fallback2()
+  ) : (
+    /** @type {V} */
+    fallback2
+  ) : value;
+}
 function equals(value) {
   return value === this.v;
 }
@@ -2911,6 +2920,10 @@ function attr_class(value, hash, directives) {
   var result = to_class(value, hash, directives);
   return result ? ` class="${escape_html(result, true)}"` : "";
 }
+function attr_style(value, directives) {
+  var result = to_style(value, directives);
+  return result ? ` style="${escape_html(result, true)}"` : "";
+}
 function store_get(store_values, store_name, store) {
   if (store_name in store_values && store_values[store_name][0] === store) {
     return store_values[store_name][2];
@@ -2928,6 +2941,15 @@ function store_get(store_values, store_name, store) {
 function unsubscribe_stores(store_values) {
   for (const store_name of Object.keys(store_values)) {
     store_values[store_name][1]();
+  }
+}
+function bind_props(props_parent, props_now) {
+  for (const key of Object.keys(props_now)) {
+    const initial_value = props_parent[key];
+    const value = props_now[key];
+    if (initial_value === void 0 && value !== void 0 && Object.getOwnPropertyDescriptor(props_parent, key)?.set) {
+      props_parent[key] = value;
+    }
   }
 }
 function ensure_array_like(array_like_or_iterator) {
@@ -2996,12 +3018,16 @@ export {
   render as a4,
   setContext as a5,
   derived as a6,
-  store_get as a7,
-  attr_class as a8,
-  ensure_array_like as a9,
-  stringify as aa,
-  unsubscribe_stores as ab,
-  safe_not_equal as ac,
+  ssr_context as a7,
+  fallback as a8,
+  attr_style as a9,
+  bind_props as aa,
+  stringify as ab,
+  store_get as ac,
+  attr_class as ad,
+  ensure_array_like as ae,
+  unsubscribe_stores as af,
+  safe_not_equal as ag,
   HYDRATION_END as b,
   HYDRATION_START as c,
   HYDRATION_START_ELSE as d,

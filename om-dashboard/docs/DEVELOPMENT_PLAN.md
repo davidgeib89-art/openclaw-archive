@@ -64,11 +64,12 @@ om-dashboard/
 ### v0.2 - Vitalzeichen
 **Ziel:** Øms Grundzustand sichtbar
 
-| Feature | Begründung |
-|---------|------------|
-| Energy-Anzeige | Øms Kraft-Level (0-100%) visuell darstellen |
-| Mood-Karte | Aktuelle Stimmung als Emoji/Text |
-| Mode-Indicator | initiative / dream / balanced |
+| Feature | Status | Begründung |
+|---------|--------|------------|
+| Energy-Anzeige | ✅ Fertig | Øms Kraft-Level (0-100%) visuell als Balken |
+| Mood-Karte | ✅ Fertig | Aktuelle Stimmung als Text + Emoji |
+| Mode-Indicator | ✅ Fertig | initiative / dream / balanced |
+| UI-Komponenten | ✅ Fertig | EnergyBar.svelte + MoodCard.svelte |
 
 ---
 
@@ -225,9 +226,39 @@ pnpm run dev
 - ✅ Gateway-Verbindungsstatus
 
 **Nächste Schritte für v0.2:**
-- Echte Responses vom Gateway empfangen
-- Energy-Anzeige
-- Mood-Karte
+- [x] Energy-Anzeige ✅
+- [x] Mood-Karte ✅
+- [x] Echte Gateway-Daten empfangen (WebSocket) ✅
+
+### Gateway-Integration (WebSocket)
+**Neue Dateien:**
+```
+src/lib/
+├── gateway.ts      # WebSocket Client (vollständiges OpenClaw-Protokoll)
+├── stores.ts       # State Management mit Gateway-Anbindung
+```
+
+**Features:**
+- ✅ WebSocket-Verbindung zu Gateway (ws://localhost:18789)
+- ✅ Connect-Protokoll (auth via token)
+- ✅ Event-Handling (thought, tool, energy, aura, mood)
+- ✅ Auto-Reconnect
+- ✅ Echtzeit-Updates der Stores
+
+### v0.2 - Status: UI F
+
+**NeERTIG ✅ue Dateien:**
+```
+src/lib/components/
+├── EnergyBar.svelte    # Energy-Balken mit Farbwechsel
+└── MoodCard.svelte    # Mood-Text + Mode-Badge
+```
+
+**Features:**
+- ✅ Energy-Balken (0-100%) mit Farbwechsel (grün/gelb/rot)
+- ✅ Mood-Karte mit aktuellem Zustandstext
+- ✅ Mode-Indicator (initiative/dream/balanced)
+- ✅ Sidebar-Layout für Vitalzeichen
 
 ---
 
