@@ -31,6 +31,7 @@ import {
 } from "../../../brain/decision.js";
 import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
+import { buildEnergyForecast } from "../../../brain/forecast.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import {
   buildSubconsciousContextBlock,
@@ -3570,8 +3571,9 @@ export async function runEmbeddedAttempt(
             recentHeartbeatSignals.repeatedPathStreak >= 2 ||
             recentHeartbeatSignals.restingPathStreak >= 2 ||
             recentHeartbeatSignals.playDreamStreak >= 2;
+          let loopCauseAnalysis: LoopCauseAnalysis | undefined;
           if (shouldAnalyzeLoopCause) {
-            const loopCause = classifyLoopCause({
+            loopCauseAnalysis = classifyLoopCause({
               repetitionPressure: recentHeartbeatSignals.repetitionPressure,
               repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
               restingPathStreak: recentHeartbeatSignals.restingPathStreak,
@@ -3587,10 +3589,10 @@ export async function runEmbeddedAttempt(
             omLog("BRAIN-LOOP-CAUSE", "ANALYSIS", {
               runId: params.runId,
               sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
-              cause: loopCause.cause,
-              confidence: Number(loopCause.confidence.toFixed(2)),
-              signalStrength: Number(loopCause.signalStrength.toFixed(1)),
-              evidence: loopCause.evidence,
+              cause: loopCauseAnalysis.cause,
+              confidence: Number(loopCauseAnalysis.confidence.toFixed(2)),
+              signalStrength: Number(loopCauseAnalysis.signalStrength.toFixed(1)),
+              evidence: loopCauseAnalysis.evidence,
               path: chosenPath,
               pathSource: chosenPathSource,
               repetitionPressure: recentHeartbeatSignals.repetitionPressure,
@@ -3605,11 +3607,51 @@ export async function runEmbeddedAttempt(
               phase: "autonomy",
               label: "LOOP_CAUSE",
               summary:
-                `cause=${loopCause.cause}; confidence=${loopCause.confidence.toFixed(2)}; ` +
-                `strength=${loopCause.signalStrength.toFixed(1)}; evidence=${loopCause.evidence.join(" | ")}`,
+                `cause=${loopCauseAnalysis.cause}; confidence=${loopCauseAnalysis.confidence.toFixed(2)}; ` +
+                `strength=${loopCauseAnalysis.signalStrength.toFixed(1)}; evidence=${loopCauseAnalysis.evidence.join(" | ")}`,
               source: "proto33-g9.loop-cause",
             });
           }
+
+          const forecast = buildEnergyForecast({
+            repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+            repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+            restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+            playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+            chosenPath,
+            energyLevel: energyResult.snapshot.level,
+            isSleeping: chronoIsSleeping ?? false,
+            toolCallsTotal: toolCounts.total,
+            recentToolDurationMsMax: recentHeartbeatSignals.recentToolDurationMsMax,
+            loopCause: loopCauseAnalysis?.cause ?? "unknown",
+          });
+          omLog("BRAIN-FORECAST", "STATE", {
+            runId: params.runId,
+            sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+            trajectory: forecast.trajectory,
+            confidence: Number(forecast.confidence.toFixed(2)),
+            signalStrength: Number(forecast.signalStrength.toFixed(1)),
+            mirror: forecast.mirror,
+            evidence: forecast.evidence,
+            reversibleShiftHints: forecast.reversibleShiftHints,
+            path: chosenPath,
+            pathSource: chosenPathSource,
+            repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+            repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+            restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+            playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+            energy: energyResult.snapshot.level,
+            sleeping: chronoIsSleeping ?? false,
+            toolCallsTotal: toolCounts.total,
+          });
+          emitBrainReasoningEvent(params, {
+            phase: "autonomy",
+            label: "FORECAST",
+            summary:
+              `trajectory=${forecast.trajectory}; confidence=${forecast.confidence.toFixed(2)}; ` +
+              `strength=${forecast.signalStrength.toFixed(1)}; mirror=${forecast.mirror}`,
+            source: "proto33-g10.forecast",
+          });
         }
         // --- Aura Calculation (Phase G.4) -------------------------------
         // Calculate Om's 7-chakra aura snapshot and persist it.
