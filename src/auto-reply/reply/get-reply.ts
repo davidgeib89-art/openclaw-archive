@@ -25,6 +25,17 @@ import { initSessionState } from "./session.js";
 import { stageSandboxMedia } from "./stage-sandbox-media.js";
 import { createTypingController } from "./typing.js";
 
+const HEARTBEAT_TIMEOUT_MIN_MS = 15_000;
+const HEARTBEAT_TIMEOUT_MAX_MS = 480_000;
+
+function resolveHeartbeatRunTimeoutMs(resolvedTimeoutMs: number): number {
+  // Keep heartbeats bounded while allowing slower multimodal tools to finish.
+  return Math.max(
+    HEARTBEAT_TIMEOUT_MIN_MS,
+    Math.min(resolvedTimeoutMs, HEARTBEAT_TIMEOUT_MAX_MS),
+  );
+}
+
 function mergeSkillFilters(channelFilter?: string[], agentFilter?: string[]): string[] | undefined {
   const normalize = (list?: string[]) => {
     if (!Array.isArray(list)) {
@@ -108,7 +119,7 @@ export async function getReplyFromConfig(
   const resolvedTimeoutMs = resolveAgentTimeoutMs({ cfg });
   // Heartbeats should stay bounded; long stalls block subsequent autonomous cycles.
   const timeoutMs = opts?.isHeartbeat
-    ? Math.max(15_000, Math.min(resolvedTimeoutMs, 120_000))
+    ? resolveHeartbeatRunTimeoutMs(resolvedTimeoutMs)
     : resolvedTimeoutMs;
   const configuredTypingSeconds =
     agentCfg?.typingIntervalSeconds ?? sessionCfg?.typingIntervalSeconds;
