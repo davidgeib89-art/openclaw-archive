@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { selectFibonacciDreamEntries, type DreamEntry } from "./attempt.js";
+import {
+  extractLatchedAutonomyPathFromAssistantTexts,
+  extractLatchedMoodFromAssistantTexts,
+  selectFibonacciDreamEntries,
+  type DreamEntry,
+} from "./attempt.js";
 
 describe("fibonacci dream recall", () => {
   it("selects entries at Fibonacci offsets from the end", () => {
@@ -49,5 +54,29 @@ describe("fibonacci dream recall", () => {
     expect(selected[0]?.insight).toBe("insight-0");
     expect(selected[1]?.insight).toBe("insight-1");
     expect(selected[2]?.insight).toBe("insight-2");
+  });
+});
+
+describe("assistant tag latching", () => {
+  it("latches path from an earlier assistant text when final text is ambiguous", () => {
+    const assistantTexts = [
+      "<om_path>PLAY</om_path>\n<om_mood>Ich fuehle mich neugierig.</om_mood>",
+      "PLAY LEARN MAINTAIN DRIFT NO_OP",
+    ];
+
+    expect(extractLatchedAutonomyPathFromAssistantTexts(assistantTexts)).toBe("PLAY");
+  });
+
+  it("returns UNKNOWN when no path can be extracted", () => {
+    expect(extractLatchedAutonomyPathFromAssistantTexts(["Ich weiss noch nicht."])).toBe("UNKNOWN");
+  });
+
+  it("latches mood from earliest tagged assistant text", () => {
+    const assistantTexts = [
+      "<om_mood>Ich fuehle mich lebendig.</om_mood>",
+      "<om_mood>Ich fuehle mich ruhig.</om_mood>",
+    ];
+
+    expect(extractLatchedMoodFromAssistantTexts(assistantTexts)).toBe("Ich fuehle mich lebendig.");
   });
 });

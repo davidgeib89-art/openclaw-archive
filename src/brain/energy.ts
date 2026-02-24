@@ -44,6 +44,7 @@ export type CalculateEnergyInput = {
   previousUpdatedAt?: Date;
   previousHeartbeatCount?: number;
   subconsciousCharge?: number;
+  repetitionPressure?: number;
   now?: Date;
 };
 
@@ -57,6 +58,7 @@ export type UpdateEnergyParams = {
     failed?: number;
   };
   subconsciousCharge?: number;
+  repetitionPressure?: number;
   now?: Date;
   previousStagnationLevel?: number;
   /** Whether Om is currently sleeping (from chrono.ts). Used for energy-chrono coupling. */
@@ -175,7 +177,7 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
   const loadRatio = clamp(toolStats.total / MAX_TOOL_LOAD_FOR_DRAIN, 0, 1);
   const toolLoad = toPercent(1 - loadRatio);
 
-  const blendedRaw = successRate * (2/3) + toolLoad * (1/3); // 3-6-9 Magic
+  const blendedRaw = successRate * (2 / 3) + toolLoad * (1 / 3); // 3-6-9 Magic
   let blended = Math.round(blendedRaw);
 
   // Homeostasis: Only reward true rest (elapsed wall-clock time), not repetitive low-action loops.
@@ -207,24 +209,31 @@ export function calculateEnergy(input: CalculateEnergyInput): EnergySnapshot {
     typeof input.previousStagnationLevel === "number"
       ? clamp(Math.round(input.previousStagnationLevel), MIN_ENERGY, MAX_ENERGY)
       : 0;
+  const repetitionPressure =
+    typeof input.repetitionPressure === "number" && Number.isFinite(input.repetitionPressure)
+      ? clamp(Math.round(input.repetitionPressure), MIN_ENERGY, MAX_ENERGY)
+      : 0;
+  const stagnationRise = 15 + Math.round((repetitionPressure / 100) * 15);
+  const stagnationDecay = 50 - Math.round((repetitionPressure / 100) * 25);
   const stagnationLevel =
     toolStats.total === 0
-      ? clamp(previousStagnationLevel + 15, MIN_ENERGY, MAX_ENERGY)
-      : clamp(previousStagnationLevel - 50, MIN_ENERGY, MAX_ENERGY);
-  
+      ? clamp(previousStagnationLevel + stagnationRise, MIN_ENERGY, MAX_ENERGY)
+      : clamp(previousStagnationLevel - stagnationDecay, MIN_ENERGY, MAX_ENERGY);
+
   let smoothed =
-    previousLevel === undefined ? blended : Math.round(previousLevel * (1/3) + blended * (2/3)); // 3-6-9 Magic
+    previousLevel === undefined ? blended : Math.round(previousLevel * (1 / 3) + blended * (2 / 3)); // 3-6-9 Magic
 
   // Biological Noise (Entropy): use subconscious charge when available, else fallback to random drift.
   const normalizedCharge =
     typeof input.subconsciousCharge === "number" && Number.isFinite(input.subconsciousCharge)
       ? Math.max(-9, Math.min(9, Math.round(input.subconsciousCharge)))
       : undefined;
-  const noise = normalizedCharge ?? (Math.floor(Math.random() * 13) - 6);
+  const noise = normalizedCharge ?? Math.floor(Math.random() * 13) - 6;
   smoothed += noise;
 
   const previousHeartbeatCountRaw =
-    typeof input.previousHeartbeatCount === "number" && Number.isFinite(input.previousHeartbeatCount)
+    typeof input.previousHeartbeatCount === "number" &&
+    Number.isFinite(input.previousHeartbeatCount)
       ? Math.max(0, Math.floor(input.previousHeartbeatCount))
       : 0;
   const heartbeatCount = previousHeartbeatCountRaw + 1;
@@ -366,6 +375,7 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
     previousUpdatedAt,
     previousHeartbeatCount,
     subconsciousCharge: params.subconsciousCharge,
+    repetitionPressure: params.repetitionPressure,
     now,
   });
 
@@ -389,14 +399,16 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
       // Gradually pull energy toward the floor (25% of the gap per tick)
       const gap = snapshot.level - floor;
       const pullStrength = 0.25;
-      const adjustedLevel = gap > 0
-        ? clamp(Math.round(snapshot.level - gap * pullStrength), floor, MAX_ENERGY)
-        : snapshot.level;
+      const adjustedLevel =
+        gap > 0
+          ? clamp(Math.round(snapshot.level - gap * pullStrength), floor, MAX_ENERGY)
+          : snapshot.level;
 
       snapshot = {
         ...snapshot,
         level: adjustedLevel,
-        mode: sleepMode === "dream" ? "dream" : sleepMode === "initiative" ? "initiative" : "balanced",
+        mode:
+          sleepMode === "dream" ? "dream" : sleepMode === "initiative" ? "initiative" : "balanced",
         dreamMode: sleepMode === "dream" || adjustedLevel < 20,
         suggestOwnTasks: false, // sleeping Om doesn't suggest tasks
       };
@@ -415,23 +427,20 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
     "utf-8",
   );
 
-  omLog(
-    "BRAIN-ENERGY",
-    "STATE",
-    {
-      runId: params.runId,
-      sessionKey: params.sessionKey ?? "n/a",
-      level: snapshot.level,
-      mode: snapshot.mode,
-      dreamMode: snapshot.dreamMode,
-      suggestOwnTasks: snapshot.suggestOwnTasks,
-      stagnationLevel: snapshot.stagnationLevel,
-      breathPhase: snapshot.breathPhase,
-      heartbeatCount: snapshot.heartbeatCount,
-      toolStats: snapshot.toolStats,
-      components: snapshot.components,
-    },
-  );
+  omLog("BRAIN-ENERGY", "STATE", {
+    runId: params.runId,
+    sessionKey: params.sessionKey ?? "n/a",
+    level: snapshot.level,
+    mode: snapshot.mode,
+    dreamMode: snapshot.dreamMode,
+    suggestOwnTasks: snapshot.suggestOwnTasks,
+    stagnationLevel: snapshot.stagnationLevel,
+    repetitionPressure: params.repetitionPressure ?? 0,
+    breathPhase: snapshot.breathPhase,
+    heartbeatCount: snapshot.heartbeatCount,
+    toolStats: snapshot.toolStats,
+    components: snapshot.components,
+  });
 
   return {
     snapshot,

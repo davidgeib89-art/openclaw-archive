@@ -154,6 +154,36 @@ describe("calculateEnergy", () => {
 
     expect(snapshot.stagnationLevel).toBe(20);
   });
+
+  it("raises stagnation faster under high repetition pressure", () => {
+    const lowPressure = calculateEnergy({
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      previousStagnationLevel: 40,
+      repetitionPressure: 0,
+    });
+    const highPressure = calculateEnergy({
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      previousStagnationLevel: 40,
+      repetitionPressure: 100,
+    });
+
+    expect(highPressure.stagnationLevel).toBeGreaterThan(lowPressure.stagnationLevel);
+  });
+
+  it("decays stagnation slower under high repetition pressure", () => {
+    const lowPressure = calculateEnergy({
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      previousStagnationLevel: 80,
+      repetitionPressure: 0,
+    });
+    const highPressure = calculateEnergy({
+      toolStats: { total: 2, successful: 2, failed: 0 },
+      previousStagnationLevel: 80,
+      repetitionPressure: 100,
+    });
+
+    expect(highPressure.stagnationLevel).toBeGreaterThan(lowPressure.stagnationLevel);
+  });
 });
 
 describe("updateEnergy", () => {
