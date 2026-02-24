@@ -1,5 +1,8 @@
 {
 	"/": [],
+	"/api/akathesia": [
+		"src/routes/api/akathesia/+server.ts"
+	],
 	"/api/history": [
 		"src/routes/api/history/+server.ts"
 	],

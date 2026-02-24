@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyLoopCause,
   extractLatchedAutonomyPathFromAssistantTexts,
   extractLatchedMoodFromAssistantTexts,
   selectFibonacciDreamEntries,
+  shouldInjectActionBindingRetry,
   type DreamEntry,
 } from "./attempt.js";
 
@@ -78,5 +80,120 @@ describe("assistant tag latching", () => {
     ];
 
     expect(extractLatchedMoodFromAssistantTexts(assistantTexts)).toBe("Ich fuehle mich lebendig.");
+  });
+});
+
+describe("action binding retry decision", () => {
+  it("retries when active path has no tool calls", () => {
+    expect(
+      shouldInjectActionBindingRetry({
+        candidatePath: "PLAY",
+        toolCallsTotal: 0,
+        assistantText: "<om_path>PLAY</om_path>",
+      }),
+    ).toBe(true);
+  });
+
+  it("retries when path is UNKNOWN and no tools ran", () => {
+    expect(
+      shouldInjectActionBindingRetry({
+        candidatePath: "UNKNOWN",
+        toolCallsTotal: 0,
+        assistantText: "HEARTBEAT_OK",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry UNKNOWN path when NO_OP contract is present", () => {
+    expect(
+      shouldInjectActionBindingRetry({
+        candidatePath: "UNKNOWN",
+        toolCallsTotal: 0,
+        assistantText:
+          "<om_blocker>network unavailable</om_blocker><om_retry_trigger>on reconnect</om_retry_trigger>",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not retry when a tool already ran", () => {
+    expect(
+      shouldInjectActionBindingRetry({
+        candidatePath: "UNKNOWN",
+        toolCallsTotal: 1,
+        assistantText: "HEARTBEAT_OK",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("loop cause classification", () => {
+  it("classifies unresolved path as prompt_bias", () => {
+    const result = classifyLoopCause({
+      repetitionPressure: 30,
+      repeatedPathStreak: 2,
+      restingPathStreak: 1,
+      playDreamStreak: 0,
+      chosenPath: "UNKNOWN",
+      chosenPathSource: "final_assistant_text",
+      tagFound: false,
+      toolCallsTotal: 0,
+      energyLevel: 95,
+      isSleeping: false,
+    });
+
+    expect(result.cause).toBe("prompt_bias");
+    expect(result.confidence).toBeGreaterThan(0.7);
+  });
+
+  it("classifies high-latency play loops as tool_latency_bias", () => {
+    const result = classifyLoopCause({
+      repetitionPressure: 50,
+      repeatedPathStreak: 2,
+      restingPathStreak: 0,
+      playDreamStreak: 3,
+      recentToolDurationMsMax: [75_000, 68_000, 62_000],
+      chosenPath: "PLAY",
+      chosenPathSource: "latched_run_messages",
+      tagFound: true,
+      toolCallsTotal: 1,
+      energyLevel: 92,
+      isSleeping: false,
+    });
+
+    expect(result.cause).toBe("tool_latency_bias");
+  });
+
+  it("classifies low-energy resting streak as no_viable_alt", () => {
+    const result = classifyLoopCause({
+      repetitionPressure: 45,
+      repeatedPathStreak: 1,
+      restingPathStreak: 3,
+      playDreamStreak: 0,
+      chosenPath: "DRIFT",
+      chosenPathSource: "latched_run_messages",
+      tagFound: true,
+      toolCallsTotal: 0,
+      energyLevel: 20,
+      isSleeping: true,
+    });
+
+    expect(result.cause).toBe("no_viable_alt");
+  });
+
+  it("classifies repeated active loops as model_habit", () => {
+    const result = classifyLoopCause({
+      repetitionPressure: 60,
+      repeatedPathStreak: 4,
+      restingPathStreak: 2,
+      playDreamStreak: 0,
+      chosenPath: "PLAY",
+      chosenPathSource: "latched_run_messages",
+      tagFound: true,
+      toolCallsTotal: 1,
+      energyLevel: 90,
+      isSleeping: false,
+    });
+
+    expect(result.cause).toBe("model_habit");
   });
 });

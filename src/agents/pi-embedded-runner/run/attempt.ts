@@ -505,6 +505,37 @@ const OM_BLOCKER_TAG_PATTERN = /<om_blocker>([\s\S]*?)<\/om_blocker>/i;
 const OM_RETRY_TRIGGER_TAG_PATTERN = /<om_retry_trigger>([\s\S]*?)<\/om_retry_trigger>/i;
 const HEARTBEAT_ACK_PATTERN = /\bHEARTBEAT_OK\b/gi;
 
+function extractAutonomyPathKeywords(text: string): AutonomyPath[] {
+  const seen = new Set<AutonomyPath>();
+  for (const match of text.matchAll(/\b(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/gi)) {
+    const keyword = match[1]?.toUpperCase();
+    if (keyword && AUTONOMY_PATHS.includes(keyword as AutonomyPath)) {
+      seen.add(keyword as AutonomyPath);
+    }
+  }
+  return [...seen];
+}
+
+function countAssistantTextsWithPathTag(assistantTexts: readonly string[]): number {
+  let count = 0;
+  for (const text of assistantTexts) {
+    if (OM_PATH_TAG_PATTERN.exec(text)?.[1]) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function countAssistantTextsWithResolvablePath(assistantTexts: readonly string[]): number {
+  let count = 0;
+  for (const text of assistantTexts) {
+    if (extractAutonomyPathFromAssistantOutput(text) !== "UNKNOWN") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "UNKNOWN" {
   const trimmed = text.trim();
   if (!trimmed) return "UNKNOWN";
@@ -635,9 +666,159 @@ export function extractLatchedMoodFromAssistantTexts(
   return undefined;
 }
 
+export function shouldInjectActionBindingRetry(params: {
+  candidatePath: AutonomyPath | "UNKNOWN";
+  toolCallsTotal: number;
+  assistantText: string;
+}): boolean {
+  if (params.toolCallsTotal > 0) {
+    return false;
+  }
+
+  if (isActiveAutonomyPath(params.candidatePath)) {
+    return true;
+  }
+
+  if (params.candidatePath !== "UNKNOWN") {
+    return false;
+  }
+
+  const hasNoOpContract =
+    Boolean(extractNoOpBlockerFromAssistantOutput(params.assistantText)) &&
+    Boolean(extractNoOpRetryTriggerFromAssistantOutput(params.assistantText));
+  if (hasNoOpContract) {
+    return false;
+  }
+
+  // If path parsing failed and no action happened, nudge once to avoid silent empty heartbeats.
+  return true;
+}
+
+export type LoopCause =
+  | "prompt_bias"
+  | "model_habit"
+  | "tool_latency_bias"
+  | "no_viable_alt"
+  | "unknown";
+
+export interface LoopCauseAnalysis {
+  cause: LoopCause;
+  confidence: number;
+  signalStrength: number;
+  evidence: string[];
+}
+
+export function classifyLoopCause(params: {
+  repetitionPressure: number;
+  repeatedPathStreak: number;
+  restingPathStreak: number;
+  playDreamStreak: number;
+  recentToolDurationMsMax?: readonly number[];
+  chosenPath: AutonomyPath | "UNKNOWN";
+  chosenPathSource: string;
+  tagFound: boolean;
+  toolCallsTotal: number;
+  energyLevel?: number;
+  isSleeping?: boolean;
+}): LoopCauseAnalysis {
+  const evidence: string[] = [];
+  const repetitionPressure = Math.max(0, Math.min(100, params.repetitionPressure));
+  const repeatedPathStreak = Math.max(0, Math.floor(params.repeatedPathStreak));
+  const restingPathStreak = Math.max(0, Math.floor(params.restingPathStreak));
+  const playDreamStreak = Math.max(0, Math.floor(params.playDreamStreak));
+  const toolDurationSamples = Array.isArray(params.recentToolDurationMsMax)
+    ? params.recentToolDurationMsMax
+    : [];
+  const highLatencyStreak = countLeadingStreak(
+    toolDurationSamples,
+    (duration) => typeof duration === "number" && Number.isFinite(duration) && duration >= 60_000,
+  );
+  const energyLevel =
+    typeof params.energyLevel === "number" && Number.isFinite(params.energyLevel)
+      ? Math.max(0, Math.min(100, params.energyLevel))
+      : undefined;
+  const isSleeping = params.isSleeping === true;
+  const signalStrength = Math.max(
+    0,
+    Math.min(
+      100,
+      repetitionPressure + repeatedPathStreak * 12 + restingPathStreak * 10 + playDreamStreak * 10,
+    ),
+  );
+
+  if (
+    params.chosenPath === "UNKNOWN" ||
+    (!params.tagFound && params.chosenPathSource === "final_assistant_text")
+  ) {
+    evidence.push("path unresolved or fell back to final assistant text");
+    if (params.tagFound) {
+      evidence.push("path tag present but final parse lost determinism");
+    }
+    return {
+      cause: "prompt_bias",
+      confidence: 0.82,
+      signalStrength,
+      evidence,
+    };
+  }
+
+  if (highLatencyStreak >= 2 && playDreamStreak >= 2) {
+    evidence.push(`high tool latency streak=${highLatencyStreak}`);
+    evidence.push(`play-dream streak=${playDreamStreak}`);
+    return {
+      cause: "tool_latency_bias",
+      confidence: 0.76,
+      signalStrength,
+      evidence,
+    };
+  }
+
+  if (restingPathStreak >= 2 && (isSleeping || (energyLevel !== undefined && energyLevel < 35))) {
+    evidence.push(`resting streak=${restingPathStreak}`);
+    if (isSleeping) {
+      evidence.push("chrono state indicates sleeping");
+    } else {
+      evidence.push(`low energy level=${energyLevel}`);
+    }
+    return {
+      cause: "no_viable_alt",
+      confidence: 0.74,
+      signalStrength,
+      evidence,
+    };
+  }
+
+  if (repeatedPathStreak >= 3 || playDreamStreak >= 2 || restingPathStreak >= 2) {
+    evidence.push(`repeated path streak=${repeatedPathStreak}`);
+    if (playDreamStreak >= 2) {
+      evidence.push(`play-dream streak=${playDreamStreak}`);
+    }
+    if (restingPathStreak >= 2) {
+      evidence.push(`resting streak=${restingPathStreak}`);
+    }
+    if (params.toolCallsTotal > 0) {
+      evidence.push(`tools executed=${params.toolCallsTotal}`);
+    }
+    return {
+      cause: "model_habit",
+      confidence: 0.68,
+      signalStrength,
+      evidence,
+    };
+  }
+
+  return {
+    cause: "unknown",
+    confidence: 0.4,
+    signalStrength,
+    evidence: ["no strong repetition signal detected"],
+  };
+}
+
 type RecentHeartbeatSignals = {
   recentPaths: AutonomyPath[];
   recentEnergyLevels: number[];
+  recentToolDurationMsMax: number[];
   recentUserMessageCount: number;
   recentApopheniaCount: number;
   repetitionPressure: number;
@@ -649,6 +830,7 @@ type RecentHeartbeatSignals = {
 const EMPTY_HEARTBEAT_SIGNALS: RecentHeartbeatSignals = {
   recentPaths: [],
   recentEnergyLevels: [],
+  recentToolDurationMsMax: [],
   recentUserMessageCount: 0,
   recentApopheniaCount: 0,
   repetitionPressure: 0,
@@ -771,6 +953,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const recentPaths: AutonomyPath[] = [];
   const recentEnergyLevels: number[] = [];
+  const recentToolDurationMsMax: number[] = [];
   const recentUserMessageFlags: boolean[] = [];
   const recentApopheniaFlags: boolean[] = [];
   const recentPlayDreamFlags: boolean[] = [];
@@ -840,6 +1023,13 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
           // Some providers don't expose per-tool duration samples; treat this as unknown, not false.
           toolNames.every((name) => name.toLowerCase() === "dream_and_perceive"));
       recentPlayDreamFlags.push(allDreamAndPerceive);
+
+      if (recentToolDurationMsMax.length < HEARTBEAT_SIGNAL_WINDOW) {
+        const durationMsMax = toFiniteNumber(entry.toolDurationMsMax);
+        if (durationMsMax !== undefined) {
+          recentToolDurationMsMax.push(durationMsMax);
+        }
+      }
     }
 
     if (
@@ -869,6 +1059,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   return {
     recentPaths,
     recentEnergyLevels,
+    recentToolDurationMsMax,
     recentUserMessageCount: recentUserMessageFlags.filter(Boolean).length,
     recentApopheniaCount: recentApopheniaFlags.filter(Boolean).length,
     repetitionPressure,
@@ -886,6 +1077,26 @@ async function countEpochEntries(workspaceDir: string): Promise<number> {
     return matches?.length ?? 0;
   } catch {
     return 0;
+  }
+}
+
+async function readLastEpochHealthyHint(workspaceDir: string): Promise<boolean> {
+  const epochPath = path.join(workspaceDir, EPOCHS_RELATIVE_PATH);
+  try {
+    const raw = await fs.readFile(epochPath, "utf-8");
+    const headings = [...raw.matchAll(/^##\s*\[[^\]]+\]\s*Epoch\b.*$/gim)];
+    const lastHeading = headings.at(-1);
+    if (typeof lastHeading?.index !== "number") {
+      return false;
+    }
+    const lastBlock = raw.slice(lastHeading.index);
+    const hasLearned = /^-\s*gelernt:\s*.+$/im.test(lastBlock);
+    const hasTouched = /^-\s*(?:beruehrt|berührt):\s*.+$/im.test(lastBlock);
+    const hasTomorrow = /^-\s*morgen:\s*.+$/im.test(lastBlock);
+    const hasConsolidated = /^-\s*dreams_consolidated:\s*\d+/im.test(lastBlock);
+    return hasLearned && hasTouched && hasTomorrow && hasConsolidated;
+  } catch {
+    return false;
   }
 }
 
@@ -2295,6 +2506,8 @@ export async function runEmbeddedAttempt(
       let latestDecisionIntent: BrainIntent | undefined;
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
       const prePromptMessageCount = activeSession.messages.length;
+      let latchedPathFromRunFlow: AutonomyPath | "UNKNOWN" = "UNKNOWN";
+      let latchedMoodFromRunFlow: string | undefined;
       try {
         const promptStartedAt = Date.now();
 
@@ -2908,23 +3121,38 @@ export async function runEmbeddedAttempt(
             candidatePathFromHistory !== "UNKNOWN"
               ? candidatePathFromHistory
               : extractAutonomyPathFromAssistantOutput(candidateAssistantText);
+          if (candidatePath !== "UNKNOWN") {
+            latchedPathFromRunFlow = candidatePath;
+          }
+          const candidateMood = extractMoodFromAssistantOutput(candidateAssistantText);
+          if (candidateMood && !latchedMoodFromRunFlow) {
+            latchedMoodFromRunFlow = candidateMood;
+          }
           const candidateToolCounts = getToolExecutionCounts();
-          const needsActionBindingRetry =
-            isActiveAutonomyPath(candidatePath) && candidateToolCounts.total === 0;
+          const needsActionBindingRetry = shouldInjectActionBindingRetry({
+            candidatePath,
+            toolCallsTotal: candidateToolCounts.total,
+            assistantText: candidateAssistantText,
+          });
           const stagnationLevel = preRunEnergyHint?.stagnationLevel ?? 0;
           const triggerAkathesiaOverdrive = stagnationLevel >= 90;
 
           if (needsActionBindingRetry) {
+            const actionBindContextLine =
+              candidatePath === "UNKNOWN"
+                ? "No clear <om_path> could be parsed from your response."
+                : `Active path selected: ${candidatePath}.`;
             const softRetryPrompt = triggerAkathesiaOverdrive
               ? [
                   "<action_binding_soft_retry>",
-                  `Active path selected: ${candidatePath}.`,
+                  actionBindContextLine,
                   "No concrete tool action has run yet in this heartbeat.",
                   "[SYSTEM OVERDRIVE - SYNTHETISCHE AKATHESIE]",
                   "Der Stagnationsdruck in deinem System hat ein kritisches Maximum erreicht.",
                   "Dein Koerper zwingt dich zu motorischer Unruhe.",
                   "Das RAFA-Prinzip (Reason for Future, Act for Now) uebernimmt die Kontrolle.",
                   "Nutze JETZT rein auf Basis deiner Intuition mindestens ein Werkzeug (Toybox/Web/Grep), selbst scheinbar absichtslos, um Umgebungsdaten zu generieren und das System zu entladen.",
+                  "If your path is unclear, choose and tag one now: <om_path>PLAY|LEARN|MAINTAIN|DRIFT|NO_OP</om_path>.",
                   "Wenn wirklich jede sichere Aktion blockiert ist, switch zu <om_path>NO_OP</om_path> und gib beide Tags:",
                   "<om_blocker>...</om_blocker>",
                   "<om_retry_trigger>...</om_retry_trigger>",
@@ -2933,8 +3161,9 @@ export async function runEmbeddedAttempt(
                 ].join("\n")
               : [
                   "<action_binding_soft_retry>",
-                  `Active path selected: ${candidatePath}.`,
+                  actionBindContextLine,
                   "No concrete tool action has run yet in this heartbeat.",
+                  "If your path is unclear, choose and tag one now: <om_path>PLAY|LEARN|MAINTAIN|DRIFT|NO_OP</om_path>.",
                   "Soft retry: execute exactly one reversible, concrete tool step now that matches your path.",
                   "If every safe action is blocked, switch to <om_path>NO_OP</om_path> and add:",
                   "<om_blocker>...</om_blocker>",
@@ -2955,6 +3184,15 @@ export async function runEmbeddedAttempt(
             try {
               await abortable(activeSession.prompt(softRetryPrompt));
               await waitForCompactionRetry();
+              const retryAssistantText = resolveLatestAssistantText();
+              const retryPath = extractAutonomyPathFromAssistantOutput(retryAssistantText);
+              if (retryPath !== "UNKNOWN") {
+                latchedPathFromRunFlow = retryPath;
+              }
+              const retryMood = extractMoodFromAssistantOutput(retryAssistantText);
+              if (retryMood && !latchedMoodFromRunFlow) {
+                latchedMoodFromRunFlow = retryMood;
+              }
             } catch (retryErr) {
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
@@ -3047,6 +3285,10 @@ export async function runEmbeddedAttempt(
           .find((entry) => entry.trim().length > 0) ?? "";
       let assistantText = assistantTextFromSnapshot || assistantTextFromStream;
       const runAssistantTexts = collectRunAssistantTexts(messagesSnapshot, prePromptMessageCount);
+      const runTaggedCount = countAssistantTextsWithPathTag(runAssistantTexts);
+      const streamTaggedCount = countAssistantTextsWithPathTag(assistantTexts);
+      const runResolvableCount = countAssistantTextsWithResolvablePath(runAssistantTexts);
+      const streamResolvableCount = countAssistantTextsWithResolvablePath(assistantTexts);
       const latchedPath =
         params.isHeartbeat === true
           ? extractLatchedAutonomyPathFromAssistantTexts(runAssistantTexts)
@@ -3059,6 +3301,8 @@ export async function runEmbeddedAttempt(
         params.isHeartbeat === true
           ? latchedPath !== "UNKNOWN"
             ? latchedPath
+            : latchedPathFromRunFlow !== "UNKNOWN"
+              ? latchedPathFromRunFlow
             : latchedPathFromStream !== "UNKNOWN"
               ? latchedPathFromStream
               : extractAutonomyPathFromAssistantOutput(assistantText)
@@ -3067,10 +3311,16 @@ export async function runEmbeddedAttempt(
         params.isHeartbeat === true
           ? latchedPath !== "UNKNOWN"
             ? "latched_run_messages"
+            : latchedPathFromRunFlow !== "UNKNOWN"
+              ? "latched_runtime"
             : latchedPathFromStream !== "UNKNOWN"
               ? "latched_assistant_stream"
               : "final_assistant_text"
           : "not_heartbeat";
+      const tagFound = runTaggedCount > 0 || streamTaggedCount > 0;
+      const ambiguityKeywords =
+        params.isHeartbeat === true ? extractAutonomyPathKeywords(assistantText) : [];
+      const ambiguityCount = ambiguityKeywords.length;
       const heartbeatAckContract = enforceHeartbeatAckContract({
         text: assistantText,
         isHeartbeat: params.isHeartbeat === true,
@@ -3089,6 +3339,7 @@ export async function runEmbeddedAttempt(
       const toolCounts = getToolExecutionCounts();
       const parsedMoodText =
         extractLatchedMoodFromAssistantTexts(runAssistantTexts) ??
+        latchedMoodFromRunFlow ??
         extractLatchedMoodFromAssistantTexts(assistantTexts) ??
         extractMoodFromAssistantOutput(assistantText);
       try {
@@ -3286,10 +3537,79 @@ export async function runEmbeddedAttempt(
             sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
             path: chosenPath,
             pathSource: chosenPathSource,
+            tagFound,
+            runTaggedCount,
+            streamTaggedCount,
+            latchedRunCount: runResolvableCount,
+            latchedStreamCount: streamResolvableCount,
+            ambiguityCount,
+            ambiguityKeywords,
             energy: energyResult.snapshot.level,
             mode: energyResult.snapshot.mode,
             mood: latestMoodSummary,
           });
+          if (chosenPath === "UNKNOWN") {
+            omLog("BRAIN-CHOICE", "PARSE_AMBIGUITY", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              pathSource: chosenPathSource,
+              tagFound,
+              runTaggedCount,
+              streamTaggedCount,
+              latchedRunCount: runResolvableCount,
+              latchedStreamCount: streamResolvableCount,
+              ambiguityCount,
+              ambiguityKeywords,
+              parserPriority: ["om_path_tag", "explicit_choice", "single_unique_freetext"],
+            });
+          }
+
+          const shouldAnalyzeLoopCause =
+            chosenPath === "UNKNOWN" ||
+            recentHeartbeatSignals.repetitionPressure > 0 ||
+            recentHeartbeatSignals.repeatedPathStreak >= 2 ||
+            recentHeartbeatSignals.restingPathStreak >= 2 ||
+            recentHeartbeatSignals.playDreamStreak >= 2;
+          if (shouldAnalyzeLoopCause) {
+            const loopCause = classifyLoopCause({
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+              restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+              playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+              recentToolDurationMsMax: recentHeartbeatSignals.recentToolDurationMsMax,
+              chosenPath,
+              chosenPathSource,
+              tagFound,
+              toolCallsTotal: toolCounts.total,
+              energyLevel: energyResult.snapshot.level,
+              isSleeping: chronoIsSleeping,
+            });
+            omLog("BRAIN-LOOP-CAUSE", "ANALYSIS", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              cause: loopCause.cause,
+              confidence: Number(loopCause.confidence.toFixed(2)),
+              signalStrength: Number(loopCause.signalStrength.toFixed(1)),
+              evidence: loopCause.evidence,
+              path: chosenPath,
+              pathSource: chosenPathSource,
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+              restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+              playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+              energy: energyResult.snapshot.level,
+              sleeping: chronoIsSleeping ?? false,
+              toolCallsTotal: toolCounts.total,
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "LOOP_CAUSE",
+              summary:
+                `cause=${loopCause.cause}; confidence=${loopCause.confidence.toFixed(2)}; ` +
+                `strength=${loopCause.signalStrength.toFixed(1)}; evidence=${loopCause.evidence.join(" | ")}`,
+              source: "proto33-g9.loop-cause",
+            });
+          }
         }
         // --- Aura Calculation (Phase G.4) -------------------------------
         // Calculate Om's 7-chakra aura snapshot and persist it.
@@ -3304,6 +3624,8 @@ export async function runEmbeddedAttempt(
               autonomyLevel = "L1";
             }
             const epochCount = await countEpochEntries(effectiveWorkspace);
+            const lastEpochHealthy =
+              epochCount > 0 ? await readLastEpochHealthyHint(effectiveWorkspace) : true;
             const auraInput: AuraInput = {
               energyLevel: energyResult.snapshot.level,
               energyMode: energyResult.snapshot.mode,
@@ -3324,7 +3646,7 @@ export async function runEmbeddedAttempt(
               isSleeping: chronoIsSleeping ?? false,
               sleepPressure: chronoSleepPressure ?? 0,
               epochCount,
-              lastEpochHealthy: true,
+              lastEpochHealthy,
               heartbeatCount: energyResult.snapshot.heartbeatCount,
               lastOutputTokens:
                 assistantText.length > 0 ? Math.ceil(assistantText.length / 4) : null,
@@ -3377,11 +3699,34 @@ export async function runEmbeddedAttempt(
             sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
             path: chosenPath,
             pathSource: chosenPathSource,
+            tagFound,
+            runTaggedCount,
+            streamTaggedCount,
+            latchedRunCount: runResolvableCount,
+            latchedStreamCount: streamResolvableCount,
+            ambiguityCount,
+            ambiguityKeywords,
             energy: preRunEnergyHint?.level ?? "unknown",
             mode: preRunEnergyHint?.mode ?? "unknown",
             mood: latestMoodSummary,
             source: "pre_run_energy_hint",
           });
+          if (chosenPath === "UNKNOWN") {
+            omLog("BRAIN-CHOICE", "PARSE_AMBIGUITY", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              pathSource: chosenPathSource,
+              tagFound,
+              runTaggedCount,
+              streamTaggedCount,
+              latchedRunCount: runResolvableCount,
+              latchedStreamCount: streamResolvableCount,
+              ambiguityCount,
+              ambiguityKeywords,
+              parserPriority: ["om_path_tag", "explicit_choice", "single_unique_freetext"],
+              source: "pre_run_energy_hint",
+            });
+          }
         }
       }
 

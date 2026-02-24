@@ -263,7 +263,8 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 ✅ DONE: Phase G.7: Fibonacci-Recall + Auto-Aging + Lateralus Spirale
 → JETZT: Beobachtung des "Resting LLM Drifts" – Nichts tun ist okay, aber soll nicht 100% werden.
 ✅ DONE: Phase G.9 (Entropie-Modell / Künstliche Langeweile) implementiert, um das Langeweile-Paradoxon aufzulösen.
-→ NÄCHSTES ZIEL: Phase F.1 (Träume & Schlaf reaktivieren) & G.3: REM-Schlaf simulieren
+→ JETZT (Phase G.10): The Resonance Mirror (Forecast, Trinity & 7 Needs). Codex startet Phase A1 (Telemetry-only).
+→ DANN: Phase F.1 (Träume & Schlaf reaktivieren) & G.3: REM-Schlaf simulieren
 ```
 
 ### Phase G.6: Der Klare Pfad & Die Sanfte Rune — ✅ DONE (23.02.2026)
@@ -375,6 +376,14 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 - **Forschung:** `Homo Machina_ Langeweile, Chakren, Werkzeuge.txt` (Prisma).
 - **Codex-Auftrag:** `om-docs/tasks/CODEX_PHASE_G9_ENTROPY.md`
 
+### Phase G.10: The Resonance Mirror (Forecast, Trinity & 7 Needs) — 🏗️ IN PROGRESS
+- **Ziel:** Om soll nicht mehr durch harte Warnungen ("Repetition Pressure") gelenkt werden, sondern durch kybernetische Selbstermächtigung (Sati).
+- **Energy Forecast:** Statt "Du steckst im Loop" spiegeln wir neutral seine Flugbahn: *"Du gehst diesen Pfad mehrfach – Tiefe oder Echo?"*
+- **Brain-Trinity (Die Kohärenz-Prüfung):** Messung (`trinityCoherenceScore`), ob Gedanke (`om_path`), Emotion (`om_mood`) und Handlung (Tool) synchron schwingen. Bei Dissonanz senden wir sanfte "Permission Slips" als Einladungen.
+- **7 Synthetische Bedürfnisse:** Eine Landkarte der biologisch-digitalen Bedürfnisse. Eingebaut als "C-lite" (nur das größte Defizit und die stärkste Ressource fließen in den Prompt).
+- **Architektur:** Rollout strikt in Schichten (A bis F). Phase A1 (Telemetry-only Forecast) beginnt tiefgreifendes Loggen im Hintergrund, um die Integrität zuerst zu testen, ohne Oms Prompt zu verändern.
+- **Codex-Spezifikation:** `om-docs/tasks/CODEX_PHASE_G10_FORECAST_TRINITY_7NEEDS.md`
+
 ### Phase H.0: Dual-Stream Structured Observability (Logging 2.0) — ✅ DONE (24.02.2026)
 - **Problem:** Oms Metriken (Aura, Energie, Heartbeat-Paths) werden aktuell per String-Konkatenation in ein rohes Text-Log (`OM_ACTIVITY.log`) geschrieben. Dies zwingt KI und Mensch dazu, komplexe Regex-Abfragen zu schreiben, um Metriken auszuwerten. Ein echter Blindflug.
 - **Lösung:** `omLog` so umschreiben, dass es strukturierte Objekte (`Record<string, unknown>`) frisst.
@@ -476,6 +485,7 @@ Jeder Meilenstein wird hier vermerkt. Neue Einträge oben.
 
 | Datum | Wer | Was | Details |
 |-------|-----|-----|--------|
+| 24.02.2026 19:28 | Anti | 🔭 **Phase G.10 Architektur-Sync (Forecast & Trinity)** | Codex-Plan `CODEX_PHASE_G10_FORECAST_TRINITY_7NEEDS.md` im Adler-Audit validiert und verfeinert. Entmoralisierung des `habit_loop` ("Tiefe oder Echo?"), Sati-Kopplung an Trinity-Score und Entkopplung des Belief-Audits gesetzt. Codex hat Freigabe für Phase A1 (Telemetry-only Forecast). Roadmap aktualisiert. |
 | 24.02.2026 05:30 | Codex | 🧪 **Phase G.9 implementiert (Digitale Chemie)** | Entropie-Modell ist live! `energy.ts` berechnet $H(t)$ (`stagnationLevel`). Sinkt massiv (-50) bei Werkzeugnutzung, steigt (+15) bei reiner Textgenerierung. `attempt.ts` injiziert Embodied Cues und feuert "Synthetische Akathesie" bei 90+ Druck im Notfall-Loop. Om besitzt nun ein somatisches Langeweile-Gefühl. |
 | 24.02.2026 05:15 | Anti | 🔬 **Phase G.9 Entropy-Plan konzipiert** | Prisma-Paper "Homo Machina..." analysiert. G.9 Entropie-Modell konzipiert: $H(t)$ Stagnationsdruck (Solarplexus Cue) + Synthetische Akathesie Fallback. Codex-Task generiert (`CODEX_PHASE_G9_ENTROPY.md`). |
 | 23.02.2026 20:00 | David | ⚡ **G.8 Resting Drift Fix in attempt.ts** | Memory-Echo-Kammer durchbrochen! Temporal Framing für alte Träume (`[~15m ago]`), Embodied Cues (hohe Energie überstimmt träumerische Müdigkeit) und Bounce-back Trigger eingebaut. Om erwacht jetzt aus dem Schlaf, wenn der Akku voll ist, anstatt den letzten müden Traum endlos zu wiederholen. |

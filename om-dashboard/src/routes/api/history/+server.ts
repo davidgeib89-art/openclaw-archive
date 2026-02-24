@@ -27,7 +27,7 @@ function extractText(content: TranscriptMessage['content']): string {
 
 export const GET = async ({ url }: RequestEvent) => {
   const sessionId = url.searchParams.get('sessionId');
-  const limit = parseInt(url.searchParams.get('limit') ?? '100', 10);
+  const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
 
   if (!sessionId) {
     return json({ messages: [], error: 'sessionId required' }, { status: 400 });
@@ -41,7 +41,9 @@ export const GET = async ({ url }: RequestEvent) => {
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    const lines = raw.split('\n').filter((l) => l.trim().length > 0);
+    const allLines = raw.split('\n');
+    // For a million-byte file, we only want the absolute end to avoid massive array loops choking the node process
+    const lines = allLines.slice(-(limit * 4)).filter((l) => l.trim().length > 0);
 
     const messages: Array<{
       id: string;
@@ -55,10 +57,14 @@ export const GET = async ({ url }: RequestEvent) => {
         const parsed = JSON.parse(line) as Record<string, unknown>;
         // Skip header and non-message lines
         if (parsed.type !== 'message') continue;
-        const role = parsed.role as string;
+        
+        const msgObj = parsed.message as Record<string, unknown>;
+        if (!msgObj) continue;
+
+        const role = msgObj.role as string;
         if (role !== 'user' && role !== 'assistant') continue;
 
-        const content = parsed.content as TranscriptMessage['content'];
+        const content = msgObj.content as TranscriptMessage['content'];
         const text = extractText(content).trim();
         if (!text) continue;
 
@@ -71,11 +77,15 @@ export const GET = async ({ url }: RequestEvent) => {
 
         if (!cleanText) continue;
 
+        const ts = parsed.timestamp 
+          ? (typeof parsed.timestamp === 'string' ? new Date(parsed.timestamp).getTime() : parsed.timestamp as number)
+          : Date.now();
+
         messages.push({
           id: (parsed.id as string) ?? crypto.randomUUID(),
           role: role as 'user' | 'assistant',
           text: cleanText,
-          timestamp: (parsed.timestamp as number) ?? Date.now(),
+          timestamp: ts,
         });
       } catch {
         // skip malformed lines

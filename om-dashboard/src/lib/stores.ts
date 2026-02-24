@@ -85,13 +85,13 @@ export async function loadSessions(): Promise<void> {
 
 export async function loadHistory(sessionId: string): Promise<ChatEntry[]> {
   try {
-    const res = await fetch(`/api/history?sessionId=${encodeURIComponent(sessionId)}&limit=200`);
+    const res = await fetch(`/api/history?sessionId=${encodeURIComponent(sessionId)}&limit=30`);
     const data = await res.json();
-    return (data.messages ?? []).map((m: { id: string; role: 'user' | 'assistant'; text: string; timestamp: number }) => ({
-      id: m.id,
+    return (data.messages ?? []).map((m: { id: string; role: 'user' | 'assistant'; text: string; timestamp: number }, i: number) => ({
+      id: m.id ?? `msg-${i}-${Date.now()}`,
       role: m.role,
-      content: m.text,
-      timestamp: m.timestamp,
+      content: m.text || '',
+      timestamp: m.timestamp || Date.now(),
     }));
   } catch (e) {
     console.error('[History] Load failed:', e);

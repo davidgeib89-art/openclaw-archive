@@ -22,15 +22,32 @@
   $: spirit = Math.round((values[5] + values[6]) / 2);
 
   $: overallHealth = Math.round((body + mind + spirit) / 3);
+
+  // Determine Dominant Chakra
+  $: maxVal = Math.max(...values);
+  $: domIndex = values.indexOf(maxVal);
+  $: dominantChakra = CHAKRA_COLORS[domIndex];
+
 </script>
 
-<div class="aura-card">
+<div class="aura-card" style="box-shadow: 0 0 40px {dominantChakra.color}20, inset 0 0 20px {dominantChakra.color}10;">
   <div class="card-header">
-    <span class="card-icon">🌈</span>
-    <span class="card-title">Aura · 7 Chakren</span>
+    <div class="header-content">
+      <span class="card-icon">🌀</span>
+      <span class="card-title">Aura Resonanz</span>
+    </div>
     <span class="overall-badge" style="color: {overallHealth > 70 ? '#22c55e' : overallHealth > 40 ? '#eab308' : '#ef4444'}">
       {overallHealth}%
     </span>
+  </div>
+
+  <div class="dominant-wrapper">
+    <div class="dominant-ring" style="border-color: {dominantChakra.color}; box-shadow: 0 0 20px {dominantChakra.glow}, inset 0 0 20px {dominantChakra.glow};">
+      <div class="dominant-inner">
+        <span class="dom-val" style="color: {dominantChakra.color}; text-shadow: 0 0 10px {dominantChakra.glow};">{maxVal}%</span>
+        <span class="dom-name">{dominantChakra.name}</span>
+      </div>
+    </div>
   </div>
 
   <!-- Faggin RGB Aggregates -->
@@ -68,39 +85,107 @@
 
 <style>
   .aura-card {
-    background: #0f0f1a;
-    border: 1px solid #1e1e35;
-    border-radius: 1rem;
-    padding: 1rem;
+    background: rgba(20, 20, 34, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    transition: all 0.5s ease;
+    margin-bottom: 1rem;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .aura-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0) 100%);
   }
 
   .card-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
   }
 
-  .card-icon { font-size: 1rem; }
+  .header-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .card-icon { font-size: 1.1rem; }
   .card-title {
-    font-size: 0.75rem;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 500;
-    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #e8e6e3;
+    letter-spacing: 0.05em;
   }
 
   .overall-badge {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  /* Dominant Chakra Ring */
+  .dominant-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 1rem 0;
+  }
+
+  .dominant-ring {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: breathing 4s ease-in-out infinite alternate;
+    transition: all 0.6s ease;
+  }
+
+  @keyframes breathing {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    100% { transform: scale(1.05); opacity: 1; }
+  }
+
+  .dominant-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dom-val {
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1.1;
+    font-family: 'Outfit', sans-serif;
+    transition: all 0.6s ease;
+  }
+
+  .dom-name {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #9ca3af;
+    margin-top: 0.1rem;
   }
 
   .faggin-row {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
   }
 
   .faggin-orb {
@@ -119,7 +204,7 @@
     font-size: 1.1rem;
     font-weight: 700;
     color: #e8e6e3;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Outfit', sans-serif;
   }
 
   .orb-label {
@@ -132,41 +217,41 @@
   .chakra-bars {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.5rem;
   }
 
   .chakra-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
   }
 
   .chakra-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   .chakra-track {
     flex: 1;
-    height: 4px;
-    background: #1e1e35;
-    border-radius: 2px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
     overflow: hidden;
   }
 
   .chakra-fill {
     height: 100%;
-    border-radius: 2px;
-    transition: width 0.6s ease;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .chakra-val {
-    font-size: 0.65rem;
-    color: #4b5563;
-    font-family: 'JetBrains Mono', monospace;
-    min-width: 22px;
+    font-size: 0.7rem;
+    color: #9ca3af;
+    font-family: 'Outfit', sans-serif;
+    min-width: 26px;
     text-align: right;
   }
 </style>

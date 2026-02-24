@@ -12,18 +12,26 @@
   import EnergyBar from '$lib/components/EnergyBar.svelte';
   import MoodCard from '$lib/components/MoodCard.svelte';
   import AuraOrb from '$lib/components/AuraOrb.svelte';
+  import BreathCycle from '$lib/components/BreathCycle.svelte';
+  import CognitiveTimeline from '$lib/components/CognitiveTimeline.svelte';
 
   let inputText = '';
   let messagesEl: HTMLDivElement;
   let historyLoadTriggered = false; // Replaces historyLoaded
   let sessionDropdownOpen = false;
 
+  // Track breath ticks roughly every ~2 seconds (depending on Om's config, we simulate here)
+  let breathTick = 0;
+  let breathInterval: ReturnType<typeof setInterval>;
+
   // ─── Scroll to bottom on new messages ────────────────────────────────────
-  $: if ($chatMessages.length && messagesEl) {
-    tick().then(() => {
-      if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-  }
+  import { afterUpdate } from 'svelte';
+  
+  afterUpdate(() => {
+    if (messagesEl && $chatMessages.length > 0) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  });
 
   // ─── Load history when session changes ───────────────────────────────────
   // Removed reactive auto-load of history on session change.
@@ -35,25 +43,41 @@
     isLoading.set(true);
     clearChat();
     const msgs = await loadHistory($currentSession.sessionId);
-    if (msgs.length > 0) chatMessages.set(msgs);
+    // Svelte assignment to store
+    chatMessages.set([...msgs]);
     isLoading.set(false);
+  }
+
+  // ─── Akathesia Trigger ────────────────────────────────────────────────────
+  async function triggerAkathesia() {
+    try {
+      const res = await fetch('/api/akathesia', { method: 'POST' });
+      if (res.ok) {
+        addAssistantMessage('⚡ [System Action] Somatic Bounce-Back (Akathesia) triggered manually.');
+      }
+    } catch (e) {
+      console.error('Failed to trigger Akathesia', e);
+    }
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
   onMount(async () => {
-    // Load sessions from disk (lightweight — only reads sessions.json metadata)
     await loadSessions();
 
-    // Connect gateway for live events (non-blocking)
     connectToGateway().then(() => {
       gatewayConnected.set(true);
-    }).catch(() => {
-      // offline is fine, disk-based features still work
-    });
+    }).catch(() => {});
+
+    // Simulate the 18-tick breath cycle locally for the visualization
+    // In a real scenario, this might sync precisely with Gateway heartbeats.
+    breathInterval = setInterval(() => {
+      breathTick = (breathTick + 1) % 18;
+    }, 2000);
   });
 
   onDestroy(() => {
     getGatewayClient()?.disconnect();
+    if (breathInterval) clearInterval(breathInterval);
   });
 
   // ─── Send message ─────────────────────────────────────────────────────────
@@ -116,7 +140,6 @@
     return '💬';
   }
 
-  // Close dropdown on outside click
   function handleDocClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (!target.closest('.session-switcher')) {
@@ -178,6 +201,9 @@
     </div>
 
     <div class="header-right">
+      <button class="action-btn warning" on:click={triggerAkathesia} title="Somatic Bounce-Back">
+        ⚡ Akathesia Trigger
+      </button>
       <div class="conn-indicator" class:connected={$gatewayConnected} title={$gatewayConnected ? 'Gateway verbunden' : 'Gateway offline'}>
         <span class="conn-dot"></span>
         <span class="conn-text">{$gatewayConnected ? 'Live' : 'Offline'}</span>
@@ -187,14 +213,15 @@
 
   <!-- ── Main Layout ────────────────────────────────────────────────────── -->
   <div class="main">
-    <!-- Sidebar: Om's Vitals -->
-    <aside class="sidebar">
+    <!-- Left Sidebar: Om's Vitals & Breath -->
+    <aside class="sidebar left-sidebar">
       <EnergyBar level={$energy} mode={$mode} history={$energyHistory} />
+      <BreathCycle currentTick={breathTick} />
       <MoodCard mood={$mood} path={$path} lastHeartbeat={$lastHeartbeat} />
       <AuraOrb aura={$aura} />
     </aside>
 
-    <!-- Chat Area -->
+    <!-- Center: Chat Area -->
     <section class="chat-section">
       <div class="messages" bind:this={messagesEl}>
         {#if $chatMessages.length === 0}
@@ -260,6 +287,11 @@
         </button>
       </div>
     </section>
+
+    <!-- Right Sidebar: Cognitive Timeline -->
+    <aside class="sidebar right-sidebar">
+      <CognitiveTimeline />
+    </aside>
   </div>
 </div>
 
@@ -454,26 +486,61 @@
     50% { box-shadow: 0 0 14px #22c55eb0; }
   }
 
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .action-btn {
+    padding: 0.4rem 0.875rem;
+    border-radius: 999px;
+    border: 1px solid #1e1e35;
+    background: #0f0f1a;
+    color: #e8e6e3;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .action-btn.warning { border-color: rgba(249, 115, 22, 0.4); color: #f97316; }
+  .action-btn.warning:hover { background: rgba(249, 115, 22, 0.1); border-color: #f97316; }
+  .action-btn:active { transform: scale(0.95); }
+
   /* ── Main ────────────────────────────────────────────────────────────── */
   .main {
     display: flex;
     flex: 1;
-    gap: 1rem;
+    gap: 1.25rem;
     overflow: hidden;
-    padding: 1rem 0;
+    padding: 1.25rem 0;
     min-height: 0;
   }
 
-  /* ── Sidebar ─────────────────────────────────────────────────────────── */
+  /* ── Sidebars ─────────────────────────────────────────────────────────── */
   .sidebar {
-    width: 270px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     overflow-y: auto;
+    overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: #1e1e35 transparent;
+    padding-right: 0.5rem; /* give scrollbar room */
+    height: 100%;
+  }
+
+  .left-sidebar {
+    width: 280px;
+  }
+
+  .right-sidebar {
+    width: 320px; /* Wider for the timeline */
   }
 
   /* ── Chat ────────────────────────────────────────────────────────────── */
@@ -482,10 +549,13 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    background: #0a0a12;
-    border: 1px solid #1e1e35;
-    border-radius: 1rem;
+    background: rgba(10, 10, 18, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 1.25rem;
     overflow: hidden;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
   }
 
   .messages {
