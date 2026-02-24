@@ -612,26 +612,100 @@ function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
 type BrainReasoningEvent = {
   phase: string;
   label: string;
-  summary: string;
-  detail?: string;
+  summary: string | Record<string, unknown>;
+  detail?: string | Record<string, unknown>;
   risk?: string;
   source?: string;
 };
 
-function sanitizeReasoningSummary(raw: string): string {
-  const normalized = raw.replace(/\s+/g, " ").trim();
+function stringifyReasoningValue(value: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "[unserializable reasoning metadata]";
+  }
+}
+
+function normalizeReasoningValue(value: string | Record<string, unknown>): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return stringifyReasoningValue(value);
+}
+
+function sanitizeReasoningSummary(raw: string | Record<string, unknown>): string {
+  const normalized = normalizeReasoningValue(raw).replace(/\s+/g, " ").trim();
   if (normalized.length <= REASONING_SUMMARY_LIMIT) {
     return normalized;
   }
   return `${normalized.slice(0, REASONING_SUMMARY_LIMIT - 3)}...`;
 }
 
-function sanitizeReasoningDetail(raw: string): string {
-  const normalized = raw.trim();
+function sanitizeReasoningDetail(raw: string | Record<string, unknown>): string {
+  const normalized = normalizeReasoningValue(raw).trim();
   if (normalized.length <= REASONING_DETAIL_LIMIT) {
     return normalized;
   }
   return `${normalized.slice(0, REASONING_DETAIL_LIMIT - 3)}...`;
+}
+
+function estimateTokensFromChars(charCount: number): number {
+  return Math.max(0, Math.ceil(Math.max(0, charCount) / HOMEOSTASIS_CHARS_PER_TOKEN_ESTIMATE));
+}
+
+function parseDurationMsFromToolMeta(meta?: string): number | undefined {
+  if (typeof meta !== "string" || meta.trim().length === 0) {
+    return undefined;
+  }
+  const match = meta.match(/(?:duration_ms|durationMs|duration)\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(match[1]);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return Math.round(parsed);
+}
+
+function summarizeToolDurations(toolMetas: Array<{ toolName: string; meta?: string }>): {
+  samples: Array<{ tool: string; duration_ms: number }>;
+  total_ms: number;
+  avg_ms: number;
+  max_ms: number;
+} {
+  const samples = toolMetas
+    .map((entry) => ({
+      tool: entry.toolName,
+      duration_ms: parseDurationMsFromToolMeta(entry.meta),
+    }))
+    .filter((entry): entry is { tool: string; duration_ms: number } =>
+      typeof entry.duration_ms === "number",
+    );
+  if (samples.length === 0) {
+    return { samples: [], total_ms: 0, avg_ms: 0, max_ms: 0 };
+  }
+  const total_ms = samples.reduce((sum, entry) => sum + entry.duration_ms, 0);
+  const max_ms = samples.reduce((max, entry) => Math.max(max, entry.duration_ms), 0);
+  const avg_ms = Math.round(total_ms / samples.length);
+  return { samples, total_ms, avg_ms, max_ms };
+}
+
+function extractToolErrorCode(errorText: string | undefined): string | undefined {
+  if (typeof errorText !== "string" || errorText.trim().length === 0) {
+    return undefined;
+  }
+  const explicitCodeMatch = errorText.match(
+    /(?:code|error_code|err_code)\s*[=:]\s*([A-Za-z0-9_]+)/i,
+  );
+  if (explicitCodeMatch?.[1]) {
+    return explicitCodeMatch[1].toUpperCase();
+  }
+  const tokenMatch = errorText.match(/\b[A-Z][A-Z0-9_]{2,}\b/);
+  if (tokenMatch?.[0]) {
+    return tokenMatch[0];
+  }
+  return undefined;
 }
 
 function buildUserPromptTeaser(rawPrompt: string): string {
@@ -689,8 +763,11 @@ function emitBrainReasoningEvent(
   if (typeof event.risk === "string" && event.risk.trim().length > 0) {
     payloadData.risk = event.risk;
   }
-  if (typeof event.detail === "string" && event.detail.trim().length > 0) {
-    payloadData.detail = sanitizeReasoningDetail(event.detail);
+  if (typeof event.detail !== "undefined") {
+    const detailText = sanitizeReasoningDetail(event.detail);
+    if (detailText.length > 0) {
+      payloadData.detail = detailText;
+    }
   }
 
   const sessionKey = params.sessionKey ?? params.sessionId;
@@ -709,7 +786,7 @@ function emitBrainReasoningEvent(
     sessionKey,
     phase: event.phase,
     label: event.label,
-    summary,
+    summary: typeof event.summary === "string" ? summary : event.summary,
     risk: event.risk,
     source: event.source ?? "proto33-r031",
   });
@@ -2014,12 +2091,12 @@ export async function runEmbeddedAttempt(
               omLog(
                 "BRAIN-TOYBOX",
                 "CANONICAL_PATH",
-                [
-                  `runId=${params.runId}`,
-                  `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
-                  `canonical=${toyboxCanonical.canonicalRelativePath}`,
-                  `hydratedFrom=${toyboxCanonical.hydratedFromRelativePath ?? "none"}`,
-                ].join("; "),
+                {
+                  runId: params.runId,
+                  sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                  canonical: toyboxCanonical.canonicalRelativePath,
+                  hydratedFrom: toyboxCanonical.hydratedFromRelativePath ?? "none",
+                },
               );
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
@@ -2183,12 +2260,15 @@ export async function runEmbeddedAttempt(
           omLog(
             "BRAIN-CHARGE",
             "STATE",
-            [
-              `runId=${params.runId}`,
-              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
-              `charge=${subconsciousResult.brief?.charge ?? 0}`,
-              `status=${subconsciousResult.status}`,
-            ].join("; "),
+            {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              charge: subconsciousResult.brief?.charge ?? 0,
+              status: subconsciousResult.status,
+              parseOk: subconsciousResult.parseOk,
+              recommendedMode: subconsciousResult.brief?.recommendedMode ?? "n/a",
+              risk: subconsciousResult.brief?.risk ?? "n/a",
+            },
           );
           const subconsciousContextBlock = buildSubconsciousContextBlock(
             subconsciousResult,
@@ -2245,7 +2325,21 @@ export async function runEmbeddedAttempt(
         // Øm Scaffolding: Log incoming user message to OM_ACTIVITY.log
         {
           const preview = effectivePrompt.trim().slice(0, 2500);
-          omLog("USER-MSG", "PROMPT_PREVIEW", preview);
+          const sessionSummary = summarizeSessionContext(activeSession.messages);
+          const promptChars = effectivePrompt.length;
+          omLog("USER-MSG", "PROMPT_PREVIEW", {
+            runId: params.runId,
+            sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+            isHeartbeat: params.isHeartbeat === true,
+            promptPreview: preview,
+            promptChars,
+            promptEstimatedTokens: estimateTokensFromChars(promptChars),
+            sessionMessages: activeSession.messages.length,
+            sessionRoleCounts: sessionSummary.roleCounts,
+            sessionTextChars: sessionSummary.totalTextChars,
+            sessionImageBlocks: sessionSummary.totalImageBlocks,
+            sessionMaxMessageTextChars: sessionSummary.maxMessageTextChars,
+          });
         }
 
         cacheTrace?.recordStage("prompt:before", {
@@ -2702,7 +2796,16 @@ export async function runEmbeddedAttempt(
             omLog(
               "BRAIN-SLEEP",
               "CHRONO_TRANSITION",
-              `runId=${params.runId}; type=${chronoResult.transitionType ?? "n/a"}; sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; reason=${chronoResult.reason}`,
+              {
+                runId: params.runId,
+                sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                transitionType: chronoResult.transitionType ?? "n/a",
+                sleeping: chronoResult.state.isSleeping,
+                reason: chronoResult.reason,
+                processS: Number(chronoResult.state.processS.toFixed(2)),
+                processC: Number(chronoResult.processC.toFixed(2)),
+                threshold: Number(chronoResult.dynamicThreshold.toFixed(2)),
+              },
             );
           }
         } catch (chronoErr) {
@@ -2726,7 +2829,13 @@ export async function runEmbeddedAttempt(
               omLog(
                 "BRAIN-SLEEP",
                 "CONSOLIDATION",
-                `runId=${params.runId}; dreams=${sleepResult.dreamsEntriesConsolidated ?? 0}; epoch=${sleepResult.epochPath ?? "n/a"}; reason=${sleepResult.reason}`,
+                {
+                  runId: params.runId,
+                  sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                  dreams: sleepResult.dreamsEntriesConsolidated ?? 0,
+                  epoch: sleepResult.epochPath ?? "n/a",
+                  reason: sleepResult.reason,
+                },
               );
             }
           } catch (sleepErr) {
@@ -2737,14 +2846,14 @@ export async function runEmbeddedAttempt(
           omLog(
             "BRAIN-CHOICE",
             "SELECTED_PATH",
-            [
-              `runId=${params.runId}`,
-              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
-              `path=${chosenPath}`,
-              `energy=${energyResult.snapshot.level}`,
-              `mode=${energyResult.snapshot.mode}`,
-              `mood=${latestMoodSummary}`,
-            ].join("; "),
+            {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              path: chosenPath,
+              energy: energyResult.snapshot.level,
+              mode: energyResult.snapshot.mode,
+              mood: latestMoodSummary,
+            },
           );
         }
         // --- Aura Calculation (Phase G.4) -------------------------------
@@ -2779,7 +2888,14 @@ export async function runEmbeddedAttempt(
             const auraSummary = buildAuraSummary(auraSnapshot);
 
             // Log to activity
-            omLog("BRAIN-AURA", "SNAPSHOT", auraSummary);
+            omLog("BRAIN-AURA", "SNAPSHOT", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              summary: auraSummary,
+              overall: auraSnapshot.overall,
+              faggin: auraSnapshot.faggin,
+              chakras: auraSnapshot.chakras,
+            });
 
             // Emit brain reasoning event
             emitBrainReasoningEvent(params, {
@@ -2813,14 +2929,15 @@ export async function runEmbeddedAttempt(
           omLog(
             "BRAIN-CHOICE",
             "SELECTED_PATH",
-            [
-              `runId=${params.runId}`,
-              `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
-              `path=${chosenPath}`,
-              `energy=${preRunEnergyHint?.level ?? "unknown"}`,
-              `mode=${preRunEnergyHint?.mode ?? "unknown"}`,
-              `mood=${latestMoodSummary}`,
-            ].join("; "),
+            {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              path: chosenPath,
+              energy: preRunEnergyHint?.level ?? "unknown",
+              mode: preRunEnergyHint?.mode ?? "unknown",
+              mood: latestMoodSummary,
+              source: "pre_run_energy_hint",
+            },
           );
         }
       }
@@ -2831,6 +2948,28 @@ export async function runEmbeddedAttempt(
             typeof entry.toolName === "string" && entry.toolName.trim().length > 0,
         )
         .map((entry) => ({ toolName: entry.toolName, meta: entry.meta }));
+      const lastToolError = getLastToolError?.();
+      const durationSummary = summarizeToolDurations(toolMetasNormalized);
+
+      if (params.isHeartbeat === true) {
+        omLog("BRAIN-METRICS", "HEARTBEAT_TELEMETRY", {
+          runId: params.runId,
+          sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+          userPromptChars: params.prompt.length,
+          userPromptEstimatedTokens: estimateTokensFromChars(params.prompt.length),
+          toolCallsTotal: toolCounts.total,
+          toolCallsSuccessful: toolCounts.successful,
+          toolCallsFailed: toolCounts.failed,
+          toolCallsWebSearch: toolCounts.webSearch,
+          toolDurationMsTotal: durationSummary.total_ms,
+          toolDurationMsAvg: durationSummary.avg_ms,
+          toolDurationMsMax: durationSummary.max_ms,
+          toolDurationSamples: durationSummary.samples,
+          lastToolErrorTool: lastToolError?.toolName ?? null,
+          lastToolErrorCode: extractToolErrorCode(lastToolError?.error) ?? null,
+          lastToolError: lastToolError?.error ?? null,
+        });
+      }
 
       return {
         aborted,
@@ -2843,7 +2982,7 @@ export async function runEmbeddedAttempt(
         assistantTexts,
         toolMetas: toolMetasNormalized,
         lastAssistant,
-        lastToolError: getLastToolError?.(),
+        lastToolError,
         didSendViaMessagingTool: didSendViaMessagingTool(),
         messagingToolSentTexts: getMessagingToolSentTexts(),
         messagingToolSentTargets: getMessagingToolSentTargets(),

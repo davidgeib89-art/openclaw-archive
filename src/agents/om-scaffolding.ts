@@ -28,11 +28,13 @@ function resolveOmWorkspaceRootFromEnv(env: NodeJS.ProcessEnv = process.env): st
 const OM_LOG_DIR = resolveOmWorkspaceRootFromEnv();
 
 const OM_LOG_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.log");
+const OM_LOG_JSONL_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.jsonl");
 const OM_THOUGHT_STREAM_DIR = path.join(OM_LOG_DIR, "logs", "brain");
 const OM_THOUGHT_STREAM_FILE = path.join(OM_THOUGHT_STREAM_DIR, "thought-stream.jsonl");
 
 /** Max log file size before rotation (500KB) */
 const MAX_LOG_SIZE = 500 * 1024;
+const MAX_JSONL_SIZE = 500 * 1024;
 const MAX_THOUGHT_STREAM_SIZE = 2 * 1024 * 1024;
 
 function getTimestamp(): string {
@@ -73,6 +75,67 @@ function normalizeLogDetails(details: string | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeJsonStringify(value: unknown, space = 0): string {
+  try {
+    const seen = new WeakSet<object>();
+    return (
+      JSON.stringify(
+        value,
+        (_key, currentValue) => {
+          if (typeof currentValue === "bigint") {
+            return currentValue.toString();
+          }
+          if (currentValue instanceof Error) {
+            return {
+              name: currentValue.name,
+              message: currentValue.message,
+              stack: currentValue.stack,
+            };
+          }
+          if (typeof currentValue === "object" && currentValue !== null) {
+            if (seen.has(currentValue)) {
+              return "[Circular]";
+            }
+            seen.add(currentValue);
+          }
+          return currentValue;
+        },
+        space,
+      ) ?? "null"
+    );
+  } catch {
+    return '"[Unserializable metadata]"';
+  }
+}
+
+type NormalizedLogPayload = {
+  detailsText: string | null;
+  metadataObject?: Record<string, unknown>;
+};
+
+function normalizeLogPayload(metadata?: Record<string, unknown> | string): NormalizedLogPayload {
+  if (typeof metadata === "string") {
+    return {
+      detailsText: normalizeLogDetails(metadata),
+    };
+  }
+
+  if (isPlainRecord(metadata)) {
+    return {
+      detailsText: safeJsonStringify(metadata, 2),
+      metadataObject: metadata,
+    };
+  }
+
+  return {
+    detailsText: null,
+  };
+}
+
 function formatReadableLogEntry(layer: string, event: string, details: string | null): string {
   const header = `[${getTimestamp()}] [${layer}] ${event}`;
   if (!details) {
@@ -85,16 +148,38 @@ function formatReadableLogEntry(layer: string, event: string, details: string | 
   return `${header}\n${indentedDetails}\n`;
 }
 
-function appendThoughtStreamEntry(layer: string, event: string, details: string | null): void {
+function appendMachineLogEntry(
+  layer: string,
+  event: string,
+  details: string | null,
+  metadataObject?: Record<string, unknown>,
+): void {
+  rotateLogIfNeeded(OM_LOG_JSONL_FILE, MAX_JSONL_SIZE);
+  const entry =
+    metadataObject && Object.keys(metadataObject).length > 0
+      ? { ...metadataObject, ts: getIsoTimestamp(), layer, event }
+      : { ts: getIsoTimestamp(), layer, event, ...(details ? { details } : {}) };
+  fs.appendFileSync(OM_LOG_JSONL_FILE, `${safeJsonStringify(entry)}\n`, "utf-8");
+}
+
+function appendThoughtStreamEntry(
+  layer: string,
+  event: string,
+  details: string | null,
+  metadataObject?: Record<string, unknown>,
+): void {
   fs.mkdirSync(OM_THOUGHT_STREAM_DIR, { recursive: true });
   rotateLogIfNeeded(OM_THOUGHT_STREAM_FILE, MAX_THOUGHT_STREAM_SIZE);
-  const entry = {
+  const entry: Record<string, unknown> = {
     ts: getIsoTimestamp(),
     layer,
     event,
     details: details ?? "",
   };
-  fs.appendFileSync(OM_THOUGHT_STREAM_FILE, `${JSON.stringify(entry)}\n`, "utf-8");
+  if (metadataObject && Object.keys(metadataObject).length > 0) {
+    entry.metadata = metadataObject;
+  }
+  fs.appendFileSync(OM_THOUGHT_STREAM_FILE, `${safeJsonStringify(entry)}\n`, "utf-8");
 }
 
 export type OmThoughtStreamEntry = {
@@ -107,20 +192,25 @@ export type OmThoughtStreamEntry = {
   source?: string;
 };
 
-export function omThought(entry: OmThoughtStreamEntry): void {
+type OmThoughtInput = Omit<OmThoughtStreamEntry, "summary"> & {
+  summary: string | Record<string, unknown>;
+};
+
+export function omThought(entry: OmThoughtInput): void {
   try {
-    const details = [
-      `runId=${entry.runId}`,
-      entry.sessionKey ? `sessionKey=${entry.sessionKey}` : "",
-      `phase=${entry.phase}`,
-      entry.risk ? `risk=${entry.risk}` : "",
-      `source=${entry.source ?? "proto33-r031"}`,
-      "",
-      entry.summary,
-    ]
-      .filter((part) => part.length > 0)
-      .join("\n");
-    omLog("BRAIN-THOUGHT", `[${entry.label}]`, details);
+    const metadata: Record<string, unknown> = {
+      runId: entry.runId,
+      phase: entry.phase,
+      source: entry.source ?? "proto33-r031",
+      summary: entry.summary,
+    };
+    if (entry.sessionKey) {
+      metadata.sessionKey = entry.sessionKey;
+    }
+    if (entry.risk) {
+      metadata.risk = entry.risk;
+    }
+    omLog("BRAIN-THOUGHT", `[${entry.label}]`, metadata);
   } catch {
     // Silent fail - thought stream logging should never break the agent.
   }
@@ -130,15 +220,25 @@ export function omThought(entry: OmThoughtStreamEntry): void {
  * Write a structured log entry to the Ã˜m Activity Log.
  * Format: [TIMESTAMP] [LAYER] EVENT | details
  */
-export function omLog(layer: string, event: string, details?: string): void {
+export function omLog(
+  layer: string,
+  event: string,
+  metadata?: Record<string, unknown> | string,
+): void {
   try {
     fs.mkdirSync(OM_LOG_DIR, { recursive: true });
     rotateLogIfNeeded(OM_LOG_FILE, MAX_LOG_SIZE);
 
-    const normalizedDetails = normalizeLogDetails(details);
-    const line = formatReadableLogEntry(layer, event, normalizedDetails);
+    const normalizedPayload = normalizeLogPayload(metadata);
+    const line = formatReadableLogEntry(layer, event, normalizedPayload.detailsText);
     fs.appendFileSync(OM_LOG_FILE, line, "utf-8");
-    appendThoughtStreamEntry(layer, event, normalizedDetails);
+    appendMachineLogEntry(layer, event, normalizedPayload.detailsText, normalizedPayload.metadataObject);
+    appendThoughtStreamEntry(
+      layer,
+      event,
+      normalizedPayload.detailsText,
+      normalizedPayload.metadataObject,
+    );
   } catch {
     // Silent fail - logging should never break the agent.
   }

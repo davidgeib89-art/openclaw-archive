@@ -418,7 +418,19 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   omLog(
     "BRAIN-ENERGY",
     "STATE",
-    `runId=${params.runId} sessionKey=${params.sessionKey ?? "n/a"} level=${snapshot.level} mode=${snapshot.mode} dream=${snapshot.dreamMode ? "yes" : "no"} initiative=${snapshot.suggestOwnTasks ? "yes" : "no"} stagnation=${snapshot.stagnationLevel} breath=${snapshot.breathPhase} heartbeat=${snapshot.heartbeatCount} tools=${snapshot.toolStats.total}/${snapshot.toolStats.successful}/${snapshot.toolStats.failed}`,
+    {
+      runId: params.runId,
+      sessionKey: params.sessionKey ?? "n/a",
+      level: snapshot.level,
+      mode: snapshot.mode,
+      dreamMode: snapshot.dreamMode,
+      suggestOwnTasks: snapshot.suggestOwnTasks,
+      stagnationLevel: snapshot.stagnationLevel,
+      breathPhase: snapshot.breathPhase,
+      heartbeatCount: snapshot.heartbeatCount,
+      toolStats: snapshot.toolStats,
+      components: snapshot.components,
+    },
   );
 
   return {
