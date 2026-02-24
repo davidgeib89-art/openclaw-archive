@@ -166,7 +166,7 @@ export class GatewayClient {
           mode: 'webchat'
         },
         role: 'operator',
-        scopes: ['operator.admin', 'operator.approvals', 'operator.pairing', 'operator.write'],
+        scopes: ['operator.admin', 'operator.approvals', 'operator.pairing', 'operator.write', 'operator.read'],
         auth: this.token ? { token: this.token } : undefined
       }
     };
@@ -184,7 +184,6 @@ export class GatewayClient {
     }
 
     const frame = parsed as { type?: string };
-    console.log('[Gateway] Message type:', frame.type, '- full:', JSON.stringify(parsed).slice(0, 200));
 
     if (frame.type === 'event') {
       this.handleEvent(parsed as GatewayEventFrame);
@@ -193,18 +192,14 @@ export class GatewayClient {
 
     if (frame.type === 'res') {
       const res = parsed as GatewayResponseFrame;
-      console.log('[Gateway] Response:', res.id, 'ok:', res.ok);
 
       // Check if this is a response to our connect request
       if (res.id === this.connectRequestId) {
         const payload = res.payload as Record<string, unknown>;
-        console.log('[Gateway] Connect response payload:', JSON.stringify(payload).slice(0, 500));
-        // hello-ok payload structure: { type: "hello-ok", protocol: number, auth: { scopes: [...] } }
         const helloOk = payload as { type?: string; auth?: { scopes?: string[] } };
         if (helloOk.auth?.scopes) {
           console.log('[Gateway] Granted scopes:', helloOk.auth.scopes);
         }
-        console.log('[Gateway] Got connect response, setting authenticated');
         this.authenticated = true;
         this.connectRequestId = null;
         this.notify();
@@ -226,7 +221,6 @@ export class GatewayClient {
     }
 
     if (frame.type === 'hello-ok') {
-      console.log('[Gateway] Authenticated - setting authenticated=true');
       this.authenticated = true;
       this.notify();
       return;
