@@ -5,19 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_MODEL = "meta-llama/llama-4-maverick:free";
+const DEFAULT_MODEL = "google/gemini-2.5-flash";
 const DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const LOCAL_VISION_STYLE = "Local heuristic analyzer (sharp)";
 const DEFAULT_IMAGE_DIR = path.join(os.homedir(), ".openclaw", "workspace", "creations", "comfyui");
 const DEFAULT_PROMPT =
   'Beschreibe dieses Bild in deutscher Sprache mit hoher Detailtiefe (Komposition, Farben, Licht, AtmosphÃ¤re, Symbolik, Stil). Gib NUR reines JSON (kein Markdown, keine Backticks) im Format {"description":"...","mood":"...","symbols":["..."],"style":"..."}. description: maximal 5 dichte SÃ¤tze. mood: 1 kurze Zeile. symbols: Liste mit bis zu 8 Symbolen. style: 1 kurze Zeile.';
-const STATIC_FREE_VISION_FALLBACKS = [
-  "nvidia/nemotron-nano-12b-v2-vl:free",
-  "mistralai/mistral-small-3.1-24b-instruct:free",
-  "google/gemma-3-27b-it:free",
-  "google/gemma-3-12b-it:free",
-  "google/gemma-3-4b-it:free",
+const STATIC_VISION_FALLBACKS = [
+  "openai/gpt-4o-mini",
+  "mistralai/mistral-small-3.2",
 ];
 const COMPOSITION_ZONE_LABELS = [
   "oben-links",
@@ -205,13 +201,6 @@ function normalizeVisionResult(parsed, fallbackText) {
     style: styleRaw,
     light_and_color: lightAndColorRaw,
   };
-}
-
-function isFreeModelId(modelId) {
-  return String(modelId || "")
-    .trim()
-    .toLowerCase()
-    .endsWith(":free");
 }
 
 function clamp(value, min, max) {
@@ -529,44 +518,7 @@ async function describeImageLocally(imagePath, options = {}) {
   }
 }
 
-function supportsImageInput(model) {
-  const modalities =
-    model?.architecture?.input_modalities ?? model?.input_modalities ?? model?.input;
-  if (!Array.isArray(modalities)) {
-    return false;
-  }
-  return modalities.map((entry) => String(entry).toLowerCase()).includes("image");
-}
-
-function hasZeroTextPricing(model) {
-  const prompt = String(model?.pricing?.prompt ?? "");
-  const completion = String(model?.pricing?.completion ?? "");
-  return prompt === "0" && completion === "0";
-}
-
-async function fetchDynamicFreeVisionModels(apiKey) {
-  const response = await fetch(DEFAULT_MODELS_ENDPOINT, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Failed to fetch models (${response.status}): ${text || "no body"}`);
-  }
-  const payload = await response.json();
-  const items = Array.isArray(payload?.data) ? payload.data : [];
-  return items
-    .filter(
-      (model) => isFreeModelId(model?.id) && supportsImageInput(model) && hasZeroTextPricing(model),
-    )
-    .map((model) => String(model.id).trim())
-    .filter(Boolean);
-}
-
-async function resolveFreeVisionCandidates(params) {
+function resolveVisionCandidates(params) {
   const primary = String(params.primaryModel || "").trim();
   const configuredFallbacks = String(params.fallbackModelsRaw || "")
     .split(",")
@@ -577,39 +529,26 @@ async function resolveFreeVisionCandidates(params) {
   if (primary) {
     ordered.push(primary);
   }
-
   for (const model of configuredFallbacks) {
     ordered.push(model);
   }
-
-  try {
-    const dynamic = await fetchDynamicFreeVisionModels(params.apiKey);
-    for (const model of dynamic) {
-      ordered.push(model);
-    }
-  } catch {
-    // fail-open on model index fetch; static list below keeps behavior safe.
-  }
-
-  for (const model of STATIC_FREE_VISION_FALLBACKS) {
+  for (const model of STATIC_VISION_FALLBACKS) {
     ordered.push(model);
   }
 
-  const uniqueFree = [];
+  const unique = [];
   for (const model of ordered) {
-    if (!isFreeModelId(model)) {
-      continue;
-    }
     const normalized = model.toLowerCase();
-    if (uniqueFree.some((entry) => entry.toLowerCase() === normalized)) {
+    if (unique.some((entry) => entry.toLowerCase() === normalized)) {
       continue;
     }
-    uniqueFree.push(model);
+    unique.push(model);
   }
-  if (uniqueFree.length === 0) {
-    throw new Error("No free vision model candidates available.");
+
+  if (unique.length === 0) {
+    throw new Error("No vision model candidates available.");
   }
-  return uniqueFree;
+  return unique;
 }
 
 export async function describeImage(params) {
@@ -629,89 +568,103 @@ export async function describeImage(params) {
   const primaryModel = String(
     params.model || process.env.OPENROUTER_VISION_MODEL || DEFAULT_MODEL,
   ).trim();
-  const modelCandidates = await resolveFreeVisionCandidates({
+  const modelCandidates = resolveVisionCandidates({
     primaryModel,
     fallbackModelsRaw: params.fallbackModels || process.env.OPENROUTER_VISION_FALLBACK_MODELS || "",
-    apiKey,
   });
 
   const mimeType = detectMimeType(imagePath);
   const bytes = fs.readFileSync(imagePath);
   const dataUrl = `data:${mimeType};base64,${bytes.toString("base64")}`;
 
-  let payload = null;
-  let lastErrorMessage = "";
+  const modelErrors = [];
   for (const model of modelCandidates) {
-    const response = await fetch(DEFAULT_OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "HTTP-Referer": "https://openclaw.ai",
-        "X-Title": "OpenClaw",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 800,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: {
-                  url: dataUrl,
-                },
-              },
-              {
-                type: "text",
-                text: prompt,
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    const responseText = await response.text();
     try {
-      payload = responseText ? JSON.parse(responseText) : null;
-    } catch {
-      payload = null;
-    }
+      const response = await fetch(DEFAULT_OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "HTTP-Referer": "https://openclaw.ai",
+          "X-Title": "OpenClaw",
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          max_tokens: 800,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: dataUrl,
+                  },
+                },
+                {
+                  type: "text",
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+      });
 
-    if (response.ok) {
-      break;
-    }
+      const responseText = await response.text();
+      let payload = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        payload = null;
+      }
 
-    lastErrorMessage = `OpenRouter vision request failed (${response.status}) for model=${model}: ${responseText || "no body"}`;
-    const endpointNotFound =
-      response.status === 404 && /No endpoints found/i.test(String(responseText));
-    const modelUnavailable =
-      response.status === 429 ||
-      response.status >= 500 ||
-      /model not found/i.test(String(responseText)) ||
-      /temporarily unavailable/i.test(String(responseText));
-    if (endpointNotFound || modelUnavailable) {
-      payload = null;
+      if (!response.ok) {
+        const message = `OpenRouter vision request failed (${response.status}) for model=${model}: ${responseText || "no body"}`;
+        const endpointNotFound =
+          response.status === 404 && /No endpoints found/i.test(String(responseText));
+        const modelUnavailable =
+          response.status === 429 ||
+          response.status >= 500 ||
+          /model not found/i.test(String(responseText)) ||
+          /temporarily unavailable/i.test(String(responseText));
+        if (endpointNotFound || modelUnavailable) {
+          modelErrors.push(message);
+          continue;
+        }
+        throw new Error(message);
+      }
+
+      const payloadErrorMessage = String(payload?.error?.message || "").trim();
+      if (payloadErrorMessage) {
+        modelErrors.push(
+          `OpenRouter vision payload error for model=${model}: ${payloadErrorMessage}`,
+        );
+        continue;
+      }
+
+      const rawMessage = payload?.choices?.[0]?.message?.content;
+      const modelText = extractMessageContentText(rawMessage);
+      if (!modelText) {
+        modelErrors.push(
+          `OpenRouter response missing content for model=${model}: ${JSON.stringify(payload)}`,
+        );
+        continue;
+      }
+
+      const parsed = extractJsonCandidate(modelText);
+      const result = normalizeVisionResult(parsed, modelText);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      modelErrors.push(`Vision request exception for model=${model}: ${message}`);
       continue;
     }
-    throw new Error(lastErrorMessage);
   }
 
-  if (!payload) {
-    return await describeImageLocally(imagePath, { generationPrompt: generationPrompt || prompt });
-  }
-
-  const rawMessage = payload?.choices?.[0]?.message?.content;
-  const modelText = extractMessageContentText(rawMessage);
-  if (!modelText) {
-    throw new Error(`OpenRouter response missing content: ${JSON.stringify(payload)}`);
-  }
-  const parsed = extractJsonCandidate(modelText);
-  const result = normalizeVisionResult(parsed, modelText);
-  return result;
+  const reasons = modelErrors.length > 0 ? modelErrors.join(" | ") : "no model error details";
+  throw new Error(`All vision models failed. ${reasons}`);
 }
 
 function printHelp() {
@@ -724,8 +677,8 @@ function printHelp() {
       "",
       "Options:",
       "  --image <path>   Optional image path. If omitted, uses latest image from ~/.openclaw/workspace/creations/comfyui",
-      "  --model <id>     Vision model (default: meta-llama/llama-4-maverick:free)",
-      "  --fallbackModels <csv> Optional extra free fallback models (comma-separated)",
+      "  --model <id>     Vision model (default: google/gemini-2.5-flash)",
+      "  --fallbackModels <csv> Optional fallback models (comma-separated)",
       "  --prompt <text>  Optional custom analysis prompt",
       "  --help           Show this help",
       "",

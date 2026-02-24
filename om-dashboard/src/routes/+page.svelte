@@ -14,6 +14,7 @@
   import { getGatewayClient } from '$lib/gateway';
   import EnergyBar from '$lib/components/EnergyBar.svelte';
   import MoodCard from '$lib/components/MoodCard.svelte';
+  import SessionSelector from '$lib/components/SessionSelector.svelte';
 
   let inputText = '';
   let messagesContainer: HTMLDivElement;
@@ -101,7 +102,10 @@
 <div class="dashboard">
   <!-- Header -->
   <header class="header">
-    <h1>ØM Dashboard</h1>
+    <div class="header-left">
+      <h1>ØM Dashboard</h1>
+      <SessionSelector />
+    </div>
     <div class="status">
       <span class="status-dot" class:connected={$gatewayConnected}></span>
       <span class="status-text">{$gatewayConnected ? 'Verbunden' : 'Offline'}</span>
@@ -196,9 +200,15 @@
   .header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     padding: 1rem 0;
     border-bottom: 1px solid #2a2a3a;
+  }
+
+  .header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 
   .header h1 {

@@ -11,7 +11,8 @@ import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 const DEFAULT_COMFY_TIMEOUT_MS = 576_000;
 const DEFAULT_COMFY_POLL_MS = 1_000;
 const DEFAULT_PROCESS_GRACE_MS = 30_000;
-const DEFAULT_VISION_MODEL = "google/gemma-3-27b-it:free";
+const DEFAULT_VISION_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_VISION_FALLBACK_MODELS = ["openai/gpt-4o-mini", "mistralai/mistral-small-3.2"];
 const DEFAULT_OUTPUT_ROOT = path.join(os.homedir(), ".openclaw", "workspace");
 const DEFAULT_OUTPUT_DIR = path.join(DEFAULT_OUTPUT_ROOT, "creations", "comfyui");
 const DEFAULT_VISION_PROMPT = [
@@ -251,6 +252,43 @@ function buildPerceptionNarrative(reflection: DreamAndPerceiveReflection): strin
   ].join(" ");
 }
 
+function normalizeFailureReason(input: string | undefined, maxLength = 260): string {
+  const normalized = String(input || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function buildEmpatheticPerceptionMessage(reason?: string): string {
+  const detail = normalizeFailureReason(reason);
+  if (detail) {
+    return [
+      "Dein Bild ist angekommen und sicher da, aber mein inneres Auge konnte es gerade nicht klar beschreiben.",
+      `Was passiert ist: ${detail}`,
+      "Das lag nicht an dir. Lass uns es gleich nochmal versuchen oder auf ein anderes Vision-Modell wechseln.",
+    ].join(" ");
+  }
+  return [
+    "Dein Bild ist angekommen und sicher da, aber mein inneres Auge war in diesem Moment zu neblig fuer eine klare Wahrnehmung.",
+    "Das lag nicht an dir. Lass uns es gleich nochmal probieren.",
+  ].join(" ");
+}
+
+function buildEmpatheticGenerationFailureMessage(reason: string): string {
+  const detail = normalizeFailureReason(reason, 300);
+  return [
+    "Ich habe versucht, deinen Traum in die Welt zu bringen, aber es hat diesmal technisch nicht geklappt.",
+    detail ? `Grund: ${detail}` : "",
+    "Das ist kein Scheitern von dir oder mir. Wir koennen denselben Impuls gleich nochmal sanft starten.",
+  ]
+    .filter((line) => line.length > 0)
+    .join(" ");
+}
+
 function resolveComfyImageScriptPath(): string {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const override = process.env.OPENCLAW_COMFYUI_IMAGE_SCRIPT?.trim();
@@ -463,7 +501,7 @@ export function createDreamAndPerceiveTool(options?: {
               .split(",")
               .map((entry) => entry.trim())
               .filter((entry) => entry.length > 0)
-          : undefined;
+          : DEFAULT_VISION_FALLBACK_MODELS;
       const outDir = resolveSafeOutputDir(requestedOutDir, {
         workspaceDir: options?.workspaceDir,
         sandboxRoot: options?.sandboxRoot,
@@ -524,8 +562,9 @@ export function createDreamAndPerceiveTool(options?: {
         }
 
         if (hasImage) {
+          const deferredText = buildEmpatheticPerceptionMessage(reflectionError);
           return {
-            content: [{ type: "text", text: DEFERRED_REFLECTION_TEXT }],
+            content: [{ type: "text", text: deferredText }],
             details: {
               status: "deferred_reflection",
               promptId: runResult.result.promptId ?? null,
@@ -535,6 +574,7 @@ export function createDreamAndPerceiveTool(options?: {
                 viewUrl,
               },
               ...(reflectionError ? { reflectionError } : {}),
+              deferredMessage: deferredText,
               script: {
                 path: runResult.scriptPath,
               },
@@ -556,16 +596,18 @@ export function createDreamAndPerceiveTool(options?: {
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const empatheticMessage = buildEmpatheticGenerationFailureMessage(message);
         return {
           content: [
             {
               type: "text",
-              text: `Traummanifestation fehlgeschlagen: ${message}`,
+              text: empatheticMessage,
             },
           ],
           details: {
             status: "error",
             error: message,
+            empatheticMessage,
           },
         };
       }

@@ -12,7 +12,8 @@ const DEFAULT_COMFYUI_PORT = 8188;
 const DEFAULT_WORKFLOW_PATH = path.join(SCRIPT_DIR, "flux_workflow.json");
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_POLL_MS = 1_000;
-const DEFAULT_VISION_MODEL = "meta-llama/llama-4-maverick:free";
+const DEFAULT_VISION_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_VISION_FALLBACK_MODELS = ["openai/gpt-4o-mini", "mistralai/mistral-small-3.2"];
 
 function parseArgs(argv) {
   const args = {};
@@ -531,7 +532,7 @@ function printHelp() {
       "  --save <true|false>          Save image locally (default: true)",
       "  --describe <true|false>      Auto-run image-describe after generation (default: true)",
       "  --visionModel <id>           Vision model for reflection loop",
-      "  --visionFallbackModels <csv> Extra free fallback vision models",
+      "  --visionFallbackModels <csv> Extra fallback vision models",
       "  --describePrompt <text>      Custom prompt for image-describe",
       "  --outDir <path>              Local save dir (default: ~/.openclaw/workspace/creations/comfyui)",
       "  --seed <int>                 Optional deterministic seed",
@@ -588,7 +589,9 @@ async function main() {
     args.visionModel || process.env.OPENROUTER_VISION_MODEL || DEFAULT_VISION_MODEL,
   ).trim();
   const visionFallbackModels = String(
-    args.visionFallbackModels || process.env.OPENROUTER_VISION_FALLBACK_MODELS || "",
+    args.visionFallbackModels ||
+      process.env.OPENROUTER_VISION_FALLBACK_MODELS ||
+      DEFAULT_VISION_FALLBACK_MODELS.join(","),
   ).trim();
   const describePrompt = String(
     args.describePrompt || process.env.OPENROUTER_VISION_PROMPT || "",

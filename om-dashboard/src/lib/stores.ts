@@ -1,6 +1,6 @@
 // State Management für Øm Dashboard
 import { writable, derived } from 'svelte/store';
-import { getGatewayClient, type OmState } from './gateway';
+import { getGatewayClient, type OmState, type GatewaySessionRow } from './gateway';
 
 // Chat-Verlauf
 export interface ChatEntry {
@@ -12,8 +12,13 @@ export interface ChatEntry {
 
 export const chatMessages = writable<ChatEntry[]>([]);
 
+// Sessions
+export const sessions = writable<GatewaySessionRow[]>([]);
+export const currentSessionKey = writable<string>('');
+
 // Gateway Status
 export const gatewayConnected = writable<boolean>(false);
+export const gatewayAuthenticated = writable<boolean>(false);
 
 // Lade-Zustand
 export const isLoading = writable<boolean>(false);

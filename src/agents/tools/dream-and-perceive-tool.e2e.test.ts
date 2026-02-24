@@ -77,10 +77,16 @@ describe("dream_and_perceive tool", () => {
     });
 
     const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-    expect(text).toBe(__testing.DEFERRED_REFLECTION_TEXT);
-    const details = result.details as { status?: string; reflectionError?: string };
+    expect(text).toContain("Dein Bild ist angekommen");
+    expect(text).toContain("timeout");
+    const details = result.details as {
+      status?: string;
+      reflectionError?: string;
+      deferredMessage?: string;
+    };
     expect(details.status).toBe("deferred_reflection");
     expect(details.reflectionError).toBe("timeout");
+    expect(details.deferredMessage).toContain("timeout");
   });
 
   it("serializes vision fallback models into script args", () => {
@@ -90,13 +96,13 @@ describe("dream_and_perceive tool", () => {
       timeoutMs: 10000,
       pollMs: 500,
       reflect: true,
-      visionModel: "google/gemma-3-27b-it:free",
-      visionFallbackModels: ["a/model:free", "b/model:free"],
+      visionModel: "google/gemini-2.5-flash",
+      visionFallbackModels: ["openai/gpt-4o-mini", "mistralai/mistral-small-3.2"],
       visionPrompt: "look",
     });
 
     const fallbackIndex = args.indexOf("--visionFallbackModels");
     expect(fallbackIndex).toBeGreaterThan(-1);
-    expect(args[fallbackIndex + 1]).toBe("a/model:free,b/model:free");
+    expect(args[fallbackIndex + 1]).toBe("openai/gpt-4o-mini,mistralai/mistral-small-3.2");
   });
 });

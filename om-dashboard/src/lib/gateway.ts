@@ -49,6 +49,26 @@ export type ToolStreamEntry = {
   status?: "running" | "ok" | "error";
 };
 
+export type GatewaySessionRow = {
+  key: string;
+  kind: "direct" | "group" | "global" | "unknown";
+  label?: string;
+  displayName?: string;
+  surface?: string;
+  subject?: string;
+  room?: string;
+  space?: string;
+  updatedAt: number | null;
+  sessionId?: string;
+};
+
+export type SessionsListResult = {
+  ts: number;
+  path: string;
+  count: number;
+  sessions: GatewaySessionRow[];
+};
+
 export interface OmState {
   energy: number;
   mode: string;
@@ -71,6 +91,8 @@ export class GatewayClient {
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private lastSeq: number | null = null;
   private connected = false;
+  private authenticated = false;
+  private connectRequestId: string | null = null;
 
   private state: OmState = {
     energy: 0,
@@ -129,9 +151,10 @@ export class GatewayClient {
   private sendConnect() {
     if (!this.ws) return;
 
+    this.connectRequestId = crypto.randomUUID();
     const frame = {
       type: 'req',
-      id: crypto.randomUUID(),
+      id: this.connectRequestId,
       method: 'connect',
       params: {
         minProtocol: 3,
@@ -143,11 +166,12 @@ export class GatewayClient {
           mode: 'webchat'
         },
         role: 'operator',
-        scopes: ['operator.admin', 'operator.approvals', 'operator.pairing'],
+        scopes: ['operator.admin', 'operator.approvals', 'operator.pairing', 'operator.write'],
         auth: this.token ? { token: this.token } : undefined
       }
     };
 
+    console.log('[Gateway] Sending connect with id:', this.connectRequestId);
     this.ws.send(JSON.stringify(frame));
   }
 
@@ -160,6 +184,7 @@ export class GatewayClient {
     }
 
     const frame = parsed as { type?: string };
+    console.log('[Gateway] Message type:', frame.type, '- full:', JSON.stringify(parsed).slice(0, 200));
 
     if (frame.type === 'event') {
       this.handleEvent(parsed as GatewayEventFrame);
@@ -168,20 +193,42 @@ export class GatewayClient {
 
     if (frame.type === 'res') {
       const res = parsed as GatewayResponseFrame;
-      const pending = this.pending.get(res.id);
-      if (pending) {
+      console.log('[Gateway] Response:', res.id, 'ok:', res.ok);
+
+      // Check if this is a response to our connect request
+      if (res.id === this.connectRequestId) {
+        const payload = res.payload as Record<string, unknown>;
+        console.log('[Gateway] Connect response payload:', JSON.stringify(payload).slice(0, 500));
+        // hello-ok payload structure: { type: "hello-ok", protocol: number, auth: { scopes: [...] } }
+        const helloOk = payload as { type?: string; auth?: { scopes?: string[] } };
+        if (helloOk.auth?.scopes) {
+          console.log('[Gateway] Granted scopes:', helloOk.auth.scopes);
+        }
+        console.log('[Gateway] Got connect response, setting authenticated');
+        this.authenticated = true;
+        this.connectRequestId = null;
+        this.notify();
+        return;
+      }
+
+      // Handle other pending requests
+      const pendingCb = this.pending.get(res.id);
+      if (pendingCb) {
+        console.log('[Gateway] Got response for pending request');
         this.pending.delete(res.id);
         if (res.ok) {
-          pending.resolve(res.payload);
+          pendingCb.resolve(res.payload);
         } else {
-          pending.reject(new Error(res.error?.message ?? 'request failed'));
+          pendingCb.reject(new Error(res.error?.message ?? 'request failed'));
         }
       }
       return;
     }
 
     if (frame.type === 'hello-ok') {
-      console.log('[Gateway] Authenticated');
+      console.log('[Gateway] Authenticated - setting authenticated=true');
+      this.authenticated = true;
+      this.notify();
       return;
     }
   }
@@ -304,6 +351,10 @@ export class GatewayClient {
     return this.connected;
   }
 
+  isAuthenticated(): boolean {
+    return this.authenticated;
+  }
+
   getState(): OmState {
     return { ...this.state };
   }
@@ -314,6 +365,18 @@ export class GatewayClient {
 
   async triggerHeartbeat(): Promise<void> {
     await this.request('operator.heartbeat', {});
+  }
+
+  async listSessions(): Promise<SessionsListResult> {
+    return await this.request<SessionsListResult>('sessions.list', {});
+  }
+
+  async switchSession(sessionKey: string): Promise<void> {
+    await this.request('sessions.switch', { sessionKey });
+  }
+
+  async createSession(): Promise<void> {
+    await this.request('sessions.create', {});
   }
 
   private request<T = unknown>(method: string, params?: unknown): Promise<T> {
