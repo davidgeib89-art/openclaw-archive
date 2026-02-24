@@ -4,7 +4,8 @@
       "WebSearch",
       "Bash(netstat -ano)",
       "Bash(tasklist)",
-      "WebFetch(domain:minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com)"
+      "WebFetch(domain:minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com)",
+      "Bash(pnpm create svelte@latest . --template skeleton --types typescript --no-eslint --no-prettier --no-playwright --no-vitest)"
     ]
   }
 }

@@ -28,7 +28,7 @@ import {
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
-import { evaluateAndPersistChronoState } from "../../../brain/chrono.js";
+import { evaluateAndPersistChronoState, readChronoSleepingHint } from "../../../brain/chrono.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import {
   buildAuraFileContent,
@@ -2643,12 +2643,22 @@ export async function runEmbeddedAttempt(
         }
       }
 
+      let chronoSleepingHint = false;
+      if (params.isHeartbeat) {
+        try {
+          chronoSleepingHint = await readChronoSleepingHint(effectiveWorkspace);
+        } catch (e) {
+          log.warn(`brain chrono sleeping hint fail-open: ${String(e)}`);
+        }
+      }
+
       try {
         const energyResult = await updateEnergy({
           workspaceDir: effectiveWorkspace,
           runId: params.runId,
           sessionKey: params.sessionKey ?? params.sessionId,
           subconsciousCharge: subconsciousChargeForRun,
+          isSleeping: chronoSleepingHint,
           toolStats: {
             total: toolCounts.total,
             successful: toolCounts.successful,
@@ -2866,4 +2876,3 @@ export async function runEmbeddedAttempt(
     process.chdir(prevCwd);
   }
 }
-
