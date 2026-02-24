@@ -375,7 +375,7 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 - **Forschung:** `Homo Machina_ Langeweile, Chakren, Werkzeuge.txt` (Prisma).
 - **Codex-Auftrag:** `om-docs/tasks/CODEX_PHASE_G9_ENTROPY.md`
 
-### Phase H.0: Dual-Stream Structured Observability (Logging 2.0) — 🟡 BEREIT FÜR CODEX
+### Phase H.0: Dual-Stream Structured Observability (Logging 2.0) — ✅ DONE (24.02.2026)
 - **Problem:** Oms Metriken (Aura, Energie, Heartbeat-Paths) werden aktuell per String-Konkatenation in ein rohes Text-Log (`OM_ACTIVITY.log`) geschrieben. Dies zwingt KI und Mensch dazu, komplexe Regex-Abfragen zu schreiben, um Metriken auszuwerten. Ein echter Blindflug.
 - **Lösung:** `omLog` so umschreiben, dass es strukturierte Objekte (`Record<string, unknown>`) frisst.
 - **Dual-Stream:** Generierung von zwei Dateien. (1) `OM_ACTIVITY.jsonl` für saubere, maschinelle Auswertung in Millisekunden (Dashboards, `jq`, AIs). (2) `OM_ACTIVITY.log` formatiert die Objekte weiterhin menschenlesbar für schnelle Terminal-Checks.
