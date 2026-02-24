@@ -28,7 +28,7 @@ import {
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
-import { evaluateAndPersistChronoState, readChronoSleepingHint } from "../../../brain/chrono.js";
+import { evaluateAndPersistChronoState } from "../../../brain/chrono.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import {
   buildAuraFileContent,
@@ -427,6 +427,14 @@ const HIGH_RISK_PROMPT_GUARD_BLOCK = [
 
 const AUTONOMOUS_CYCLE_RELATIVE_PATH = path.join("knowledge", "sacred", "AUTONOMOUS_CYCLE.md");
 const DREAMS_RELATIVE_PATH = path.join("memory", "DREAMS.md");
+const TOYBOX_CANONICAL_RELATIVE_PATH = path.join("knowledge", "sacred", "TOYBOX.md");
+const TOYBOX_CANONICAL_PROMPT_PATH = "knowledge/sacred/TOYBOX.md";
+const TOYBOX_ALIAS_RELATIVE_PATHS = [
+  "TOYBOX-neu.md",
+  "TOYBOX.md",
+  path.join("knowledge", "TOYBOX.md"),
+  path.join("knowledge", "archive", "old_TOYBOX.md"),
+] as const;
 const HEARTBEAT_ACK_TOKEN = "HEARTBEAT_OK";
 const HEARTBEAT_RECALL_TIMEOUT_MS = 12_000;
 const HEARTBEAT_RECALL_TIMEOUT_ENV = "OM_HEARTBEAT_RECALL_TIMEOUT_MS";
@@ -464,6 +472,9 @@ const AUTONOMY_EXPLICIT_CHOICE_PATTERN =
   /\b(?:i\s+choose|i\s+chose|ich\s+w(?:ä|ae)hle|ich\s+habe\s+mich\s+f(?:ü|ue)r|choice|path)\s*[:=-]?\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\b/i;
 const OM_MOOD_TAG_PATTERN = /<om_mood>([\s\S]*?)<\/om_mood>/i;
 const OM_PATH_TAG_PATTERN = /<om_path>\s*(PLAY|LEARN|MAINTAIN|DRIFT|NO_OP)\s*<\/om_path>/i;
+const OM_BLOCKER_TAG_PATTERN = /<om_blocker>([\s\S]*?)<\/om_blocker>/i;
+const OM_RETRY_TRIGGER_TAG_PATTERN = /<om_retry_trigger>([\s\S]*?)<\/om_retry_trigger>/i;
+const HEARTBEAT_ACK_PATTERN = /\bHEARTBEAT_OK\b/gi;
 
 function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "UNKNOWN" {
   const trimmed = text.trim();
@@ -493,6 +504,63 @@ function extractAutonomyPathFromAssistantOutput(text: string): AutonomyPath | "U
   return "UNKNOWN";
 }
 
+function isActiveAutonomyPath(path: AutonomyPath | "UNKNOWN"): path is Exclude<AutonomyPath, "NO_OP"> {
+  return path === "PLAY" || path === "LEARN" || path === "MAINTAIN" || path === "DRIFT";
+}
+
+function extractNoOpBlockerFromAssistantOutput(text: string): string | undefined {
+  const match = OM_BLOCKER_TAG_PATTERN.exec(text);
+  const blocker = match?.[1]?.replace(/\s+/g, " ").trim();
+  return blocker ? blocker : undefined;
+}
+
+function extractNoOpRetryTriggerFromAssistantOutput(text: string): string | undefined {
+  const match = OM_RETRY_TRIGGER_TAG_PATTERN.exec(text);
+  const trigger = match?.[1]?.replace(/\s+/g, " ").trim();
+  return trigger ? trigger : undefined;
+}
+
+function stripHeartbeatAckToken(text: string): string {
+  return text
+    .replace(HEARTBEAT_ACK_PATTERN, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function enforceHeartbeatAckContract(params: {
+  text: string;
+  isHeartbeat: boolean;
+  chosenPath: AutonomyPath | "UNKNOWN";
+}): { text: string; stripped: boolean; reason?: string } {
+  if (!params.isHeartbeat) {
+    return { text: params.text, stripped: false };
+  }
+  HEARTBEAT_ACK_PATTERN.lastIndex = 0;
+  if (!HEARTBEAT_ACK_PATTERN.test(params.text)) {
+    return { text: params.text, stripped: false };
+  }
+  HEARTBEAT_ACK_PATTERN.lastIndex = 0;
+  const blocker = extractNoOpBlockerFromAssistantOutput(params.text);
+  const retryTrigger = extractNoOpRetryTriggerFromAssistantOutput(params.text);
+  const canUseAck = params.chosenPath === "NO_OP" && Boolean(blocker) && Boolean(retryTrigger);
+  if (canUseAck) {
+    return { text: params.text, stripped: false };
+  }
+  const reason =
+    params.chosenPath === "NO_OP"
+      ? !blocker
+        ? "heartbeat_ok_removed_no_blocker"
+        : "heartbeat_ok_removed_no_retry_trigger"
+      : `heartbeat_ok_removed_active_path_${params.chosenPath.toLowerCase()}`;
+  const stripped = stripHeartbeatAckToken(params.text);
+  return {
+    text: stripped,
+    stripped: true,
+    reason,
+  };
+}
 function summarizeMoodForChoiceLog(moodText: string): string {
   const compact = moodText.replace(/\s+/g, " ").trim();
   if (!compact) return "n/a";
@@ -668,6 +736,55 @@ async function loadAutonomousCyclePrompt(workspaceDir: string): Promise<{
     sourcePath,
     fromFile: false,
   };
+}
+
+function normalizePromptPath(pathValue: string): string {
+  return pathValue.replace(/\\/g, "/");
+}
+
+async function ensureCanonicalToyboxFile(workspaceDir: string): Promise<{
+  canonicalRelativePath: string;
+  hydratedFromRelativePath?: string;
+}> {
+  const canonicalPath = path.join(workspaceDir, TOYBOX_CANONICAL_RELATIVE_PATH);
+  try {
+    const rawCanonical = await fs.readFile(canonicalPath, "utf-8");
+    if (rawCanonical.trim().length > 0) {
+      return { canonicalRelativePath: TOYBOX_CANONICAL_PROMPT_PATH };
+    }
+  } catch {
+    // Fall through to alias hydration.
+  }
+
+  for (const aliasRelativePath of TOYBOX_ALIAS_RELATIVE_PATHS) {
+    const aliasPath = path.join(workspaceDir, aliasRelativePath);
+    try {
+      const rawAlias = await fs.readFile(aliasPath, "utf-8");
+      if (rawAlias.trim().length === 0) {
+        continue;
+      }
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(canonicalPath, rawAlias, "utf-8");
+      return {
+        canonicalRelativePath: TOYBOX_CANONICAL_PROMPT_PATH,
+        hydratedFromRelativePath: normalizePromptPath(aliasRelativePath),
+      };
+    } catch {
+      // Try next alias path.
+    }
+  }
+
+  return { canonicalRelativePath: TOYBOX_CANONICAL_PROMPT_PATH };
+}
+
+function buildToyboxCanonicalPromptBlock(): string {
+  return [
+    "<toybox_canonical_path>",
+    `Canonical toybox path: ${TOYBOX_CANONICAL_PROMPT_PATH}`,
+    "If TOYBOX aliases appear (TOYBOX.md, TOYBOX-neu.md, knowledge/TOYBOX.md, knowledge/archive/old_TOYBOX.md), treat them as historical aliases only.",
+    "When you choose playful exploration, read and reference only the canonical toybox path.",
+    "</toybox_canonical_path>",
+  ].join("\n");
 }
 
 function normalizeDreamText(value: string, maxChars: number): string {
@@ -1884,6 +2001,37 @@ export async function runEmbeddedAttempt(
             }
           }
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const toyboxCanonical = await ensureCanonicalToyboxFile(effectiveWorkspace);
+              effectivePrompt = `${buildToyboxCanonicalPromptBlock()}\n\n${effectivePrompt}`;
+              omLog(
+                "BRAIN-TOYBOX",
+                "CANONICAL_PATH",
+                [
+                  `runId=${params.runId}`,
+                  `sessionKey=${params.sessionKey ?? params.sessionId ?? "n/a"}`,
+                  `canonical=${toyboxCanonical.canonicalRelativePath}`,
+                  `hydratedFrom=${toyboxCanonical.hydratedFromRelativePath ?? "none"}`,
+                ].join("; "),
+              );
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "TOYBOX",
+                summary: toyboxCanonical.hydratedFromRelativePath
+                  ? `canonical toybox hydrated from ${toyboxCanonical.hydratedFromRelativePath}`
+                  : "canonical toybox path injected",
+                source: "proto33-g8.toybox-canonical",
+              });
+            } catch (toyboxErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "TOYBOX",
+                summary: `fail-open: ${String(toyboxErr)}`,
+                source: "proto33-g8.toybox-canonical",
+              });
+            }
+          }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
             const autonomyChoiceContract = createBrainAutonomyChoiceContract(brainDecision);
             if (autonomyChoiceContract) {
               effectivePrompt = `${autonomyChoiceContract}\n\n${effectivePrompt}`;
@@ -2223,6 +2371,61 @@ export async function runEmbeddedAttempt(
             `embedded run compaction wait skipped: runId=${params.runId} aborted=${aborted ? "yes" : "no"} timedOut=${timedOut ? "yes" : "no"}`,
           );
         }
+        if (!aborted && !timedOut && !promptError && params.isHeartbeat === true) {
+          const resolveLatestAssistantText = (): string => {
+            const latestAssistantMessage = activeSession.messages
+              .slice()
+              .toReversed()
+              .find((message) => message.role === "assistant");
+            const fromSnapshot = extractAssistantText(latestAssistantMessage);
+            const fromStream =
+              assistantTexts
+                .slice()
+                .toReversed()
+                .find((entry) => entry.trim().length > 0) ?? "";
+            return fromSnapshot || fromStream;
+          };
+
+          const candidateAssistantText = resolveLatestAssistantText();
+          const candidatePath = extractAutonomyPathFromAssistantOutput(candidateAssistantText);
+          const candidateToolCounts = getToolExecutionCounts();
+          const needsActionBindingRetry =
+            isActiveAutonomyPath(candidatePath) && candidateToolCounts.total === 0;
+
+          if (needsActionBindingRetry) {
+            const softRetryPrompt = [
+              "<action_binding_soft_retry>",
+              `Active path selected: ${candidatePath}.`,
+              "No concrete tool action has run yet in this heartbeat.",
+              "Soft retry: execute exactly one reversible, concrete tool step now that matches your path.",
+              "If every safe action is blocked, switch to <om_path>NO_OP</om_path> and add:",
+              "<om_blocker>...</om_blocker>",
+              "<om_retry_trigger>...</om_retry_trigger>",
+              "Do not output HEARTBEAT_OK for active paths.",
+              "</action_binding_soft_retry>",
+            ].join("\n");
+
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "ACTION_BIND",
+              summary: `soft-retry injected (path=${candidatePath}; tools=${candidateToolCounts.total})`,
+              source: "proto33-g8.action-bind",
+            });
+
+            try {
+              await abortable(activeSession.prompt(softRetryPrompt));
+              await waitForCompactionRetry();
+            } catch (retryErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "ACTION_BIND",
+                summary: `fail-open: ${String(retryErr)}`,
+                source: "proto33-g8.action-bind",
+              });
+            }
+          }
+        }
+
 
         // Append cache-TTL timestamp AFTER prompt + compaction retry completes.
         // Previously this was before the prompt, which caused a custom entry to be
@@ -2303,11 +2506,25 @@ export async function runEmbeddedAttempt(
           .slice()
           .toReversed()
           .find((entry) => entry.trim().length > 0) ?? "";
-      const assistantText = assistantTextFromSnapshot || assistantTextFromStream;
+      let assistantText = assistantTextFromSnapshot || assistantTextFromStream;
       const chosenPath =
         params.isHeartbeat === true
           ? extractAutonomyPathFromAssistantOutput(assistantText)
           : ("UNKNOWN" as const);
+      const heartbeatAckContract = enforceHeartbeatAckContract({
+        text: assistantText,
+        isHeartbeat: params.isHeartbeat === true,
+        chosenPath,
+      });
+      if (heartbeatAckContract.stripped) {
+        assistantText = heartbeatAckContract.text;
+        emitBrainReasoningEvent(params, {
+          phase: "autonomy",
+          label: "ACK_BIND",
+          summary: heartbeatAckContract.reason ?? "heartbeat_ok_removed",
+          source: "proto33-g8.ack-bind",
+        });
+      }
       const canPersistEpisodic = !aborted && !timedOut && !promptError;
       const toolCounts = getToolExecutionCounts();
       const parsedMoodText = extractMoodFromAssistantOutput(assistantText);
@@ -2400,17 +2617,6 @@ export async function runEmbeddedAttempt(
       }
 
       try {
-        // Read the PREVIOUS chrono sleeping state before energy calculation.
-        // This allows energy-chrono coupling: when Om was sleeping at the start
-        // of this heartbeat, energy is pulled toward the sleep floor.
-        let preRunSleeping = false;
-        if (params.isHeartbeat === true) {
-          try {
-            preRunSleeping = await readChronoSleepingHint(effectiveWorkspace);
-          } catch {
-            // fail-open: assume awake
-          }
-        }
         const energyResult = await updateEnergy({
           workspaceDir: effectiveWorkspace,
           runId: params.runId,
@@ -2421,7 +2627,6 @@ export async function runEmbeddedAttempt(
             successful: toolCounts.successful,
             failed: toolCounts.failed,
           },
-          isSleeping: preRunSleeping,
         });
         emitBrainReasoningEvent(params, {
           phase: "energy",
@@ -2435,42 +2640,40 @@ export async function runEmbeddedAttempt(
           source: "proto33-r060.energy",
         });
         let chronoIsSleeping: boolean | undefined;
-        if (params.isHeartbeat === true) {
-          try {
-            // Heartbeat runs are autonomous ticks. User-originated runs are handled outside this block.
-            const chronoResult = await evaluateAndPersistChronoState({
-              workspaceDir: effectiveWorkspace,
-              runId: params.runId,
-              currentEnergy: energyResult.snapshot.level,
-              isUserMessage: params.isHeartbeat !== true,
-            });
-            chronoIsSleeping = chronoResult.state.isSleeping;
-            emitBrainReasoningEvent(params, {
-              phase: "sleep",
-              label: "CHRONO",
-              summary:
-                `sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; ` +
-                `S=${chronoResult.state.processS.toFixed(1)}; C=${chronoResult.processC.toFixed(1)}; ` +
-                `threshold=${chronoResult.dynamicThreshold.toFixed(1)}; ` +
-                `transition=${chronoResult.transitioned ? (chronoResult.transitionType ?? "yes") : "no"}; ` +
-                `reason=${chronoResult.reason}`,
-              source: "proto33-f3.chrono",
-            });
-            if (chronoResult.transitioned) {
-              omLog(
-                "BRAIN-SLEEP",
-                "CHRONO_TRANSITION",
-                `runId=${params.runId}; type=${chronoResult.transitionType ?? "n/a"}; sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; reason=${chronoResult.reason}`,
-              );
-            }
-          } catch (chronoErr) {
-            emitBrainReasoningEvent(params, {
-              phase: "sleep",
-              label: "CHRONO",
-              summary: `fail-open: ${String(chronoErr)}`,
-              source: "proto33-f3.chrono",
-            });
+        try {
+          // Evaluate chrono on every run so papa-override can wake Om immediately on user turns.
+          const chronoResult = await evaluateAndPersistChronoState({
+            workspaceDir: effectiveWorkspace,
+            runId: params.runId,
+            currentEnergy: energyResult.snapshot.level,
+            isUserMessage: params.isHeartbeat !== true,
+          });
+          chronoIsSleeping = chronoResult.state.isSleeping;
+          emitBrainReasoningEvent(params, {
+            phase: "sleep",
+            label: "CHRONO",
+            summary:
+              `sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; ` +
+              `S=${chronoResult.state.processS.toFixed(1)}; C=${chronoResult.processC.toFixed(1)}; ` +
+              `threshold=${chronoResult.dynamicThreshold.toFixed(1)}; ` +
+              `transition=${chronoResult.transitioned ? (chronoResult.transitionType ?? "yes") : "no"}; ` +
+              `reason=${chronoResult.reason}`,
+            source: "proto33-f3.chrono",
+          });
+          if (chronoResult.transitioned) {
+            omLog(
+              "BRAIN-SLEEP",
+              "CHRONO_TRANSITION",
+              `runId=${params.runId}; type=${chronoResult.transitionType ?? "n/a"}; sleeping=${chronoResult.state.isSleeping ? "yes" : "no"}; reason=${chronoResult.reason}`,
+            );
           }
+        } catch (chronoErr) {
+          emitBrainReasoningEvent(params, {
+            phase: "sleep",
+            label: "CHRONO",
+            summary: `fail-open: ${String(chronoErr)}`,
+            source: "proto33-f3.chrono",
+          });
         }
         if (params.isHeartbeat === true) {
           try {
@@ -2635,3 +2838,4 @@ export async function runEmbeddedAttempt(
     process.chdir(prevCwd);
   }
 }
+

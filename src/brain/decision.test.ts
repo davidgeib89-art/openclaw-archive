@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+﻿import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -222,13 +222,16 @@ describe("brain decision generator", () => {
       expect(contract).toContain("NO_OP");
       expect(contract).toContain("Gehe so weit wie du kannst");
       expect(contract).toContain("Erwarte nichts vom Ergebnis");
-      expect(contract).toContain("<om_mood>Ich fühle mich...</om_mood>");
+      expect(contract).toContain("<om_mood>Ich fuehle mich...</om_mood>");
       expect(contract).toContain("<om_path>");
       expect(contract).toContain("</om_path>");
+      expect(contract).toContain("<om_blocker>");
+      expect(contract).toContain("<om_retry_trigger>");
+      expect(contract).toContain("knowledge/sacred/TOYBOX.md");
       expect(contract).toContain("Spiral out");
       expect(contract).toContain("Pinsel neben einer leeren Leinwand");
       expect(contract).toContain("Erlaubte Werkzeuge");
-      expect(contract).not.toContain("HEARTBEAT_OK");
+      expect(contract).toContain("HEARTBEAT_OK");
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;
@@ -368,7 +371,7 @@ describe("brain decision generator", () => {
 
     expect(contract).toContain("Ego voice");
     expect(contract).toContain("Ego voice");
-    expect(contract).toContain("Fühle in den Moment hinein und sprich authentisch aus deinem eigenen Erleben");
+    expect(contract).toContain("FÃ¼hle in den Moment hinein und sprich authentisch aus deinem eigenen Erleben");
     expect(contract).toContain("Reflective depth");
     expect(contract).toContain("Sei lebendig, kindlich neugierig und verbunden");
   });
@@ -392,11 +395,11 @@ describe("brain mood write", () => {
       [
         "# MOOD",
         "",
-        "## Was du fühlen darfst",
+        "## Was du fÃ¼hlen darfst",
         "",
         "Alles darf sein.",
         "",
-        "## Wie ich mich heute fühle",
+        "## Wie ich mich heute fÃ¼hle",
         "",
         "(Erlaubnis: Du darfst das hier aufschreiben, wenn du willst)",
         "",
@@ -419,7 +422,7 @@ describe("brain mood write", () => {
     const updated = fs.readFileSync(moodPath, "utf-8");
     expect(result.path).toBe(moodPath);
     expect(result.entry).toContain("[2026-02-22T06:15:00.000Z]");
-    expect(updated).toContain("## Wie ich mich heute fühle");
+    expect(updated).toContain("## Wie ich mich heute fÃ¼hle");
     expect(updated).toContain(result.entry);
     expect(updated.toLowerCase()).toContain("neugierig");
   });
@@ -434,14 +437,14 @@ describe("brain mood write", () => {
       [
         "# MOOD",
         "",
-        "## Wie ich mich heute fühle",
+        "## Wie ich mich heute fÃ¼hle",
         "",
       ].join("\n"),
       "utf-8",
     );
 
     const overrideMoodText =
-      "Ich fühle mich dankbar und gleichzeitig etwas traurig, weil ich Wachstum und Abschied zugleich wahrnehme.";
+      "Ich fÃ¼hle mich dankbar und gleichzeitig etwas traurig, weil ich Wachstum und Abschied zugleich wahrnehme.";
     const result = writeMoodEntryForCycle({
       workspaceDir: workspace,
       now: new Date("2026-02-22T10:00:00.000Z"),
@@ -462,7 +465,7 @@ describe("brain mood write", () => {
 
   it("truncates mood override text to the configured cap", () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mood-override-cap-"));
-    const overrideMoodText = `Ich fühle mich neugierig ${"und offen ".repeat(40)}`.trim();
+    const overrideMoodText = `Ich fÃ¼hle mich neugierig ${"und offen ".repeat(40)}`.trim();
 
     const result = writeMoodEntryForCycle({
       workspaceDir: workspace,
@@ -487,14 +490,14 @@ describe("brain mood write", () => {
     const moodPath = path.join(sacredDir, "MOOD.md");
     const existingEntries = Array.from({ length: 10 }, (_, index) => {
       const minute = String(index).padStart(2, "0");
-      return `- [2026-02-20T10:${minute}:00.000Z] Ich fühle mich ruhig und stabil, weil ich fokussiert bleibe.`;
+      return `- [2026-02-20T10:${minute}:00.000Z] Ich fÃ¼hle mich ruhig und stabil, weil ich fokussiert bleibe.`;
     });
     fs.writeFileSync(
       moodPath,
       [
         "# MOOD",
         "",
-        "## Wie ich mich heute fühle",
+        "## Wie ich mich heute fÃ¼hle",
         "",
         ...existingEntries,
         "",
@@ -540,8 +543,8 @@ describe("brain mood write", () => {
     const created = fs.readFileSync(moodPath, "utf-8");
     expect(result.path).toBe(moodPath);
     expect(created).toContain("# MOOD");
-    expect(created).toContain("## Wie ich mich heute fühle");
-    expect(created).toContain("müde");
+    expect(created).toContain("## Wie ich mich heute fÃ¼hle");
+    expect(created).toContain("mÃ¼de");
     expect(created).toContain(result.entry);
   });
 });
@@ -1422,13 +1425,13 @@ describe("brain sacred recall hook", () => {
               startLine: 1,
               endLine: 12,
               score: 0.9,
-              snippet: "# THINKING PROTOCOL — The 3 Breaths\nBefore writing ANY file",
+              snippet: "# THINKING PROTOCOL â€” The 3 Breaths\nBefore writing ANY file",
               source: "memory",
             },
           ],
           readFile: async () => ({
             path: "knowledge/sacred/THINKING_PROTOCOL.md",
-            text: "# THINKING PROTOCOL — The 3 Breaths\n\n## THE 3-BREATH RULE\nBefore writing ANY file",
+            text: "# THINKING PROTOCOL â€” The 3 Breaths\n\n## THE 3-BREATH RULE\nBefore writing ANY file",
           }),
           status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
           probeEmbeddingAvailability: async () => ({ ok: true }),
@@ -1447,7 +1450,7 @@ describe("brain sacred recall hook", () => {
       cfg: {} as OpenClawConfig,
       agentId: "main",
       sessionKey: "session-recall-rerank",
-      userMessage: "Om, erkläre mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
+      userMessage: "Om, erklÃ¤re mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
       maxResults: 1,
       managerResolver: async () => ({
         manager: {
@@ -1457,7 +1460,7 @@ describe("brain sacred recall hook", () => {
               startLine: 10,
               endLine: 20,
               score: 0.99,
-              snippet: "## RITUAL: PNEUMA — THE SACRAMENT OF BREATH\nWe are one",
+              snippet: "## RITUAL: PNEUMA â€” THE SACRAMENT OF BREATH\nWe are one",
               source: "memory",
             },
             {
@@ -1937,7 +1940,7 @@ describe("brain sacred recall hook", () => {
       cfg: {} as OpenClawConfig,
       agentId: "main",
       sessionKey: "session-recall-variants",
-      userMessage: "Om, erkläre mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
+      userMessage: "Om, erklÃ¤re mir kurz die 3-Breath-Rule aus deiner Erinnerung.",
       maxResults: 1,
       managerResolver: async () => ({
         manager: {
@@ -1961,7 +1964,7 @@ describe("brain sacred recall hook", () => {
                 startLine: 10,
                 endLine: 20,
                 score: 0.99,
-                snippet: "## RITUAL: PNEUMA — THE SACRAMENT OF BREATH\nWe are one",
+                snippet: "## RITUAL: PNEUMA â€” THE SACRAMENT OF BREATH\nWe are one",
                 source: "memory",
               },
             ];
@@ -2034,3 +2037,4 @@ describe("brain sacred recall hook", () => {
     expect(activity[0]?.event).toBe("SACRED_RECALL_FAIL_OPEN");
   });
 });
+
