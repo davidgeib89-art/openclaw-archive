@@ -32,6 +32,11 @@ import {
 import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import { buildEnergyForecast } from "../../../brain/forecast.js";
+import {
+  buildNeedsFileContent,
+  buildNeedsPromptBlock,
+  buildNeedsSnapshot,
+} from "../../../brain/needs.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
 import {
   buildSubconsciousContextBlock,
@@ -427,10 +432,7 @@ function collectAssistantTextsFromMessages(messages: readonly AgentMessage[]): s
   return texts;
 }
 
-function collectRunAssistantTexts(
-  messages: readonly AgentMessage[],
-  startIndex: number,
-): string[] {
+function collectRunAssistantTexts(messages: readonly AgentMessage[], startIndex: number): string[] {
   if (messages.length === 0) {
     return [];
   }
@@ -464,6 +466,14 @@ const TOYBOX_ALIAS_RELATIVE_PATHS = [
 ] as const;
 const OM_ACTIVITY_JSONL_RELATIVE_PATH = "OM_ACTIVITY.jsonl";
 const EPOCHS_RELATIVE_PATH = path.join("memory", "EPOCHS.md");
+const NEEDS_RELATIVE_PATH = path.join("knowledge", "sacred", "NEEDS.md");
+const NEEDS_REQUIRED_RELATIVE_PATHS = [
+  path.join("knowledge", "sacred", "MOOD.md"),
+  path.join("knowledge", "sacred", "ENERGY.md"),
+  path.join("knowledge", "sacred", "TOYBOX.md"),
+  path.join("knowledge", "sacred", "AUTONOMOUS_CYCLE.md"),
+  path.join("memory", "DREAMS.md"),
+] as const;
 const HEARTBEAT_SIGNAL_WINDOW = 10;
 const HEARTBEAT_ACK_TOKEN = "HEARTBEAT_OK";
 const HEARTBEAT_RECALL_TIMEOUT_MS = 12_000;
@@ -517,7 +527,10 @@ const HEARTBEAT_ACK_PATTERN = /\bHEARTBEAT_OK\b/gi;
 
 /** Normalizes poetic leitwörter and legacy aliases to internal AutonomyPath names */
 function normalizeAutonomyPathAlias(raw: string): AutonomyPath {
-  const upper = raw.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const upper = raw
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   // Feuer / Sakral → PLAY
   if (upper === "ENTFACHEN" || upper === "SPIELEN") return "PLAY";
   // Luft / Solarplexus → LEARN
@@ -535,7 +548,9 @@ function normalizeAutonomyPathAlias(raw: string): AutonomyPath {
 
 function extractAutonomyPathKeywords(text: string): AutonomyPath[] {
   const seen = new Set<AutonomyPath>();
-  for (const match of text.matchAll(/\b(PLAY|SPIELEN|LEARN|LERNEN|MAINTAIN|PFLEGEN|DRIFT|TRÄUMEN|TRAUMEN|NO_OP|RUHE)\b/gi)) {
+  for (const match of text.matchAll(
+    /\b(PLAY|SPIELEN|LEARN|LERNEN|MAINTAIN|PFLEGEN|DRIFT|TRÄUMEN|TRAUMEN|NO_OP|RUHE)\b/gi,
+  )) {
     const raw = match[1];
     if (raw) {
       seen.add(normalizeAutonomyPathAlias(raw));
@@ -847,6 +862,7 @@ type RecentHeartbeatSignals = {
   recentPaths: AutonomyPath[];
   recentEnergyLevels: number[];
   recentToolCallsTotal: number[];
+  recentToolCallsFailed: number[];
   recentToolDurationMsMax: number[];
   recentUserMessageCount: number;
   recentApopheniaCount: number;
@@ -860,6 +876,7 @@ const EMPTY_HEARTBEAT_SIGNALS: RecentHeartbeatSignals = {
   recentPaths: [],
   recentEnergyLevels: [],
   recentToolCallsTotal: [],
+  recentToolCallsFailed: [],
   recentToolDurationMsMax: [],
   recentUserMessageCount: 0,
   recentApopheniaCount: 0,
@@ -976,7 +993,12 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   try {
     const dirFiles = await fs.readdir(workspaceDir);
     const jsonlFiles = dirFiles
-      .filter((f) => f === "OM_ACTIVITY.jsonl" || f.startsWith("OM_ACTIVITY.prev.") || f.startsWith("OM_ACTIVITY_"))
+      .filter(
+        (f) =>
+          f === "OM_ACTIVITY.jsonl" ||
+          f.startsWith("OM_ACTIVITY.prev.") ||
+          f.startsWith("OM_ACTIVITY_"),
+      )
       .filter((f) => f.endsWith(".jsonl"));
 
     const fileStats = await Promise.all(
@@ -984,7 +1006,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
         const p = path.join(workspaceDir, name);
         const st = await fs.stat(p).catch(() => null);
         return { p, mtimeMs: st ? st.mtimeMs : 0 };
-      })
+      }),
     );
     fileStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
@@ -1009,6 +1031,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   const recentPaths: AutonomyPath[] = [];
   const recentEnergyLevels: number[] = [];
   const recentToolCallsTotal: number[] = [];
+  const recentToolCallsFailed: number[] = [];
   const recentToolDurationMsMax: number[] = [];
   const recentUserMessageFlags: boolean[] = [];
   const recentApopheniaFlags: boolean[] = [];
@@ -1075,6 +1098,10 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
       if (recentToolCallsTotal.length < HEARTBEAT_SIGNAL_WINDOW) {
         recentToolCallsTotal.push(totalCalls);
       }
+      if (recentToolCallsFailed.length < HEARTBEAT_SIGNAL_WINDOW) {
+        const failedCalls = toFiniteNumber(entry.toolCallsFailed) ?? 0;
+        recentToolCallsFailed.push(Math.max(0, failedCalls));
+      }
       const toolNames = extractToolNamesFromDurationSamples(entry.toolDurationSamples);
       const allDreamAndPerceive =
         totalCalls > 0 &&
@@ -1095,6 +1122,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
       recentPaths.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentEnergyLevels.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentToolCallsTotal.length >= HEARTBEAT_SIGNAL_WINDOW &&
+      recentToolCallsFailed.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentUserMessageFlags.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentApopheniaFlags.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentPlayDreamFlags.length >= HEARTBEAT_SIGNAL_WINDOW
@@ -1120,6 +1148,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
     recentPaths,
     recentEnergyLevels,
     recentToolCallsTotal,
+    recentToolCallsFailed,
     recentToolDurationMsMax,
     recentUserMessageCount: recentUserMessageFlags.filter(Boolean).length,
     recentApopheniaCount: recentApopheniaFlags.filter(Boolean).length,
@@ -1127,6 +1156,38 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
     repeatedPathStreak,
     restingPathStreak,
     playDreamStreak,
+  };
+}
+
+type NeedsWorkspaceIntegrity = {
+  requiredFilesPresent: number;
+  requiredFilesTotal: number;
+  missingFiles: string[];
+};
+
+async function readNeedsWorkspaceIntegrity(workspaceDir: string): Promise<NeedsWorkspaceIntegrity> {
+  const checks = await Promise.all(
+    NEEDS_REQUIRED_RELATIVE_PATHS.map(async (relativePath) => {
+      const absolutePath = path.join(workspaceDir, relativePath);
+      try {
+        const stats = await fs.stat(absolutePath);
+        return {
+          relativePath,
+          present: stats.isFile() || stats.isDirectory(),
+        };
+      } catch {
+        return {
+          relativePath,
+          present: false,
+        };
+      }
+    }),
+  );
+  const missingFiles = checks.filter((entry) => !entry.present).map((entry) => entry.relativePath);
+  return {
+    requiredFilesPresent: checks.length - missingFiles.length,
+    requiredFilesTotal: checks.length,
+    missingFiles,
   };
 }
 
@@ -1517,7 +1578,9 @@ async function ensureCanonicalToyboxFile(workspaceDir: string): Promise<{
 }
 
 function buildToyboxCanonicalPromptBlock(workspaceDir?: string): string {
-  const absoluteHint = workspaceDir ? ` (Absolute: ${path.join(workspaceDir, TOYBOX_CANONICAL_PROMPT_PATH).replace(/\\/g, "/")})` : "";
+  const absoluteHint = workspaceDir
+    ? ` (Absolute: ${path.join(workspaceDir, TOYBOX_CANONICAL_PROMPT_PATH).replace(/\\/g, "/")})`
+    : "";
   return [
     "<toybox_canonical_path>",
     `Canonical toybox path: ${TOYBOX_CANONICAL_PROMPT_PATH}${absoluteHint}`,
@@ -2591,6 +2654,7 @@ export async function runEmbeddedAttempt(
       let subconsciousChargeForRun: number | undefined;
       let latestDecisionRiskLevel: BrainRiskLevel | undefined;
       let latestDecisionIntent: BrainIntent | undefined;
+      let guardEventCountForRun = 0;
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
       let preRunForecast: ReturnType<typeof buildEnergyForecast> | undefined;
       const prePromptMessageCount = activeSession.messages.length;
@@ -2882,6 +2946,78 @@ export async function runEmbeddedAttempt(
             }
           }
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const preRunToolCallsTotal = Math.max(
+                0,
+                recentHeartbeatSignals.recentToolCallsTotal[0] ?? 0,
+              );
+              const preRunToolCallsFailed = Math.max(
+                0,
+                recentHeartbeatSignals.recentToolCallsFailed[0] ?? 0,
+              );
+              const preRunChosenPath: AutonomyPath | "UNKNOWN" =
+                recentHeartbeatSignals.recentPaths.at(0) ?? "UNKNOWN";
+              const preRunLoopCause = classifyLoopCause({
+                repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+                repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+                restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+                playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+                recentToolDurationMsMax: recentHeartbeatSignals.recentToolDurationMsMax,
+                chosenPath: preRunChosenPath,
+                chosenPathSource:
+                  preRunChosenPath === "UNKNOWN" ? "final_assistant_text" : "latched_run_messages",
+                tagFound: preRunChosenPath !== "UNKNOWN",
+                toolCallsTotal: preRunToolCallsTotal,
+                energyLevel: preRunEnergyHint?.level,
+                isSleeping: preRunEnergyHint?.dreamMode === true,
+              }).cause;
+              const workspaceIntegrity = await readNeedsWorkspaceIntegrity(effectiveWorkspace);
+              const preRunNeeds = buildNeedsSnapshot({
+                now: new Date(runStartedAt).toISOString(),
+                uptimeSeconds: process.uptime(),
+                currentToolStats: {
+                  total: preRunToolCallsTotal,
+                  successful: Math.max(0, preRunToolCallsTotal - preRunToolCallsFailed),
+                  failed: preRunToolCallsFailed,
+                },
+                recentToolCallsTotal: recentHeartbeatSignals.recentToolCallsTotal,
+                recentToolCallsFailed: recentHeartbeatSignals.recentToolCallsFailed,
+                energyLevel: preRunEnergyHint?.level,
+                sleepPressure: preRunEnergyHint?.stagnationLevel,
+                isSleeping: preRunEnergyHint?.dreamMode,
+                repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+                recentUserMessageCount: recentHeartbeatSignals.recentUserMessageCount,
+                recentPaths: recentHeartbeatSignals.recentPaths,
+                loopCause: preRunLoopCause,
+                forecastTrajectory: preRunForecast?.trajectory ?? "unknown",
+                forecastConfidence: preRunForecast?.confidence,
+                guardRiskLevel: latestDecisionRiskLevel,
+                guardEventCount: guardEventCountForRun,
+                workspaceRequiredFilesPresent: workspaceIntegrity.requiredFilesPresent,
+                workspaceRequiredFilesTotal: workspaceIntegrity.requiredFilesTotal,
+                workspaceMissingFiles: workspaceIntegrity.missingFiles,
+                promptErrorsRecent: promptError ? 1 : 0,
+              });
+              const needsPromptBlock = buildNeedsPromptBlock(preRunNeeds, 320);
+              effectivePrompt = `${needsPromptBlock}\n\n${effectivePrompt}`;
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEEDS_PRE",
+                summary:
+                  `needs injected (deficit=${preRunNeeds.topDeficit.name}:${preRunNeeds.topDeficit.value}; ` +
+                  `resource=${preRunNeeds.topResource.name}:${preRunNeeds.topResource.value})`,
+                source: "proto33-g10.needs-preinject",
+              });
+            } catch (needsPreErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEEDS_PRE",
+                summary: `fail-open: ${String(needsPreErr)}`,
+                source: "proto33-g10.needs-preinject",
+              });
+            }
+          }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
             const loopReflection = buildLoopReflectionPromptBlock({
               signals: recentHeartbeatSignals,
               energyLevel: preRunEnergyHint?.level,
@@ -2903,6 +3039,7 @@ export async function runEmbeddedAttempt(
           const highRiskGuard = maybeBuildHighRiskGuardContext(brainDecision.riskLevel);
           if (highRiskGuard) {
             effectivePrompt = `${highRiskGuard}\n\n${effectivePrompt}`;
+            guardEventCountForRun += 1;
             emitBrainReasoningEvent(params, {
               phase: "guard",
               label: "GUARD",
@@ -3260,8 +3397,9 @@ export async function runEmbeddedAttempt(
             activeSession.messages,
             prePromptMessageCount,
           );
-          const candidatePathFromRunMessages =
-            extractLatchedAutonomyPathFromAssistantTexts(candidateRunAssistantTexts);
+          const candidatePathFromRunMessages = extractLatchedAutonomyPathFromAssistantTexts(
+            candidateRunAssistantTexts,
+          );
           const candidatePathFromHistory =
             candidatePathFromRunMessages !== "UNKNOWN"
               ? candidatePathFromRunMessages
@@ -3292,7 +3430,7 @@ export async function runEmbeddedAttempt(
                 ? "No clear <om_path> could be parsed from your response."
                 : `Active path selected: ${candidatePath}.`;
             const softRetryPrompt = triggerAkathesiaOverdrive
-              ?                 [
+              ? [
                   "<action_binding_soft_retry>",
                   actionBindContextLine,
                   "Noch keine konkrete Werkzeug-Aktion in diesem Herzschlag.",
@@ -3446,9 +3584,9 @@ export async function runEmbeddedAttempt(
             ? latchedPath
             : latchedPathFromRunFlow !== "UNKNOWN"
               ? latchedPathFromRunFlow
-            : latchedPathFromStream !== "UNKNOWN"
-              ? latchedPathFromStream
-              : extractAutonomyPathFromAssistantOutput(assistantText)
+              : latchedPathFromStream !== "UNKNOWN"
+                ? latchedPathFromStream
+                : extractAutonomyPathFromAssistantOutput(assistantText)
           : ("UNKNOWN" as const);
       const chosenPathSource =
         params.isHeartbeat === true
@@ -3456,9 +3594,9 @@ export async function runEmbeddedAttempt(
             ? "latched_run_messages"
             : latchedPathFromRunFlow !== "UNKNOWN"
               ? "latched_runtime"
-            : latchedPathFromStream !== "UNKNOWN"
-              ? "latched_assistant_stream"
-              : "final_assistant_text"
+              : latchedPathFromStream !== "UNKNOWN"
+                ? "latched_assistant_stream"
+                : "final_assistant_text"
           : "not_heartbeat";
       const tagFound = runTaggedCount > 0 || streamTaggedCount > 0;
       const ambiguityKeywords =
@@ -3794,6 +3932,83 @@ export async function runEmbeddedAttempt(
               `strength=${forecast.signalStrength.toFixed(1)}; mirror=${forecast.mirror}`,
             source: "proto33-g10.forecast",
           });
+
+          try {
+            const workspaceIntegrity = await readNeedsWorkspaceIntegrity(effectiveWorkspace);
+            const needsSnapshot = buildNeedsSnapshot({
+              now: new Date(runStartedAt).toISOString(),
+              uptimeSeconds: process.uptime(),
+              currentToolStats: {
+                total: toolCounts.total,
+                successful: toolCounts.successful,
+                failed: toolCounts.failed,
+              },
+              recentToolCallsTotal: recentHeartbeatSignals.recentToolCallsTotal,
+              recentToolCallsFailed: recentHeartbeatSignals.recentToolCallsFailed,
+              energyLevel: energyResult.snapshot.level,
+              sleepPressure: chronoSleepPressure,
+              isSleeping: chronoIsSleeping,
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              recentUserMessageCount: recentHeartbeatSignals.recentUserMessageCount,
+              recentPaths: recentHeartbeatSignals.recentPaths,
+              loopCause: loopCauseAnalysis?.cause ?? "unknown",
+              forecastTrajectory: forecast.trajectory,
+              forecastConfidence: forecast.confidence,
+              guardRiskLevel: latestDecisionRiskLevel,
+              guardEventCount: guardEventCountForRun,
+              workspaceRequiredFilesPresent: workspaceIntegrity.requiredFilesPresent,
+              workspaceRequiredFilesTotal: workspaceIntegrity.requiredFilesTotal,
+              workspaceMissingFiles: workspaceIntegrity.missingFiles,
+              promptErrorsRecent: promptError ? 1 : 0,
+            });
+
+            omLog("BRAIN-NEEDS", "STATE", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              needs: needsSnapshot.needs,
+              topDeficit: needsSnapshot.topDeficit,
+              topResource: needsSnapshot.topResource,
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              energy: energyResult.snapshot.level,
+              sleeping: chronoIsSleeping ?? false,
+              sleepPressure:
+                typeof chronoSleepPressure === "number"
+                  ? Number(chronoSleepPressure.toFixed(2))
+                  : null,
+              loopCause: loopCauseAnalysis?.cause ?? "unknown",
+              forecastTrajectory: forecast.trajectory,
+              forecastConfidence: Number(forecast.confidence.toFixed(2)),
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "NEEDS",
+              summary:
+                `deficit=${needsSnapshot.topDeficit.name}:${needsSnapshot.topDeficit.value}; ` +
+                `resource=${needsSnapshot.topResource.name}:${needsSnapshot.topResource.value}`,
+              source: "proto33-g10.needs",
+            });
+
+            try {
+              const needsPath = path.join(effectiveWorkspace, NEEDS_RELATIVE_PATH);
+              await fs.writeFile(needsPath, buildNeedsFileContent(needsSnapshot), "utf-8");
+            } catch {
+              // fail-open: diagnostic mirror only
+            }
+          } catch (needsErr) {
+            omLog("BRAIN-NEEDS", "STATE", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              needs: [],
+              error: String(needsErr),
+              failOpen: true,
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "NEEDS",
+              summary: `fail-open: ${String(needsErr)}`,
+              source: "proto33-g10.needs",
+            });
+          }
         }
         // --- Aura Calculation (Phase G.4) -------------------------------
         // Calculate Om's 7-chakra aura snapshot and persist it.
