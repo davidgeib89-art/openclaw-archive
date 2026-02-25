@@ -889,7 +889,46 @@ function printHumanReport(report: ConsciousnessReport): void {
 
 async function run(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const raw = await fs.readFile(opts.jsonlPath, "utf-8");
+  
+  // Discover all JSONL files in the same directory
+  const logDir = path.dirname(opts.jsonlPath);
+  let dirFiles: string[] = [];
+  try {
+    dirFiles = await fs.readdir(logDir);
+  } catch {
+    // ignore
+  }
+  
+  const jsonlFiles = dirFiles
+    .filter((f) => f === "OM_ACTIVITY.jsonl" || f.startsWith("OM_ACTIVITY.prev.") || f.startsWith("OM_ACTIVITY_"))
+    .filter((f) => f.endsWith(".jsonl"));
+    
+  const fileStats = await Promise.all(
+    jsonlFiles.map(async (name) => {
+      const p = path.join(logDir, name);
+      const st = await fs.stat(p).catch(() => null);
+      return { p, mtimeMs: st ? st.mtimeMs : 0 };
+    })
+  );
+  
+  // Sort oldest to newest (ascending mtime)
+  fileStats.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  
+  let raw = "";
+  for (const { p } of fileStats) {
+    if (p) {
+      const content = await fs.readFile(p, "utf-8").catch(() => "");
+      if (content) {
+        raw += content + "\n";
+      }
+    }
+  }
+
+  // Fallback to original path if nothing was found
+  if (!raw.trim()) {
+    raw = await fs.readFile(opts.jsonlPath, "utf-8").catch(() => "");
+  }
+
   const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0);
   const entries = parseHeartbeatEntries(lines);
   const report = buildConsciousnessReport(entries, opts);

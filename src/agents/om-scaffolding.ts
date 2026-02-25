@@ -165,12 +165,16 @@ function appendMachineLogEntry(
   details: string | null,
   metadataObject?: Record<string, unknown>,
 ): void {
-  rotateLogIfNeeded(OM_LOG_JSONL_FILE, MAX_JSONL_SIZE);
+  // Option 3: Daily JSONL rotation without size limits
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const parsed = path.parse(OM_LOG_JSONL_FILE);
+  const dailyJsonlFile = path.join(parsed.dir, `${parsed.name}_${dateStr}${parsed.ext}`);
+
   const entry =
     metadataObject && Object.keys(metadataObject).length > 0
       ? { ...metadataObject, ts: getIsoTimestamp(), layer, event }
       : { ts: getIsoTimestamp(), layer, event, ...(details ? { details } : {}) };
-  fs.appendFileSync(OM_LOG_JSONL_FILE, `${safeJsonStringify(entry)}\n`, "utf-8");
+  fs.appendFileSync(dailyJsonlFile, `${safeJsonStringify(entry)}\n`, "utf-8");
 }
 
 function appendThoughtStreamEntry(

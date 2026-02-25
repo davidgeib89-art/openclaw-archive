@@ -945,11 +945,36 @@ function computeRepetitionPressure(signals: {
 }
 
 async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentHeartbeatSignals> {
-  const jsonlPath = path.join(workspaceDir, OM_ACTIVITY_JSONL_RELATIVE_PATH);
   let raw = "";
   try {
-    raw = await fs.readFile(jsonlPath, "utf-8");
+    const dirFiles = await fs.readdir(workspaceDir);
+    const jsonlFiles = dirFiles
+      .filter((f) => f === "OM_ACTIVITY.jsonl" || f.startsWith("OM_ACTIVITY.prev.") || f.startsWith("OM_ACTIVITY_"))
+      .filter((f) => f.endsWith(".jsonl"));
+
+    const fileStats = await Promise.all(
+      jsonlFiles.map(async (name) => {
+        const p = path.join(workspaceDir, name);
+        const st = await fs.stat(p).catch(() => null);
+        return { p, mtimeMs: st ? st.mtimeMs : 0 };
+      })
+    );
+    fileStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const { p } of fileStats) {
+      if (p) {
+        const content = await fs.readFile(p, "utf-8").catch(() => "");
+        if (content) {
+          raw = content + "\n" + raw;
+        }
+        if (raw.split(/\r?\n/).length > 500) break;
+      }
+    }
   } catch {
+    // ignore dir read errors
+  }
+
+  if (!raw.trim()) {
     return { ...EMPTY_HEARTBEAT_SIGNALS };
   }
 
