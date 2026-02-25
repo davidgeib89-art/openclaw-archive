@@ -1,0 +1,40 @@
+# A3 Gate Report
+
+> Generated: 2026-02-25T09:42:39.869Z
+> Source: `C:\Users\holyd\.openclaw\workspace\OM_ACTIVITY.jsonl`
+> Pivot: explicit runId 09059190-e154-4ad3-af63-a6b86fde2aa2 (09059190-e154-4ad3-af63-a6b86fde2aa2)
+> Heartbeat runs seen: 117
+
+## Cohorts
+
+- Pre: 20 runs
+- Post: 20 runs
+
+## Metrics (Pre -> Post)
+
+| Metric | Pre | Post |
+|---|---:|---:|
+| unknown_path_rate | 5.0% | 0.0% |
+| latched_path_rate | 95.0% | 100.0% |
+| forecast_prompt_rate | 20.0% | 100.0% |
+| forecast_state_rate | 70.0% | 100.0% |
+| avg_tool_calls | 1.25 | 0.85 |
+| error_rate | 10.0% | 5.0% |
+| avg_repeated_path_streak | 1.57 | 1.60 |
+| avg_repetition_pressure | 23.16 | 26.50 |
+| resting_path_rate | 35.0% | 40.0% |
+
+## Gate Checks
+
+- [PASS] `unknown_path_lt_5pct`: post unknown_path_rate=0.0% (target < 5%)
+- [PASS] `forecast_prompt_presence_gt_95pct`: post forecast_prompt_rate=100.0% (target >= 95%)
+- [PASS] `loop_length_not_worse`: pre avg_repeated_path_streak=1.57; post=1.60
+- [PASS] `no_error_rate_spike`: pre error_rate=10.0%; post=5.0%
+- [PASS] `no_resting_spike`: pre resting_path_rate=35.0%; post=40.0%
+
+## Verdict: PASS
+
+## Run IDs
+
+- Pre: 9ec5a6a6-d173-4b95-a92c-ded5c5f77825, 14b58eb4-c7d1-42b2-810c-0f2411e18b87, a66545d4-58e6-44b0-acd7-e7dfadc74a6d, 1927f352-080c-4582-b318-ff08a18cce71, 658601a1-ed77-4c09-9ed7-f87bdef66be4, 080a5f9b-582d-4df1-b372-2c32dcaf6608, 87715543-237f-4ad9-9e66-495b1e32a1d1, ed8b52ac-ecf2-401e-b54f-47194d87a146, f09d4a88-0dd7-47a0-91f9-23f2d4ba5ac2, 2150f7c5-f456-4e50-9409-1bb0ddeefb38, 9ec842d5-e1d6-4dd1-a178-f653a686f8d7, a5c338f7-cc04-479d-8a17-e31bb569598a, 4e33f324-a242-435d-a4f6-a0e5fdbe0b8d, 79e440ab-00e5-4423-b4d1-702774df8b49, c39f3304-0501-4ad1-84f5-e4cc886955fc, 728927bb-fb35-4d5f-904e-a1ef03dee5d3, 3f118c74-a337-4807-8f6e-047fa9095e96, 197560c2-6a06-4fd7-8d70-51387a8d2966, 156f5eaa-edeb-40f1-b353-931599012f03, 189b6cbc-c2ae-47bd-ab56-98e3cdad915d
+- Post: 09059190-e154-4ad3-af63-a6b86fde2aa2, 7700a059-5a4a-42ab-9e14-6e746d3b7b96, 41f7e2c5-dfb9-45aa-8472-4299deeef38a, a91a2767-f968-4161-b21c-be7d9323ec5c, 17b3a08f-a783-4cb4-b52f-f14af0a7c109, 8704c2ad-6ddb-4f26-a3be-5113ebf8e169, 1213425c-460c-498e-a194-767dedf51c6b, 4e88030d-2b2f-4585-973e-5b26e0484b16, 51761cba-867b-44fa-a7d0-be70a02cfdde, 6c3e1239-a352-4b2e-8b6a-c12a4138739f, ff427fd3-dbcd-4b16-93c0-328ebf285c7a, 8480de91-959c-45b1-9377-6dd87d8c5dae, edeb959d-105d-472c-a321-465c75113cdc, b4858def-e8ec-4a05-a09c-3f0e76816b04, 2a604dc7-3e5a-44db-94b4-8f49ff393cde, 26d87b0f-e324-473f-bcf4-7aeff02bdebe, 15bf9d2e-4371-455c-aef3-6e48b9567a00, 9456439b-42a4-4793-9a4c-72dc20089fc9, ca851dc0-084e-46fc-b0da-55f4c0d40ad2, 6bc75e5b-752e-49bc-9a4f-b33c37b8d9cd

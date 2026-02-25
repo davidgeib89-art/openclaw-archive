@@ -2,32 +2,31 @@
   "generatedAt": "2026-02-25T09:42:39.869Z",
   "source": "C:\\Users\\holyd\\.openclaw\\workspace\\OM_ACTIVITY.jsonl",
   "pivot": {
-    "runId": "3f118c74-a337-4807-8f6e-047fa9095e96",
-    "ts": "2026-02-25T06:39:08.622+01:00",
-    "index": 91,
-    "reason": "auto-detected first A2 forecast heartbeat"
+    "runId": "09059190-e154-4ad3-af63-a6b86fde2aa2",
+    "ts": "2026-02-25T07:11:28.179+01:00",
+    "index": 95,
+    "reason": "explicit runId 09059190-e154-4ad3-af63-a6b86fde2aa2"
   },
   "window": 20,
   "pre": {
     "count": 20,
     "unknownPathRate": 0.05,
     "latchedPathRate": 0.95,
-    "forecastPromptRate": 0,
-    "forecastPreRate": 0,
-    "forecastStateRate": 0.5,
-    "avgToolCalls": 1,
-    "toolFailureRate": 0.05,
-    "errorRate": 0.05,
-    "avgRepeatedPathStreak": 1.7,
-    "avgRepetitionPressure": 24.210526315789473,
+    "forecastPromptRate": 0.2,
+    "forecastPreRate": 0.2,
+    "forecastStateRate": 0.7,
+    "avgToolCalls": 1.25,
+    "toolFailureRate": 0.1,
+    "errorRate": 0.1,
+    "avgRepeatedPathStreak": 1.5714285714285714,
+    "avgRepetitionPressure": 23.157894736842106,
     "restingPathRate": 0.35,
     "dominantPath": "PLAY",
-    "dominantPathShare": 0.55,
+    "dominantPathShare": 0.5,
     "pathDistribution": {
-      "PLAY": 0.55,
-      "DRIFT": 0.25,
-      "NO_OP": 0.1,
-      "LEARN": 0.05
+      "PLAY": 0.5,
+      "DRIFT": 0.35,
+      "LEARN": 0.1
     }
   },
   "post": {
@@ -37,20 +36,20 @@
     "forecastPromptRate": 1,
     "forecastPreRate": 1,
     "forecastStateRate": 1,
-    "avgToolCalls": 1,
+    "avgToolCalls": 0.85,
     "toolFailureRate": 0.05,
     "errorRate": 0.05,
-    "avgRepeatedPathStreak": 1.65,
-    "avgRepetitionPressure": 29,
+    "avgRepeatedPathStreak": 1.6,
+    "avgRepetitionPressure": 26.5,
     "restingPathRate": 0.4,
     "dominantPath": "PLAY",
     "dominantPathShare": 0.4,
     "pathDistribution": {
       "PLAY": 0.4,
-      "DRIFT": 0.2,
-      "NO_OP": 0.2,
-      "LEARN": 0.15,
-      "MAINTAIN": 0.05
+      "NO_OP": 0.25,
+      "DRIFT": 0.15,
+      "LEARN": 0.1,
+      "MAINTAIN": 0.1
     }
   },
   "gates": {
@@ -69,12 +68,12 @@
       {
         "key": "loop_length_not_worse",
         "pass": true,
-        "detail": "pre avg_repeated_path_streak=1.70; post=1.65"
+        "detail": "pre avg_repeated_path_streak=1.57; post=1.60"
       },
       {
         "key": "no_error_rate_spike",
         "pass": true,
-        "detail": "pre error_rate=5.0%; post=5.0%"
+        "detail": "pre error_rate=10.0%; post=5.0%"
       },
       {
         "key": "no_resting_spike",
@@ -87,10 +86,6 @@
   "runs": {
     "totalHeartbeatRuns": 117,
     "preRunIds": [
-      "80b0dcfd-ff76-4119-a5aa-abc8d6d52d73",
-      "3101582a-85af-4277-b7bb-3d25b667477b",
-      "5b0aa237-2e68-448e-abd6-21ea5e2d26d3",
-      "add37ce4-f8c9-4014-b408-1edd18a7685e",
       "9ec5a6a6-d173-4b95-a92c-ded5c5f77825",
       "14b58eb4-c7d1-42b2-810c-0f2411e18b87",
       "a66545d4-58e6-44b0-acd7-e7dfadc74a6d",
@@ -106,13 +101,13 @@
       "4e33f324-a242-435d-a4f6-a0e5fdbe0b8d",
       "79e440ab-00e5-4423-b4d1-702774df8b49",
       "c39f3304-0501-4ad1-84f5-e4cc886955fc",
-      "728927bb-fb35-4d5f-904e-a1ef03dee5d3"
-    ],
-    "postRunIds": [
+      "728927bb-fb35-4d5f-904e-a1ef03dee5d3",
       "3f118c74-a337-4807-8f6e-047fa9095e96",
       "197560c2-6a06-4fd7-8d70-51387a8d2966",
       "156f5eaa-edeb-40f1-b353-931599012f03",
-      "189b6cbc-c2ae-47bd-ab56-98e3cdad915d",
+      "189b6cbc-c2ae-47bd-ab56-98e3cdad915d"
+    ],
+    "postRunIds": [
       "09059190-e154-4ad3-af63-a6b86fde2aa2",
       "7700a059-5a4a-42ab-9e14-6e746d3b7b96",
       "41f7e2c5-dfb9-45aa-8472-4299deeef38a",
@@ -128,7 +123,11 @@
       "edeb959d-105d-472c-a321-465c75113cdc",
       "b4858def-e8ec-4a05-a09c-3f0e76816b04",
       "2a604dc7-3e5a-44db-94b4-8f49ff393cde",
-      "26d87b0f-e324-473f-bcf4-7aeff02bdebe"
+      "26d87b0f-e324-473f-bcf4-7aeff02bdebe",
+      "15bf9d2e-4371-455c-aef3-6e48b9567a00",
+      "9456439b-42a4-4793-9a4c-72dc20089fc9",
+      "ca851dc0-084e-46fc-b0da-55f4c0d40ad2",
+      "6bc75e5b-752e-49bc-9a4f-b33c37b8d9cd"
     ]
   }
 }

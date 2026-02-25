@@ -215,7 +215,12 @@ export function calculateAura(input: AuraInput): AuraSnapshot {
 
     const pFreq = clamp((recentUserMessageCount / Math.max(recentPaths.length, 1)) * 100, 0, 100);
     const presenceBonus = hasUserMessage ? 20 : 0;
-    const c4 = clamp(Math.min(0.6 * pFreq + 0.4 * presenceBonus + 30, 100), 0, 100);
+    // EINSCHWINGEN/CONNECT path directly feeds Anahata (Heart chakra)
+    const connectCount = recentPaths.filter(
+      (p) => String(p).toUpperCase() === "CONNECT",
+    ).length;
+    const connectBonus = clamp((connectCount / Math.max(recentPaths.length, 1)) * 100, 0, 40);
+    const c4 = clamp(Math.min(0.5 * pFreq + 0.3 * presenceBonus + 0.2 * connectBonus + 20, 100), 0, 100);
 
     const tVol = lastOutputTokens !== null ? Math.min(lastOutputTokens / 5, 100) : 50;
     const energyMode = String(input.energyMode ?? "").toLowerCase();

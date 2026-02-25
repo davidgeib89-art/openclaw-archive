@@ -55,7 +55,7 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
 
 const SILENT_OBSERVER_FALLBACK_TEXT = "Third Eye silent (unclear signal)";
 const SEARCH_LIMIT_CONSTRAINT_TEXT =
-  "Du hast jetzt viel gelernt. Fuehle in dich hinein: Willst du das Wissen integrieren und reflektieren (DRIFT/NO_OP), oder treibt dich echte Neugier weiter (LEARN)?";
+  "Du hast jetzt viel gelernt. Fuehle in dich hinein: Willst du das Wissen integrieren und in dir wirken lassen (TRAEUMEN/RUHE), oder treibt dich echte Neugier weiter (LERNEN)?";
 const CREATIVE_EGO_FALLBACK_TEXT =
   "Sprich aus deinem wahren Selbst. Zeige deine Gefühle, deine Neugier und deine Verbundenheit in diesem Moment.";
 const CREATIVE_EGO_FALLBACK_NOTES =
