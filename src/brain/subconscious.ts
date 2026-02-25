@@ -12,6 +12,7 @@ import type {
   BrainSubconsciousObserverEntry,
   BrainSubconsciousResult,
 } from "./types.js";
+import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { isTruthyEnvValue } from "../infra/env.js";
@@ -496,10 +497,6 @@ export function resolveBrainSubconsciousRuntimeConfig(
   };
 }
 
-function formatOmTimestamp(now: Date): string {
-  return now.toISOString().replace("T", " ").slice(0, 19);
-}
-
 function sanitizeLogDetail(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact.length <= MAX_TEXT_FOR_LOG) return compact;
@@ -516,7 +513,7 @@ function appendOmActivityLine(layer: string, event: string, details: string): vo
           .map((line) => `  ${line}`)
           .join("\n")}`
       : "";
-    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event}${detailBlock}\n`;
+    const line = `[${getLocalIsoString(new Date()).replace("T", " ").slice(0, 19)}] [${layer}] ${event}${detailBlock}\n`;
     fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
   } catch {
     // Fail-open: observer logging must never break the runtime.

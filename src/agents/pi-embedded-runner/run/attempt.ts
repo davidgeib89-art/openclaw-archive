@@ -819,6 +819,7 @@ export function classifyLoopCause(params: {
 type RecentHeartbeatSignals = {
   recentPaths: AutonomyPath[];
   recentEnergyLevels: number[];
+  recentToolCallsTotal: number[];
   recentToolDurationMsMax: number[];
   recentUserMessageCount: number;
   recentApopheniaCount: number;
@@ -831,6 +832,7 @@ type RecentHeartbeatSignals = {
 const EMPTY_HEARTBEAT_SIGNALS: RecentHeartbeatSignals = {
   recentPaths: [],
   recentEnergyLevels: [],
+  recentToolCallsTotal: [],
   recentToolDurationMsMax: [],
   recentUserMessageCount: 0,
   recentApopheniaCount: 0,
@@ -954,6 +956,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const recentPaths: AutonomyPath[] = [];
   const recentEnergyLevels: number[] = [];
+  const recentToolCallsTotal: number[] = [];
   const recentToolDurationMsMax: number[] = [];
   const recentUserMessageFlags: boolean[] = [];
   const recentApopheniaFlags: boolean[] = [];
@@ -1017,6 +1020,9 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
       recentPlayDreamFlags.length < HEARTBEAT_SIGNAL_WINDOW
     ) {
       const totalCalls = toFiniteNumber(entry.toolCallsTotal) ?? 0;
+      if (recentToolCallsTotal.length < HEARTBEAT_SIGNAL_WINDOW) {
+        recentToolCallsTotal.push(totalCalls);
+      }
       const toolNames = extractToolNamesFromDurationSamples(entry.toolDurationSamples);
       const allDreamAndPerceive =
         totalCalls > 0 &&
@@ -1036,6 +1042,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
     if (
       recentPaths.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentEnergyLevels.length >= HEARTBEAT_SIGNAL_WINDOW &&
+      recentToolCallsTotal.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentUserMessageFlags.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentApopheniaFlags.length >= HEARTBEAT_SIGNAL_WINDOW &&
       recentPlayDreamFlags.length >= HEARTBEAT_SIGNAL_WINDOW
@@ -1060,6 +1067,7 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   return {
     recentPaths,
     recentEnergyLevels,
+    recentToolCallsTotal,
     recentToolDurationMsMax,
     recentUserMessageCount: recentUserMessageFlags.filter(Boolean).length,
     recentApopheniaCount: recentApopheniaFlags.filter(Boolean).length,
@@ -1141,6 +1149,31 @@ function buildLoopReflectionPromptBlock(params: {
     "Wenn Ruhe gerade vollstaendig ist, frage dich liebevoll: Welche kleine neue Richtung waere jetzt lebendig?",
     "Eine einzige neue, reversible Handlung reicht, um den Kreis in eine Spirale zu verwandeln.",
     "</loop_reflection>",
+  ].join("\n");
+}
+
+function truncateForecastPromptLine(text: string, maxChars: number = 96): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function buildEnergyForecastPromptBlock(forecast: ReturnType<typeof buildEnergyForecast>): string {
+  const confidencePct = Math.max(0, Math.min(100, Math.round(forecast.confidence * 100)));
+  const mirror = truncateForecastPromptLine(forecast.mirror, 96);
+  const invitation = truncateForecastPromptLine(
+    forecast.reversibleShiftHints[0] ??
+      "Ein kleiner reversibler Schritt kann neue Information bringen.",
+    96,
+  );
+  return [
+    "<energy_forecast>",
+    `Trajectory: ${forecast.trajectory} (${confidencePct}%).`,
+    `Mirror: ${mirror}`,
+    `Invitation: ${invitation}`,
+    "</energy_forecast>",
   ].join("\n");
 }
 
@@ -2507,6 +2540,7 @@ export async function runEmbeddedAttempt(
       let latestDecisionRiskLevel: BrainRiskLevel | undefined;
       let latestDecisionIntent: BrainIntent | undefined;
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
+      let preRunForecast: ReturnType<typeof buildEnergyForecast> | undefined;
       const prePromptMessageCount = activeSession.messages.length;
       let latchedPathFromRunFlow: AutonomyPath | "UNKNOWN" = "UNKNOWN";
       let latchedMoodFromRunFlow: string | undefined;
@@ -2571,6 +2605,36 @@ export async function runEmbeddedAttempt(
         if (params.isHeartbeat === true) {
           try {
             recentHeartbeatSignals = await readRecentHeartbeatSignals(effectiveWorkspace);
+            const preRunChosenPath: AutonomyPath | "UNKNOWN" =
+              recentHeartbeatSignals.recentPaths.at(0) ?? "UNKNOWN";
+            const preRunToolCallsTotal = recentHeartbeatSignals.recentToolCallsTotal[0] ?? 0;
+            const preRunSleeping = preRunEnergyHint?.dreamMode === true;
+            const preRunLoopCause = classifyLoopCause({
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+              restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+              playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+              recentToolDurationMsMax: recentHeartbeatSignals.recentToolDurationMsMax,
+              chosenPath: preRunChosenPath,
+              chosenPathSource:
+                preRunChosenPath === "UNKNOWN" ? "final_assistant_text" : "latched_run_messages",
+              tagFound: preRunChosenPath !== "UNKNOWN",
+              toolCallsTotal: preRunToolCallsTotal,
+              energyLevel: preRunEnergyHint?.level,
+              isSleeping: preRunSleeping,
+            }).cause;
+            preRunForecast = buildEnergyForecast({
+              repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              repeatedPathStreak: recentHeartbeatSignals.repeatedPathStreak,
+              restingPathStreak: recentHeartbeatSignals.restingPathStreak,
+              playDreamStreak: recentHeartbeatSignals.playDreamStreak,
+              chosenPath: preRunChosenPath,
+              energyLevel: preRunEnergyHint?.level,
+              isSleeping: preRunSleeping,
+              toolCallsTotal: preRunToolCallsTotal,
+              recentToolDurationMsMax: recentHeartbeatSignals.recentToolDurationMsMax,
+              loopCause: preRunLoopCause,
+            });
             emitBrainReasoningEvent(params, {
               phase: "autonomy",
               label: "HISTORY",
@@ -2731,6 +2795,21 @@ export async function runEmbeddedAttempt(
                 label: "CHOICE",
                 summary: `autonomy choice contract injected (${contractLineCount} lines; includes DRIFT + NO_OP paths)`,
                 source: "proto33-r066.choice",
+              });
+            }
+          }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            if (preRunForecast) {
+              const forecastPromptBlock = buildEnergyForecastPromptBlock(preRunForecast);
+              effectivePrompt = `${forecastPromptBlock}\n\n${effectivePrompt}`;
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "FORECAST_PRE",
+                summary:
+                  `forecast injected (trajectory=${preRunForecast.trajectory}; ` +
+                  `confidence=${preRunForecast.confidence.toFixed(2)}; ` +
+                  `strength=${preRunForecast.signalStrength.toFixed(1)})`,
+                source: "proto33-g10.forecast-preinject",
               });
             }
           }

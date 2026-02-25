@@ -37,7 +37,7 @@ const MAX_LOG_SIZE = 500 * 1024;
 const MAX_JSONL_SIZE = 500 * 1024;
 const MAX_THOUGHT_STREAM_SIZE = 2 * 1024 * 1024;
 
-function getLocalIsoString(d: Date = new Date()): string {
+export function getLocalIsoString(d: Date = new Date()): string {
   const pad = (n: number, w: number = 2) => n.toString().padStart(w, "0");
   const tzOffset = -d.getTimezoneOffset();
   const sign = tzOffset >= 0 ? "+" : "-";

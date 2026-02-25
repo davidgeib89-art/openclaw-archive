@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
 import type { MemorySearchManager, MemorySearchResult } from "../memory/types.js";
+import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import type {
   BrainAuditEntry,
   BrainDecision,
@@ -2101,10 +2102,6 @@ export function writeMoodEntryForCycle(input: BrainMoodSignalInput): BrainMoodWr
   };
 }
 
-function formatOmTimestamp(now: Date): string {
-  return now.toISOString().replace("T", " ").slice(0, 19);
-}
-
 function appendOmActivityLine(layer: string, event: string, details: string): void {
   try {
     fs.mkdirSync(OM_ACTIVITY_LOG_DIR, { recursive: true });
@@ -2115,7 +2112,7 @@ function appendOmActivityLine(layer: string, event: string, details: string): vo
           .map((line) => `  ${line}`)
           .join("\n")}`
       : "";
-    const line = `[${formatOmTimestamp(new Date())}] [${layer}] ${event}${detailBlock}\n`;
+    const line = `[${getLocalIsoString(new Date()).replace("T", " ").slice(0, 19)}] [${layer}] ${event}${detailBlock}\n`;
     fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
   } catch {
     // Fail-open: observer logs must not break runtime behavior.
