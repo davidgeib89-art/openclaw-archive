@@ -11,6 +11,11 @@ type CliOptions = {
   pivotIsoTs?: string;
   jsonOnly: boolean;
   outPath?: string;
+  jsonOutPath?: string;
+  archiveDir?: string;
+  label: string;
+  strict: boolean;
+  includeRotated: boolean;
 };
 
 type HeartbeatRun = {
@@ -95,6 +100,11 @@ function printHelp(): void {
     "  --pivot-run <runId>  Explicit pivot run ID (first post-A2 heartbeat)",
     "  --pivot-ts <iso>     Explicit pivot timestamp (ISO)",
     "  --out <path>         Write markdown report to file (e.g. report.md)",
+    "  --json-out <path>    Write JSON report to file",
+    "  --archive-dir <dir>  Write timestamped markdown + JSON report files",
+    "  --label <name>       Label for archive filenames (default: a3-gate)",
+    "  --no-rotated         Do not load rotated *.prev.*.jsonl files",
+    "  --strict             Exit with code 1 unless verdict is PASS",
     "  --json               Print JSON only",
     "  --help               Show this help",
   ];
@@ -108,6 +118,9 @@ function parseArgs(argv: string[]): CliOptions {
     jsonlPath: defaultJsonl,
     window: 20,
     jsonOnly: false,
+    label: "a3-gate",
+    strict: false,
+    includeRotated: true,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -148,9 +161,93 @@ function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+    if (arg === "--json-out" && argv[i + 1]) {
+      opts.jsonOutPath = argv[i + 1]!;
+      i += 1;
+      continue;
+    }
+    if (arg === "--archive-dir" && argv[i + 1]) {
+      opts.archiveDir = argv[i + 1]!;
+      i += 1;
+      continue;
+    }
+    if (arg === "--label" && argv[i + 1]) {
+      const next = argv[i + 1]!.trim();
+      if (next.length > 0) {
+        opts.label = next;
+      }
+      i += 1;
+      continue;
+    }
+    if (arg === "--strict") {
+      opts.strict = true;
+      continue;
+    }
+    if (arg === "--no-rotated") {
+      opts.includeRotated = false;
+      continue;
+    }
   }
 
   return opts;
+}
+
+function sanitizeFileToken(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return "a3-gate";
+  }
+  return trimmed
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+function isoForFilename(value: string): string {
+  return value.replace(/[:.]/g, "-").replace("T", "_");
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveJsonlSources(opts: CliOptions): Promise<string[]> {
+  const absoluteMainPath = path.isAbsolute(opts.jsonlPath)
+    ? opts.jsonlPath
+    : path.resolve(process.cwd(), opts.jsonlPath);
+  const mainParsed = path.parse(absoluteMainPath);
+  const sources: string[] = [];
+
+  if (opts.includeRotated) {
+    try {
+      const entries = await fs.readdir(mainParsed.dir, { withFileTypes: true });
+      const rotatedNames = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .filter(
+          (name) =>
+            name.startsWith(`${mainParsed.name}.prev.`) &&
+            name.endsWith(mainParsed.ext),
+        )
+        .sort();
+      for (const name of rotatedNames) {
+        sources.push(path.join(mainParsed.dir, name));
+      }
+    } catch {
+      // fail-open: continue with main file only
+    }
+  }
+
+  if (await fileExists(absoluteMainPath)) {
+    sources.push(absoluteMainPath);
+  }
+  return sources;
 }
 
 function toUpperString(value: unknown): string | undefined {
@@ -652,34 +749,87 @@ function buildMarkdownReport(report: A3Report): string {
 
 async function run(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const raw = await fs.readFile(opts.jsonlPath, "utf-8");
-  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const sourceFiles = await resolveJsonlSources(opts);
+  if (sourceFiles.length === 0) {
+    throw new Error(`No OM activity JSONL files found at ${opts.jsonlPath}`);
+  }
+  const lines: string[] = [];
+  for (const sourceFile of sourceFiles) {
+    const raw = await fs.readFile(sourceFile, "utf-8");
+    for (const line of raw.split(/\r?\n/)) {
+      if (line.trim().length > 0) {
+        lines.push(line);
+      }
+    }
+  }
   const heartbeatRuns = parseHeartbeatRuns(lines);
   const report = buildReport(heartbeatRuns, opts);
+  const jsonString = JSON.stringify(report, null, 2);
+  const markdownString = buildMarkdownReport(report);
+
+  if (opts.archiveDir) {
+    const archiveBase = `${sanitizeFileToken(opts.label)}_${isoForFilename(report.generatedAt)}`;
+    const archiveDirPath = path.isAbsolute(opts.archiveDir)
+      ? opts.archiveDir
+      : path.resolve(process.cwd(), opts.archiveDir);
+    const markdownPath = path.join(archiveDirPath, `${archiveBase}.md`);
+    const jsonPath = path.join(archiveDirPath, `${archiveBase}.json`);
+    await fs.mkdir(archiveDirPath, { recursive: true });
+    await fs.writeFile(markdownPath, markdownString, "utf-8");
+    await fs.writeFile(jsonPath, jsonString, "utf-8");
+    if (!opts.jsonOnly) {
+      // eslint-disable-next-line no-console
+      console.log(`Archived markdown report: ${markdownPath}`);
+      // eslint-disable-next-line no-console
+      console.log(`Archived JSON report: ${jsonPath}`);
+    }
+  }
 
   if (opts.outPath) {
     const targetPath = path.isAbsolute(opts.outPath)
       ? opts.outPath
       : path.resolve(process.cwd(), opts.outPath);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, buildMarkdownReport(report), "utf-8");
+    await fs.writeFile(targetPath, markdownString, "utf-8");
     if (!opts.jsonOnly) {
       // eslint-disable-next-line no-console
       console.log(`Wrote markdown report: ${targetPath}`);
     }
   }
 
-  if (opts.jsonOnly) {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(report, null, 2));
-    return;
+  if (opts.jsonOutPath) {
+    const targetPath = path.isAbsolute(opts.jsonOutPath)
+      ? opts.jsonOutPath
+      : path.resolve(process.cwd(), opts.jsonOutPath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, jsonString, "utf-8");
+    if (!opts.jsonOnly) {
+      // eslint-disable-next-line no-console
+      console.log(`Wrote JSON report: ${targetPath}`);
+    }
   }
 
-  printHumanReport(report);
-  // eslint-disable-next-line no-console
-  console.log("\n--- JSON ---");
-  // eslint-disable-next-line no-console
-  console.log(JSON.stringify(report, null, 2));
+  if (opts.jsonOnly) {
+    // eslint-disable-next-line no-console
+    console.log(jsonString);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`Loaded JSONL sources: ${sourceFiles.length}`);
+    printHumanReport(report);
+    // eslint-disable-next-line no-console
+    console.log("\n--- JSON ---");
+    // eslint-disable-next-line no-console
+    console.log(jsonString);
+  }
+
+  if (opts.strict && report.gates.verdict !== "PASS") {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[A3] strict mode failed: verdict=${report.gates.verdict}. ` +
+        "Collect more heartbeats or fix failed gate checks.",
+    );
+    process.exitCode = 1;
+  }
 }
 
 await run();

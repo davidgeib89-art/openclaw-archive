@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-02-25T09:36:15.568Z",
+  "source": "C:\\Users\\holyd\\.openclaw\\workspace\\OM_ACTIVITY.jsonl",
+  "pivot": {
+    "runId": "2a604dc7-3e5a-44db-94b4-8f49ff393cde",
+    "ts": "2026-02-25T09:25:51.002+01:00",
+    "index": 0,
+    "reason": "auto-detected first A2 forecast heartbeat"
+  },
+  "window": 20,
+  "pre": {
+    "count": 0,
+    "unknownPathRate": 0,
+    "latchedPathRate": 0,
+    "forecastPromptRate": 0,
+    "forecastPreRate": 0,
+    "forecastStateRate": 0,
+    "avgToolCalls": 0,
+    "toolFailureRate": 0,
+    "errorRate": 0,
+    "avgRepeatedPathStreak": 0,
+    "avgRepetitionPressure": 0,
+    "restingPathRate": 0,
+    "dominantPath": "n/a",
+    "dominantPathShare": 0,
+    "pathDistribution": {}
+  },
+  "post": {
+    "count": 8,
+    "unknownPathRate": 0,
+    "latchedPathRate": 1,
+    "forecastPromptRate": 0.875,
+    "forecastPreRate": 1,
+    "forecastStateRate": 1,
+    "avgToolCalls": 1,
+    "toolFailureRate": 0.125,
+    "errorRate": 0.125,
+    "avgRepeatedPathStreak": 1,
+    "avgRepetitionPressure": 17.5,
+    "restingPathRate": 0.375,
+    "dominantPath": "PLAY",
+    "dominantPathShare": 0.375,
+    "pathDistribution": {
+      "PLAY": 0.375,
+      "DRIFT": 0.25,
+      "MAINTAIN": 0.125,
+      "NO_OP": 0.125,
+      "LEARN": 0.125
+    }
+  },
+  "gates": {
+    "verdict": "HOLD",
+    "checks": [
+      {
+        "key": "unknown_path_lt_5pct",
+        "pass": true,
+        "detail": "post unknown_path_rate=0.0% (target < 5%)"
+      },
+      {
+        "key": "forecast_prompt_presence_gt_95pct",
+        "pass": false,
+        "detail": "post forecast_prompt_rate=87.5% (target >= 95%)"
+      },
+      {
+        "key": "loop_length_not_worse",
+        "pass": null,
+        "detail": "pre avg_repeated_path_streak=0.00; post=1.00"
+      },
+      {
+        "key": "no_error_rate_spike",
+        "pass": null,
+        "detail": "pre error_rate=0.0%; post=12.5%"
+      },
+      {
+        "key": "no_resting_spike",
+        "pass": null,
+        "detail": "pre resting_path_rate=0.0%; post=37.5%"
+      }
+    ]
+  },
+  "notes": [
+    "Pre cohort has 0/20 runs. Baseline may be weak.",
+    "Post cohort has 8/20 runs. Keep collecting heartbeats.",
+    "Forecast prompt injection rate is below target; inspect prompt assembly ordering."
+  ],
+  "runs": {
+    "totalHeartbeatRuns": 8,
+    "preRunIds": [],
+    "postRunIds": [
+      "2a604dc7-3e5a-44db-94b4-8f49ff393cde",
+      "26d87b0f-e324-473f-bcf4-7aeff02bdebe",
+      "15bf9d2e-4371-455c-aef3-6e48b9567a00",
+      "9456439b-42a4-4793-9a4c-72dc20089fc9",
+      "ca851dc0-084e-46fc-b0da-55f4c0d40ad2",
+      "6bc75e5b-752e-49bc-9a4f-b33c37b8d9cd",
+      "01df6489-4978-48b5-8442-2843bd14d315",
+      "114df515-1612-470d-bea8-8c295f1fc0ee"
+    ]
+  }
+}
