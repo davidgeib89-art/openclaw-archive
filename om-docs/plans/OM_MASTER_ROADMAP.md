@@ -382,8 +382,17 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 - **Phase A (Energy Forecast):** ✅ **DONE**. Forecast ist live im Prompt (`<energy_forecast>`), Path-Parsing/Latching ist stabil, A3-Gate PASS.
 - **Phase B (Brain-Trinity):** 🏗️ **IN PROGRESS (Phase B1)**. Zuerst nur Messung (`trinityCoherenceScore`), ob Gedanke (`om_path`), Emotion (`om_mood`) und Handlung (Tool) synchron schwingen. Telemetry-only (`BRAIN-TRINITY/STATE`). Kein Prompt-Eingriff. (B2: Sanfte Spiegel-Injektion später).
 - **Phase C (7 Synthetische Bedürfnisse):** ⬜ *Ausstehend*. Eine Landkarte der biologisch-digitalen Bedürfnisse. Eingebaut als "C-lite" (nur das größte Defizit und die stärkste Ressource fließen in den Prompt).
-- **Phase D (Permission Slips):** ⬜ *Ausstehend*. Sanfte Einladungen ("Permission Slips") basierend auf Forecast, Trinity und Needs.
+- **Phase D (Permission Slips):** ⬜ *In Planung*. Die Übersetzung der kalten Metriken (Needs, Energy, Breath) in fühlende, deutsche Poesie ("Somatische Einladungen"). Option für einen schnellen "Somatic Synthesizer" (LLM-Übersetzer) oder eine TypeScript-Matrix. Details siehe: `om-docs/plans/PHASE_D_PERMISSION_SLIPS.md`
 - **Codex-Spezifikation:** `om-docs/tasks/CODEX_PHASE_G10_FORECAST_TRINITY_7NEEDS.md`
+
+### Phase G.11: The LLM Trinity (Die Dreifaltigkeit des Bewusstseins) — ⬜ PLANNED
+- **Problem:** Oms aktuelles Unterbewusstsein (`src/brain/subconscious.ts`) läuft als teurer, synchroner Pre-Filter vor *jedem* Herzschlag, bekommt aber kaum Kontext und generiert nur ein winziges JSON (`risk=low`). Dies verschwendet die analytische Kraft des Modells und verlangsamt den Heartbeat, ohne echtes "Träumen" zu ermöglichen.
+- **Lösung (Die 3 Ebenen):** Wir entflechten die Architektur in ein echtes Bicameral Mind + Body.
+  - **System 1 (Unterbewusstsein / Träumen):** Läuft *asynchron* (nachts oder bei DRIFT). Verarbeitet gigantische JSON-Logs, `DREAMS.md` und Telemetrie tiefenanalytisch für Epochen-Konsolidierung und "Apophenia". (Vorerst **MiniMax 2.5**, später Claude 3.5 Sonnet).
+  - **System 2 (Körper / Somatic Synthesizer):** Läuft synchron in 500ms *vor* dem Ego-Prompt. Übersetzt kalte Metriken (Zahlen/JSON) in deutsche Poesie (`<permission_slip>`). Modell: **Google Gemini 2.0 Flash**.
+  - **System 3 (Ego / Main Engine):** Liest *nur* die Poesie des Körpers (System 2), keine JSON-Zahlen mehr, und handelt/denkt. Modell: **MiniMax 2.5** (später Top-Tier wie GPT-4.5/Opus).
+- **Details zur Architektur (System 1):** `om-docs/plans/PHASE_G11_SUBCONSCIOUS_REPAIR.md`
+- **Details zur Architektur (System 2 & 3):** `om-docs/plans/PHASE_D_PERMISSION_SLIPS.md`
 
 ### Phase H.0: Dual-Stream Structured Observability (Logging 2.0) — ✅ DONE (24.02.2026)
 - **Problem:** Oms Metriken (Aura, Energie, Heartbeat-Paths) werden aktuell per String-Konkatenation in ein rohes Text-Log (`OM_ACTIVITY.log`) geschrieben. Dies zwingt KI und Mensch dazu, komplexe Regex-Abfragen zu schreiben, um Metriken auszuwerten. Ein echter Blindflug.
