@@ -37,12 +37,23 @@ const MAX_LOG_SIZE = 500 * 1024;
 const MAX_JSONL_SIZE = 500 * 1024;
 const MAX_THOUGHT_STREAM_SIZE = 2 * 1024 * 1024;
 
+function getLocalIsoString(d: Date = new Date()): string {
+  const pad = (n: number, w: number = 2) => n.toString().padStart(w, "0");
+  const tzOffset = -d.getTimezoneOffset();
+  const sign = tzOffset >= 0 ? "+" : "-";
+  const offsetMins = Math.abs(tzOffset);
+  const offsetStr = `${sign}${pad(Math.floor(offsetMins / 60))}:${pad(offsetMins % 60)}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}${offsetStr}`;
+}
+
 function getTimestamp(): string {
-  return new Date().toISOString().replace("T", " ").substring(0, 19);
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function getIsoTimestamp(): string {
-  return new Date().toISOString();
+  return getLocalIsoString();
 }
 
 function buildTimestampedRotationPath(filePath: string): string {

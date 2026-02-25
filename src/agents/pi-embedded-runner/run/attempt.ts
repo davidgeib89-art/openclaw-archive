@@ -789,7 +789,7 @@ export function classifyLoopCause(params: {
     };
   }
 
-  if (repeatedPathStreak >= 3 || playDreamStreak >= 2 || restingPathStreak >= 2) {
+  if (repeatedPathStreak >= 3) {
     evidence.push(`repeated path streak=${repeatedPathStreak}`);
     if (playDreamStreak >= 2) {
       evidence.push(`play-dream streak=${playDreamStreak}`);
@@ -1431,10 +1431,11 @@ async function ensureCanonicalToyboxFile(workspaceDir: string): Promise<{
   return { canonicalRelativePath: TOYBOX_CANONICAL_PROMPT_PATH };
 }
 
-function buildToyboxCanonicalPromptBlock(): string {
+function buildToyboxCanonicalPromptBlock(workspaceDir?: string): string {
+  const absoluteHint = workspaceDir ? ` (Absolute: ${path.join(workspaceDir, TOYBOX_CANONICAL_PROMPT_PATH).replace(/\\/g, "/")})` : "";
   return [
     "<toybox_canonical_path>",
-    `Canonical toybox path: ${TOYBOX_CANONICAL_PROMPT_PATH}`,
+    `Canonical toybox path: ${TOYBOX_CANONICAL_PROMPT_PATH}${absoluteHint}`,
     "If TOYBOX aliases appear (TOYBOX.md, TOYBOX-neu.md, knowledge/TOYBOX.md, knowledge/archive/old_TOYBOX.md), treat them as historical aliases only.",
     "When you choose playful exploration, read and reference only the canonical toybox path.",
     "</toybox_canonical_path>",
@@ -2696,7 +2697,7 @@ export async function runEmbeddedAttempt(
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
             try {
               const toyboxCanonical = await ensureCanonicalToyboxFile(effectiveWorkspace);
-              effectivePrompt = `${buildToyboxCanonicalPromptBlock()}\n\n${effectivePrompt}`;
+              effectivePrompt = `${buildToyboxCanonicalPromptBlock(effectiveWorkspace)}\n\n${effectivePrompt}`;
               omLog("BRAIN-TOYBOX", "CANONICAL_PATH", {
                 runId: params.runId,
                 sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",

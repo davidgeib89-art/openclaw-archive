@@ -89,20 +89,12 @@
     addUserMessage(text);
 
     try {
-      const res = await fetch('/api/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          sessionKey: $currentSession?.key ?? 'agent:main:main',
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        addAssistantMessage(`⚠️ Fehler: ${data.error ?? 'Unbekannt'}`);
-      }
+      const gClient = getGatewayClient();
+      if (!gClient.isConnected()) throw new Error("Offline");
+      
+      await gClient.sendMessage(text, $currentSession?.key ?? 'agent:main:main');
     } catch (e) {
-      addAssistantMessage(`⚠️ Netzwerkfehler: ${e}`);
+      addAssistantMessage(`⚠️ Netzwerkfehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       isLoading.set(false);
     }

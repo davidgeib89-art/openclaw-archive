@@ -353,8 +353,12 @@ export class GatewayClient {
     return { ...this.state };
   }
 
-  async sendMessage(text: string): Promise<void> {
-    await this.request('operator.send', { text });
+  async sendMessage(text: string, sessionKey: string): Promise<void> {
+    await this.request('chat.send', { 
+      message: text,
+      sessionKey,
+      idempotencyKey: crypto.randomUUID()
+    });
   }
 
   async triggerHeartbeat(): Promise<void> {
