@@ -2852,15 +2852,31 @@ export async function runEmbeddedAttempt(
           }
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
             if (preRunForecast) {
-              const forecastPromptBlock = buildEnergyForecastPromptBlock(preRunForecast);
-              effectivePrompt = `${forecastPromptBlock}\n\n${effectivePrompt}`;
+              try {
+                const forecastPromptBlock = buildEnergyForecastPromptBlock(preRunForecast);
+                effectivePrompt = `${forecastPromptBlock}\n\n${effectivePrompt}`;
+                emitBrainReasoningEvent(params, {
+                  phase: "autonomy",
+                  label: "FORECAST_PRE",
+                  summary:
+                    `forecast injected (trajectory=${preRunForecast.trajectory}; ` +
+                    `confidence=${preRunForecast.confidence.toFixed(2)}; ` +
+                    `strength=${preRunForecast.signalStrength.toFixed(1)})`,
+                  source: "proto33-g10.forecast-preinject",
+                });
+              } catch (forecastPreErr) {
+                emitBrainReasoningEvent(params, {
+                  phase: "autonomy",
+                  label: "FORECAST_PRE",
+                  summary: `fail-open: ${String(forecastPreErr)}`,
+                  source: "proto33-g10.forecast-preinject",
+                });
+              }
+            } else {
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
                 label: "FORECAST_PRE",
-                summary:
-                  `forecast injected (trajectory=${preRunForecast.trajectory}; ` +
-                  `confidence=${preRunForecast.confidence.toFixed(2)}; ` +
-                  `strength=${preRunForecast.signalStrength.toFixed(1)})`,
+                summary: "fail-open: forecast unavailable before prompt injection",
                 source: "proto33-g10.forecast-preinject",
               });
             }
