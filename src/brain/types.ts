@@ -37,6 +37,16 @@ export type BrainDecisionInput = {
 
 export type BrainSubconsciousMode = "answer_direct" | "ask_clarify" | "plan_then_answer";
 
+export type IntuitionPayload = {
+  content: string;
+  confidence: number;
+  urgency: number;
+  timestamp: number;
+  dynamicCfg?: number;
+  auraStressLevel?: number;
+  source?: string;
+};
+
 export type BrainSubconsciousBrief = {
   goal: string;
   risk: BrainRiskLevel;

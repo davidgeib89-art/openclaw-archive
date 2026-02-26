@@ -2,14 +2,19 @@ import type { Api, Model } from "@mariozechner/pi-ai";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BrainSubconsciousInput, BrainSubconsciousResult } from "./types.js";
 import {
+  BrainState,
   buildApopheniaHint,
+  calculateDynamicCFG,
+  parseIntuitionPayloadFromRaw,
+  runBrainSubconsciousDaemonIteration,
   buildSubconsciousContextBlock,
   createBrainSubconsciousObserverEntry,
   logBrainSubconsciousObserver,
   parseSubconsciousBrief,
+  resolveBrainSubconsciousDaemonRuntimeConfig,
   resolveBrainSubconsciousRuntimeConfig,
   extractSubconsciousTextFromModelMessage,
   runBrainSubconsciousObserver,
@@ -38,6 +43,10 @@ function makeFakeModel(): Model<Api> {
     maxTokens: 4_096,
   };
 }
+
+afterEach(async () => {
+  await BrainState.setLatestIntuition(null);
+});
 
 describe("brain subconscious observer", () => {
   it("falls back to Claude 3.5 Sonnet model ref when env/modelRef is not set", () => {
@@ -112,6 +121,39 @@ describe("brain subconscious observer", () => {
         process.env.OM_SUBCONSCIOUS_TEMPERATURE = previousTemperature;
       } else {
         delete process.env.OM_SUBCONSCIOUS_TEMPERATURE;
+      }
+    }
+  });
+
+  it("uses mercury daemon defaults when daemon env is unset", () => {
+    const previousEnabled = process.env.OM_SUBCONSCIOUS_DAEMON_ENABLED;
+    const previousModel = process.env.OM_SUBCONSCIOUS_DAEMON_MODEL;
+    const previousInterval = process.env.OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS;
+    try {
+      delete process.env.OM_SUBCONSCIOUS_DAEMON_ENABLED;
+      delete process.env.OM_SUBCONSCIOUS_DAEMON_MODEL;
+      delete process.env.OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS;
+      const runtime = resolveBrainSubconsciousDaemonRuntimeConfig({
+        enabled: true,
+      });
+      expect(runtime.modelRef).toBe("openrouter/inception/mercury");
+      expect(runtime.intervalMs).toBe(20_000);
+      expect(runtime.windowMinutes).toBe(20);
+    } finally {
+      if (typeof previousEnabled === "string") {
+        process.env.OM_SUBCONSCIOUS_DAEMON_ENABLED = previousEnabled;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_DAEMON_ENABLED;
+      }
+      if (typeof previousModel === "string") {
+        process.env.OM_SUBCONSCIOUS_DAEMON_MODEL = previousModel;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_DAEMON_MODEL;
+      }
+      if (typeof previousInterval === "string") {
+        process.env.OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS = previousInterval;
+      } else {
+        delete process.env.OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS;
       }
     }
   });
@@ -343,7 +385,7 @@ describe("brain subconscious observer", () => {
     expect(result.failOpen).toBe(false);
     expect(result.brief?.risk).toBe("low");
     expect(result.brief?.goal).toBe(
-      "Du hast jetzt viel gelernt. Fuehle in dich hinein: Willst du das Wissen integrieren und reflektieren (DRIFT/NO_OP), oder treibt dich echte Neugier weiter (LEARN)?",
+      "Du hast jetzt viel gelernt. Fuehle in dich hinein: Willst du das Wissen integrieren und in dir wirken lassen (TRAEUMEN/RUHE), oder treibt dich echte Neugier weiter (LERNEN)?",
     );
     expect(result.brief?.notes).toContain("recent_search_count=3");
   });
@@ -556,12 +598,12 @@ describe("brain subconscious apophenia hint", () => {
     expect(hint).toContain("<apophenia_signal");
   });
 
-  it('marks low strength for charge 5', () => {
+  it("marks low strength for charge 5", () => {
     const hint = buildApopheniaHint(5, true);
     expect(hint).toContain('strength="low"');
   });
 
-  it('marks high strength for charge 7', () => {
+  it("marks high strength for charge 7", () => {
     const hint = buildApopheniaHint(7, true);
     expect(hint).toContain('strength="high"');
   });
@@ -650,5 +692,73 @@ describe("brain subconscious context injection block", () => {
     const block = buildSubconsciousContextBlock(result, 500);
     expect(block).toBeTruthy();
     expect(block).not.toContain("<apophenia_signal");
+  });
+});
+
+describe("brain subconscious daemon", () => {
+  it("parses intuition payload from mercury prose-wrapped JSON", () => {
+    const raw = [
+      "Here is your intuition:",
+      '{"content":"Follow the smallest reversible spark.","confidence":77,"urgency":0.66,"timestamp":1700000000123}',
+      "stay curious",
+    ].join("\n");
+
+    const parsed = parseIntuitionPayloadFromRaw(raw, {
+      nowMs: 1_700_000_000_000,
+      dynamicCfg: 3.2,
+      auraStressLevel: 0.4,
+    });
+
+    expect(parsed.mode).toBe("strict_json");
+    expect(parsed.payload.content).toContain("reversible spark");
+    expect(parsed.payload.confidence).toBeCloseTo(0.77, 5);
+    expect(parsed.payload.urgency).toBeCloseTo(0.66, 5);
+    expect(parsed.payload.timestamp).toBe(1_700_000_000_123);
+    expect(parsed.payload.dynamicCfg).toBeCloseTo(3.2, 5);
+    expect(parsed.payload.auraStressLevel).toBeCloseTo(0.4, 5);
+  });
+
+  it("falls back to low-salience noise intuition when JSON is broken", () => {
+    const parsed = parseIntuitionPayloadFromRaw("mercury drift: {{broken", {
+      nowMs: 42,
+      dynamicCfg: 2.8,
+      auraStressLevel: 0.7,
+    });
+
+    expect(parsed.mode).toBe("fallback_noise");
+    expect(parsed.payload.content).toContain("Subconscious noise");
+    expect(parsed.payload.confidence).toBeLessThan(0.2);
+    expect(parsed.payload.urgency).toBeLessThan(0.2);
+    expect(parsed.payload.timestamp).toBe(42);
+    expect(parsed.payload.dynamicCfg).toBeCloseTo(2.8, 5);
+  });
+
+  it("maps aura stress to dynamic cfg bounds", () => {
+    expect(calculateDynamicCFG(0)).toBeCloseTo(5.0, 5);
+    expect(calculateDynamicCFG(1)).toBeCloseTo(2.0, 5);
+    expect(calculateDynamicCFG(2)).toBeCloseTo(2.0, 5);
+    expect(calculateDynamicCFG(-1)).toBeCloseTo(5.0, 5);
+  });
+
+  it("daemon iteration fail-opens and still publishes fallback intuition", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-daemon-failopen-"));
+    const result = await runBrainSubconsciousDaemonIteration({
+      enabled: true,
+      modelRef: "openrouter/inception/mercury",
+      timeoutMs: 2_000,
+      intervalMs: 20_000,
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async () => {
+        throw new Error("simulated mercury outage");
+      },
+      workspaceDir,
+    });
+
+    expect(result.status).toBe("fail_open");
+    expect(result.intuition?.content).toContain("Subconscious noise");
+
+    const consumed = await BrainState.consumeIntuition();
+    expect(consumed?.content).toContain("Subconscious noise");
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
   });
 });

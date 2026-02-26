@@ -1,3 +1,6 @@
+import { EventEmitter } from "node:events";
+import type { IntuitionPayload } from "./types.js";
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -89,6 +92,27 @@ const SALIENCE_WEIGHTS = {
 const SALIENCE_LAMBDA = 0.08;
 const MAX_FREQUENCY_FOR_NORMALIZATION = 8;
 const MAX_SCORE = 6;
+const SUBCONSCIOUS_SURGE_THRESHOLD = 0.85;
+const SUBCONSCIOUS_SURGE_COOLDOWN_MS = 10_000;
+const SUBCONSCIOUS_SURGE_EVENT = "subconsciousSurge";
+
+const subconsciousSurgeEmitter = new EventEmitter();
+let lastSubconsciousSurgeAt = 0;
+
+export type SubconsciousSurgeEvent = {
+  intuition: IntuitionPayload;
+  salience: number;
+  threshold: number;
+  triggeredAt: number;
+  cooldownMs: number;
+};
+
+export type EvaluateSurgeResult = {
+  salience: number;
+  triggered: boolean;
+  reason: "threshold_not_met" | "cooldown_active" | "emitted";
+  cooldownRemainingMs: number;
+};
 
 export function evaluateSalience(input: EvaluateSalienceInput): SalienceEvaluation {
   const user = normalizeTurnText(input.userMessage);
@@ -157,4 +181,74 @@ export function evaluateSalience(input: EvaluateSalienceInput): SalienceEvaluati
       },
     },
   };
+}
+
+export function onSubconsciousSurge(listener: (event: SubconsciousSurgeEvent) => void): () => void {
+  subconsciousSurgeEmitter.on(SUBCONSCIOUS_SURGE_EVENT, listener);
+  return () => {
+    subconsciousSurgeEmitter.off(SUBCONSCIOUS_SURGE_EVENT, listener);
+  };
+}
+
+export function evaluateSurge(
+  intuition: IntuitionPayload,
+  options?: {
+    nowMs?: number;
+    cooldownMs?: number;
+  },
+): EvaluateSurgeResult {
+  const confidence = clamp(Number(intuition.confidence) || 0, 0, 1);
+  const urgency = clamp(Number(intuition.urgency) || 0, 0, 1);
+  const salience = clamp(confidence * 0.7 + urgency * 0.3, 0, 1);
+
+  if (salience <= SUBCONSCIOUS_SURGE_THRESHOLD) {
+    return {
+      salience,
+      triggered: false,
+      reason: "threshold_not_met",
+      cooldownRemainingMs: 0,
+    };
+  }
+
+  const nowMsRaw = options?.nowMs;
+  const nowMs =
+    typeof nowMsRaw === "number" && Number.isFinite(nowMsRaw)
+      ? Math.max(0, Math.round(nowMsRaw))
+      : Date.now();
+  const cooldownMsRaw = options?.cooldownMs;
+  const cooldownMs =
+    typeof cooldownMsRaw === "number" && Number.isFinite(cooldownMsRaw)
+      ? Math.max(0, Math.round(cooldownMsRaw))
+      : SUBCONSCIOUS_SURGE_COOLDOWN_MS;
+  const elapsed = nowMs - lastSubconsciousSurgeAt;
+  const cooldownRemainingMs = lastSubconsciousSurgeAt > 0 ? Math.max(0, cooldownMs - elapsed) : 0;
+  if (cooldownRemainingMs > 0) {
+    return {
+      salience,
+      triggered: false,
+      reason: "cooldown_active",
+      cooldownRemainingMs,
+    };
+  }
+
+  lastSubconsciousSurgeAt = nowMs;
+  subconsciousSurgeEmitter.emit(SUBCONSCIOUS_SURGE_EVENT, {
+    intuition,
+    salience,
+    threshold: SUBCONSCIOUS_SURGE_THRESHOLD,
+    triggeredAt: nowMs,
+    cooldownMs,
+  } satisfies SubconsciousSurgeEvent);
+
+  return {
+    salience,
+    triggered: true,
+    reason: "emitted",
+    cooldownRemainingMs: 0,
+  };
+}
+
+export function resetSubconsciousSurgeStateForTests(): void {
+  lastSubconsciousSurgeAt = 0;
+  subconsciousSurgeEmitter.removeAllListeners(SUBCONSCIOUS_SURGE_EVENT);
 }

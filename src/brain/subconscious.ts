@@ -11,12 +11,14 @@ import type {
   BrainSubconsciousInput,
   BrainSubconsciousObserverEntry,
   BrainSubconsciousResult,
+  IntuitionPayload,
 } from "./types.js";
-import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
+import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { getDefaultBrainObserverDir } from "./decision.js";
+import { evaluateSurge } from "./salience.js";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MIN_TIMEOUT_MS = 1_000;
@@ -35,12 +37,191 @@ const MIN_SUBCONSCIOUS_CHARGE = -9;
 const MAX_SUBCONSCIOUS_CHARGE = 9;
 const SUBCONSCIOUS_CONTEXT_OPEN_TAG = "<subconscious_context>";
 const SUBCONSCIOUS_CONTEXT_CLOSE_TAG = "</subconscious_context>";
+const SUBCONSCIOUS_DAEMON_LAYER = "BRAIN-SUBCONSCIOUS-DAEMON";
 const OM_ACTIVITY_LOG_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE || ".",
   ".openclaw",
   "workspace",
 );
 const OM_ACTIVITY_LOG_FILE = path.join(OM_ACTIVITY_LOG_DIR, "OM_ACTIVITY.log");
+const OM_ACTIVITY_JSONL_FILE = path.join(OM_ACTIVITY_LOG_DIR, "OM_ACTIVITY.jsonl");
+const AURA_SACRED_FILE = path.join(OM_ACTIVITY_LOG_DIR, "knowledge", "sacred", "AURA.md");
+const AURA_OVERALL_REGEX = /##\s*Gesamt-Aura:\s*([0-9]+(?:[.,][0-9]+)?)/i;
+const DEFAULT_DAEMON_MODEL_REF = "openrouter/inception/mercury";
+const DEFAULT_DAEMON_INTERVAL_MS = 20_000;
+const MIN_DAEMON_INTERVAL_MS = 5_000;
+const MAX_DAEMON_INTERVAL_MS = 120_000;
+const DEFAULT_DAEMON_WINDOW_MINUTES = 20;
+const MIN_DAEMON_WINDOW_MINUTES = 5;
+const MAX_DAEMON_WINDOW_MINUTES = 30;
+const DEFAULT_DAEMON_MAX_ENTRIES = 90;
+const MIN_DAEMON_MAX_ENTRIES = 20;
+const MAX_DAEMON_MAX_ENTRIES = 160;
+const DEFAULT_DAEMON_TAIL_BYTES = 256_000;
+const MIN_DAEMON_TAIL_BYTES = 32_000;
+const MAX_DAEMON_TAIL_BYTES = 1_048_576;
+const DEFAULT_DAEMON_TIMEOUT_MS = 7_000;
+const DEFAULT_DAEMON_BASE_TEMPERATURE = 0.45;
+const DEFAULT_DYNAMIC_CFG = 5.0;
+const DYNAMIC_CFG_STRESS_MULTIPLIER = 0.6;
+const MERCURY_JSON_CONTENT_MAX_CHARS = 280;
+const DEFAULT_DAEMON_FALLBACK_INTUITION =
+  "Subconscious noise: fragmented dream residue drifts through the field.";
+
+type DaemonNoiseEntry = {
+  timestampMs: number | null;
+  layer: string;
+  event: string;
+  details: string;
+};
+
+export type BrainSubconsciousDaemonRuntimeConfig = {
+  enabled: boolean;
+  modelRef: string;
+  timeoutMs: number;
+  intervalMs: number;
+  windowMinutes: number;
+  maxEntries: number;
+  tailBytes: number;
+  baseTemperature: number;
+};
+
+export type BrainSubconsciousDaemonStartInput = {
+  cfg?: OpenClawConfig;
+  resolveCfg?: () => OpenClawConfig | undefined;
+  workspaceDir?: string;
+  resolveWorkspaceDir?: () => string | undefined;
+  enabled?: boolean;
+  modelRef?: string;
+  timeoutMs?: number;
+  intervalMs?: number;
+  windowMinutes?: number;
+  maxEntries?: number;
+  tailBytes?: number;
+  temperature?: number;
+  activityLogger?: (event: string, details: string) => void;
+  modelResolver?: BrainSubconsciousModelResolver;
+  modelInvoker?: BrainSubconsciousModelInvoker;
+};
+
+export type BrainSubconsciousDaemonIterationResult = {
+  status: "ok" | "fail_open" | "skipped";
+  reason?: string;
+  intuition?: IntuitionPayload;
+  surgeTriggered?: boolean;
+};
+
+export type BrainSubconsciousDaemonHandle = {
+  stop: () => void;
+  isRunning: () => boolean;
+};
+
+export type ParsedIntuitionPayloadResult = {
+  payload: IntuitionPayload;
+  mode: "strict_json" | "repaired_json" | "regex_json" | "fallback_noise";
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeProbability(raw: unknown, fallback: number): number {
+  const candidate = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(candidate)) {
+    return clampNumber(fallback, 0, 1);
+  }
+  if (candidate > 1 && candidate <= 100) {
+    return clampNumber(candidate / 100, 0, 1);
+  }
+  return clampNumber(candidate, 0, 1);
+}
+
+function normalizeDaemonIntervalMs(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_DAEMON_INTERVAL_MS;
+  }
+  return Math.min(MAX_DAEMON_INTERVAL_MS, Math.max(MIN_DAEMON_INTERVAL_MS, Math.round(raw)));
+}
+
+function normalizeDaemonWindowMinutes(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_DAEMON_WINDOW_MINUTES;
+  }
+  return Math.min(MAX_DAEMON_WINDOW_MINUTES, Math.max(MIN_DAEMON_WINDOW_MINUTES, Math.round(raw)));
+}
+
+function normalizeDaemonMaxEntries(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_DAEMON_MAX_ENTRIES;
+  }
+  return Math.min(MAX_DAEMON_MAX_ENTRIES, Math.max(MIN_DAEMON_MAX_ENTRIES, Math.round(raw)));
+}
+
+function normalizeDaemonTailBytes(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_DAEMON_TAIL_BYTES;
+  }
+  return Math.min(MAX_DAEMON_TAIL_BYTES, Math.max(MIN_DAEMON_TAIL_BYTES, Math.round(raw)));
+}
+
+function normalizeDaemonTemperature(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_DAEMON_BASE_TEMPERATURE;
+  }
+  return Math.min(MAX_SUBCONSCIOUS_TEMPERATURE, Math.max(MIN_SUBCONSCIOUS_TEMPERATURE, raw));
+}
+
+function truncateDaemonText(value: string, maxChars: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  if (maxChars <= 3) {
+    return normalized.slice(0, maxChars);
+  }
+  return `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
+}
+
+class BrainStateStore {
+  private latestIntuition: IntuitionPayload | null = null;
+  private queue: Promise<void> = Promise.resolve();
+
+  private async enqueue<T>(operation: () => T | Promise<T>): Promise<T> {
+    let result!: T;
+    const run = this.queue.then(async () => {
+      result = await operation();
+    });
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    await run;
+    return result;
+  }
+
+  async setLatestIntuition(intuition: IntuitionPayload | null): Promise<void> {
+    await this.enqueue(() => {
+      this.latestIntuition = intuition ? { ...intuition } : null;
+    });
+  }
+
+  async peekIntuition(): Promise<IntuitionPayload | null> {
+    return this.enqueue(() => (this.latestIntuition ? { ...this.latestIntuition } : null));
+  }
+
+  async consumeIntuition(): Promise<IntuitionPayload | null> {
+    return this.enqueue(() => {
+      const intuition = this.latestIntuition ? { ...this.latestIntuition } : null;
+      this.latestIntuition = null;
+      return intuition;
+    });
+  }
+}
+
+export const BrainState = new BrainStateStore();
 
 const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
   .object({
@@ -49,7 +230,13 @@ const BrainSubconsciousBriefSchema: z.ZodType<BrainSubconsciousBrief> = z
     mustAskUser: z.boolean(),
     recommendedMode: z.enum(["answer_direct", "ask_clarify", "plan_then_answer"]),
     notes: z.string().max(MAX_NOTES_CHARS).optional().default(""),
-    charge: z.number().int().min(MIN_SUBCONSCIOUS_CHARGE).max(MAX_SUBCONSCIOUS_CHARGE).optional().default(0),
+    charge: z
+      .number()
+      .int()
+      .min(MIN_SUBCONSCIOUS_CHARGE)
+      .max(MAX_SUBCONSCIOUS_CHARGE)
+      .optional()
+      .default(0),
   })
   .strict();
 
@@ -108,7 +295,9 @@ function buildCuriositySignature(curiosity: BrainSubconsciousCuriositySignals): 
   return parts.join(";");
 }
 
-function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): BrainSubconsciousBrief {
+function buildHomeostasisFallbackBrief(
+  telemetry: BrainHomeostasisTelemetry,
+): BrainSubconsciousBrief {
   const context = telemetry.context_window_usage_percent;
   const latency = telemetry.current_latency_ms;
   const errors = telemetry.recent_tool_error_count;
@@ -123,10 +312,15 @@ function buildHomeostasisFallbackBrief(telemetry: BrainHomeostasisTelemetry): Br
   }
 
   const pressure =
-    context >= 85 ? "high-context-pressure" : context >= 65 ? "moderate-context-pressure" : "clear-context";
+    context >= 85
+      ? "high-context-pressure"
+      : context >= 65
+        ? "moderate-context-pressure"
+        : "clear-context";
   const rhythm =
     latency >= 22_000 ? "heavy-latency" : latency >= 10_000 ? "slow-latency" : "stable-latency";
-  const footing = errors >= 3 ? "repeated-tool-stumble" : errors >= 1 ? "light-tool-stumble" : "stable-tools";
+  const footing =
+    errors >= 3 ? "repeated-tool-stumble" : errors >= 1 ? "light-tool-stumble" : "stable-tools";
   const epistemicPace = searchCount >= 3 ? "search-overheat" : "search-steady";
   const sensation = [pressure, rhythm, footing, epistemicPace].join(",");
   const telemetrySignature = buildTelemetrySignature(telemetry);
@@ -206,12 +400,13 @@ function buildFallbackBrief(
     const telemetrySignature = telemetry ? buildTelemetrySignature(telemetry) : null;
     const curiositySignature = curiositySignals ? buildCuriositySignature(curiositySignals) : null;
     const signatures = [telemetrySignature, curiositySignature].filter(Boolean).join(";");
-    const notes = signatures.length > 0
-      ? trimToLimit(
-          `${CREATIVE_EGO_FALLBACK_NOTES} signals:${signatures}`.trim(),
-          MAX_NOTES_CHARS,
-        )
-      : CREATIVE_EGO_FALLBACK_NOTES;
+    const notes =
+      signatures.length > 0
+        ? trimToLimit(
+            `${CREATIVE_EGO_FALLBACK_NOTES} signals:${signatures}`.trim(),
+            MAX_NOTES_CHARS,
+          )
+        : CREATIVE_EGO_FALLBACK_NOTES;
     return {
       goal: CREATIVE_EGO_FALLBACK_TEXT,
       risk: "low",
@@ -280,10 +475,7 @@ function ensureCreativeEgoBrief(
 }
 
 function normalizeSubconsciousCharge(value: number): number {
-  return Math.max(
-    MIN_SUBCONSCIOUS_CHARGE,
-    Math.min(MAX_SUBCONSCIOUS_CHARGE, Math.round(value)),
-  );
+  return Math.max(MIN_SUBCONSCIOUS_CHARGE, Math.min(MAX_SUBCONSCIOUS_CHARGE, Math.round(value)));
 }
 
 function parseSubconsciousCharge(raw: string): number {
@@ -429,12 +621,16 @@ function normalizeCuriositySignals(
   if (!raw) {
     return undefined;
   }
-  const recallHits = Number.isFinite(raw.recall_hits) ? Math.max(0, Math.round(raw.recall_hits)) : 0;
+  const recallHits = Number.isFinite(raw.recall_hits)
+    ? Math.max(0, Math.round(raw.recall_hits))
+    : 0;
   const energyLevel = Number.isFinite(raw.energy_level)
     ? Math.max(0, Math.round(raw.energy_level as number))
     : undefined;
   const energyMode =
-    raw.energy_mode === "dream" || raw.energy_mode === "balanced" || raw.energy_mode === "initiative"
+    raw.energy_mode === "dream" ||
+    raw.energy_mode === "balanced" ||
+    raw.energy_mode === "initiative"
       ? raw.energy_mode
       : undefined;
   return {
@@ -494,6 +690,98 @@ export function resolveBrainSubconsciousRuntimeConfig(
     modelRef,
     timeoutMs,
     temperature,
+  };
+}
+
+export function resolveBrainSubconsciousDaemonRuntimeConfig(
+  input: Pick<
+    BrainSubconsciousDaemonStartInput,
+    | "cfg"
+    | "enabled"
+    | "modelRef"
+    | "timeoutMs"
+    | "intervalMs"
+    | "windowMinutes"
+    | "maxEntries"
+    | "tailBytes"
+    | "temperature"
+  > = {},
+): BrainSubconsciousDaemonRuntimeConfig {
+  const cfgEnabledRaw = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_ENABLED");
+  const sharedEnabledRaw = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_ENABLED");
+  const enabled =
+    input.enabled ??
+    (cfgEnabledRaw
+      ? isTruthyEnvValue(cfgEnabledRaw)
+      : sharedEnabledRaw
+        ? isTruthyEnvValue(sharedEnabledRaw)
+        : isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_DAEMON_ENABLED) ||
+          isTruthyEnvValue(process.env.OM_SUBCONSCIOUS_ENABLED));
+
+  const cfgModelRef = readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_MODEL");
+  const modelRef =
+    normalizeModelRef(input.modelRef ?? cfgModelRef ?? process.env.OM_SUBCONSCIOUS_DAEMON_MODEL) ??
+    DEFAULT_DAEMON_MODEL_REF;
+
+  const cfgTimeoutRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_TIMEOUT_MS"),
+  );
+  const envTimeoutRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_TIMEOUT_MS);
+  const timeoutMs = normalizeTimeoutMs(
+    typeof input.timeoutMs === "number"
+      ? input.timeoutMs
+      : (cfgTimeoutRaw ?? envTimeoutRaw ?? DEFAULT_DAEMON_TIMEOUT_MS),
+  );
+
+  const cfgIntervalRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS"),
+  );
+  const envIntervalRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_INTERVAL_MS);
+  const intervalMs = normalizeDaemonIntervalMs(
+    typeof input.intervalMs === "number" ? input.intervalMs : (cfgIntervalRaw ?? envIntervalRaw),
+  );
+
+  const cfgWindowRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_WINDOW_MINUTES"),
+  );
+  const envWindowRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_WINDOW_MINUTES);
+  const windowMinutes = normalizeDaemonWindowMinutes(
+    typeof input.windowMinutes === "number" ? input.windowMinutes : (cfgWindowRaw ?? envWindowRaw),
+  );
+
+  const cfgEntriesRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_MAX_ENTRIES"),
+  );
+  const envEntriesRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_MAX_ENTRIES);
+  const maxEntries = normalizeDaemonMaxEntries(
+    typeof input.maxEntries === "number" ? input.maxEntries : (cfgEntriesRaw ?? envEntriesRaw),
+  );
+
+  const cfgTailRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_TAIL_BYTES"),
+  );
+  const envTailRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_TAIL_BYTES);
+  const tailBytes = normalizeDaemonTailBytes(
+    typeof input.tailBytes === "number" ? input.tailBytes : (cfgTailRaw ?? envTailRaw),
+  );
+
+  const cfgTempRaw = parseOptionalNumber(
+    readConfigEnvVar(input.cfg, "OM_SUBCONSCIOUS_DAEMON_TEMPERATURE"),
+  );
+  const envTempRaw = Number(process.env.OM_SUBCONSCIOUS_DAEMON_TEMPERATURE);
+  const baseTemperature = normalizeDaemonTemperature(
+    typeof input.temperature === "number" ? input.temperature : (cfgTempRaw ?? envTempRaw),
+  );
+
+  return {
+    enabled,
+    modelRef,
+    timeoutMs,
+    intervalMs,
+    windowMinutes,
+    maxEntries,
+    tailBytes,
+    baseTemperature,
   };
 }
 
@@ -712,6 +1000,335 @@ export function parseSubconsciousBrief(raw: string): BrainSubconsciousBrief {
   };
 }
 
+function parseActivityTimestamp(raw: string): number | null {
+  const normalized = raw.trim();
+  if (!normalized) {
+    return null;
+  }
+  const candidate = normalized.replace(" ", "T");
+  const parsed = new Date(candidate);
+  const ms = parsed.getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function parseDaemonNoiseEntries(raw: string): DaemonNoiseEntry[] {
+  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const entries: DaemonNoiseEntry[] = [];
+  let current: DaemonNoiseEntry | null = null;
+
+  for (const line of lines) {
+    const headerMatch = line.match(
+      /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[([^\]]+)\]\s*(.*)$/,
+    );
+    if (headerMatch) {
+      if (current) {
+        entries.push(current);
+      }
+      current = {
+        timestampMs: parseActivityTimestamp(headerMatch[1] ?? ""),
+        layer: (headerMatch[2] ?? "unknown").trim(),
+        event: (headerMatch[3] ?? "").trim(),
+        details: "",
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+    const detail = line.trim();
+    if (detail.length === 0) {
+      continue;
+    }
+    current.details = current.details.length > 0 ? `${current.details}\n${detail}` : detail;
+  }
+
+  if (current) {
+    entries.push(current);
+  }
+
+  return entries;
+}
+
+async function readFileTailUtf8(filePath: string, maxBytes: number): Promise<string> {
+  const handle = await fs.promises.open(filePath, "r");
+  try {
+    const stat = await handle.stat();
+    if (stat.size <= 0) {
+      return "";
+    }
+    const bytesToRead = Math.min(Math.max(1, maxBytes), stat.size);
+    const buffer = Buffer.alloc(bytesToRead);
+    const start = Math.max(0, stat.size - bytesToRead);
+    await handle.read(buffer, 0, bytesToRead, start);
+    return buffer.toString("utf-8");
+  } finally {
+    await handle.close();
+  }
+}
+
+function resolveActivityLogCandidates(workspaceDir: string): string[] {
+  const candidates = [
+    path.join(workspaceDir, "OM_ACTIVITY.jsonl"),
+    path.join(workspaceDir, "OM_ACTIVITY.log"),
+    OM_ACTIVITY_JSONL_FILE,
+    OM_ACTIVITY_LOG_FILE,
+  ];
+  return [...new Set(candidates)];
+}
+
+async function readRecentDaemonNoiseWindow(params: {
+  workspaceDir: string;
+  nowMs: number;
+  windowMinutes: number;
+  maxEntries: number;
+  tailBytes: number;
+}): Promise<string[]> {
+  const windowMs = Math.max(1, params.windowMinutes) * 60_000;
+  const cutoffMs = params.nowMs - windowMs;
+
+  for (const filePath of resolveActivityLogCandidates(params.workspaceDir)) {
+    try {
+      const tail = await readFileTailUtf8(filePath, params.tailBytes);
+      const parsed = parseDaemonNoiseEntries(tail);
+      if (parsed.length === 0) {
+        continue;
+      }
+      let recent = parsed.filter(
+        (entry) => entry.timestampMs === null || entry.timestampMs >= cutoffMs,
+      );
+      if (recent.length === 0) {
+        recent = parsed.slice(-params.maxEntries);
+      }
+      const compact = recent.slice(-params.maxEntries).map((entry) => {
+        const ts =
+          typeof entry.timestampMs === "number"
+            ? new Date(entry.timestampMs).toISOString()
+            : "no-ts";
+        const event = entry.event.length > 0 ? entry.event : "event";
+        const details = truncateDaemonText(entry.details, 180);
+        return details.length > 0
+          ? `[${ts}] [${entry.layer}] ${event} :: ${details}`
+          : `[${ts}] [${entry.layer}] ${event}`;
+      });
+      if (compact.length > 0) {
+        return compact;
+      }
+    } catch {
+      // Try the next candidate file (fail-open).
+    }
+  }
+
+  return [];
+}
+
+async function readAuraStressLevel(workspaceDir: string): Promise<number> {
+  const candidates = [path.join(workspaceDir, "knowledge", "sacred", "AURA.md"), AURA_SACRED_FILE];
+  for (const filePath of [...new Set(candidates)]) {
+    try {
+      const raw = await fs.promises.readFile(filePath, "utf-8");
+      const match = raw.match(AURA_OVERALL_REGEX);
+      const overallRaw = match?.[1]?.replace(",", ".");
+      if (!overallRaw) {
+        continue;
+      }
+      const overall = Number.parseFloat(overallRaw);
+      if (!Number.isFinite(overall)) {
+        continue;
+      }
+      return clampNumber(1 - clampNumber(overall, 0, 100) / 100, 0, 1);
+    } catch {
+      // Keep trying.
+    }
+  }
+  return 0;
+}
+
+export function calculateDynamicCFG(auraStressLevel: number): number {
+  const stress = clampNumber(auraStressLevel, 0, 1);
+  const cfg = DEFAULT_DYNAMIC_CFG * (1 - stress * DYNAMIC_CFG_STRESS_MULTIPLIER);
+  return Math.round(cfg * 100) / 100;
+}
+
+function mapDynamicCfgToTemperature(dynamicCfg: number, baseTemperature: number): number {
+  // OpenRouter Mercury does not expose a guaranteed guidance_scale in this SDK layer.
+  // We emulate CFG impact through temperature (low cfg => wilder associations).
+  const chaos = clampNumber((DEFAULT_DYNAMIC_CFG - dynamicCfg) / 3, 0, 1);
+  return normalizeTemperature(baseTemperature + chaos * 0.85);
+}
+
+function buildDaemonPrompt(params: {
+  dynamicCfg: number;
+  auraStressLevel: number;
+  noiseLines: readonly string[];
+}): string {
+  const noiseBlock =
+    params.noiseLines.length > 0
+      ? params.noiseLines.join("\n")
+      : "[no recent telemetry found in sliding window]";
+
+  return [
+    "You are Om's subconscious whisper daemon (System 1).",
+    "Respond with ONE JSON object only.",
+    "Schema:",
+    '{"content":"...", "confidence":0.0, "urgency":0.0, "timestamp":1700000000000}',
+    "No markdown. No prose outside JSON.",
+    `Dynamic CFG (strictness): ${params.dynamicCfg.toFixed(2)} (2.00=wild, 5.00=strict).`,
+    `Aura stress level: ${params.auraStressLevel.toFixed(2)} (0.00=zen, 1.00=panic).`,
+    "Interpret the noise and emit one concise intuition for Om's next reversible move.",
+    "confidence and urgency must be numbers between 0 and 1.",
+    "",
+    "Recent noise window:",
+    noiseBlock,
+  ].join("\n");
+}
+
+function buildFallbackNoiseIntuition(params: {
+  nowMs: number;
+  dynamicCfg?: number;
+  auraStressLevel?: number;
+}): IntuitionPayload {
+  return {
+    content: DEFAULT_DAEMON_FALLBACK_INTUITION,
+    confidence: 0.16,
+    urgency: 0.12,
+    timestamp: params.nowMs,
+    dynamicCfg: params.dynamicCfg,
+    auraStressLevel: params.auraStressLevel,
+    source: "subconscious_daemon_fallback",
+  };
+}
+
+function normalizeIntuitionObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function pickFirstString(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function pickFirstNumber(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): number | undefined {
+  for (const key of keys) {
+    const raw = record[key];
+    const value = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+export function parseIntuitionPayloadFromRaw(
+  raw: string,
+  options: {
+    nowMs?: number;
+    dynamicCfg?: number;
+    auraStressLevel?: number;
+  } = {},
+): ParsedIntuitionPayloadResult {
+  const nowMs =
+    typeof options.nowMs === "number" && Number.isFinite(options.nowMs)
+      ? Math.max(0, Math.round(options.nowMs))
+      : Date.now();
+  const fallback = buildFallbackNoiseIntuition({
+    nowMs,
+    dynamicCfg: options.dynamicCfg,
+    auraStressLevel: options.auraStressLevel,
+  });
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { payload: fallback, mode: "fallback_noise" };
+  }
+
+  const parseCandidate = (
+    candidate: string,
+    mode: "strict_json" | "repaired_json" | "regex_json",
+  ): ParsedIntuitionPayloadResult | null => {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const record = normalizeIntuitionObject(parsed);
+      if (!record) {
+        return null;
+      }
+      const content =
+        pickFirstString(record, ["content", "intuition", "message", "text", "dream", "insight"]) ??
+        truncateDaemonText(trimmed, MERCURY_JSON_CONTENT_MAX_CHARS);
+      const confidence = normalizeProbability(
+        pickFirstNumber(record, ["confidence", "confidence_score", "conf", "certainty"]),
+        fallback.confidence,
+      );
+      const urgency = normalizeProbability(
+        pickFirstNumber(record, ["urgency", "priority", "intensity", "importance", "salience"]),
+        fallback.urgency,
+      );
+      const timestampRaw = pickFirstNumber(record, ["timestamp", "ts", "time", "epoch_ms"]);
+      const timestamp =
+        typeof timestampRaw === "number" && Number.isFinite(timestampRaw)
+          ? Math.max(0, Math.round(timestampRaw))
+          : nowMs;
+      return {
+        payload: {
+          content: truncateDaemonText(content, MERCURY_JSON_CONTENT_MAX_CHARS),
+          confidence,
+          urgency,
+          timestamp,
+          dynamicCfg: options.dynamicCfg,
+          auraStressLevel: options.auraStressLevel,
+          source: "subconscious_daemon",
+        },
+        mode,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  try {
+    const strict = parseCandidate(extractJsonCandidate(trimmed), "strict_json");
+    if (strict) {
+      return strict;
+    }
+  } catch {
+    // Fall through to regex fallback.
+  }
+
+  try {
+    const repairedCandidate = escapeControlCharsInsideJsonStrings(extractJsonCandidate(trimmed));
+    const repaired = parseCandidate(repairedCandidate, "repaired_json");
+    if (repaired) {
+      return repaired;
+    }
+  } catch {
+    // Continue to regex fallback.
+  }
+
+  const regexCandidate = trimmed.match(/\{[\s\S]*\}/);
+  if (regexCandidate?.[0]) {
+    const regexParsed = parseCandidate(regexCandidate[0], "regex_json");
+    if (regexParsed) {
+      return regexParsed;
+    }
+  }
+
+  return { payload: fallback, mode: "fallback_noise" };
+}
+
 function buildSubconsciousPrompt(
   userMessage: string,
   homeostasis: BrainHomeostasisTelemetry | undefined,
@@ -750,9 +1367,7 @@ function buildSubconsciousPrompt(
         ...(typeof curiositySignals.energy_level === "number"
           ? [`energy_level: ${curiositySignals.energy_level}`]
           : []),
-        ...(curiositySignals.energy_mode
-          ? [`energy_mode: ${curiositySignals.energy_mode}`]
-          : []),
+        ...(curiositySignals.energy_mode ? [`energy_mode: ${curiositySignals.energy_mode}`] : []),
         ...(typeof curiositySignals.suggest_own_tasks === "boolean"
           ? [`suggest_own_tasks: ${curiositySignals.suggest_own_tasks ? "true" : "false"}`]
           : []),
@@ -964,8 +1579,7 @@ const defaultModelInvoker: BrainSubconsciousModelInvoker = async (input) => {
   const isTrinityMini =
     input.model.provider === "openrouter" &&
     /(?:^|\/)arcee-ai\/trinity-mini(?::|$)/i.test(input.model.id);
-  const isMiniMax =
-    input.model.provider === "minimax" || /(?:^|\/)minimax\b/i.test(input.model.id);
+  const isMiniMax = input.model.provider === "minimax" || /(?:^|\/)minimax\b/i.test(input.model.id);
   const isClaudeModel =
     (input.model.provider === "openrouter" &&
       /(?:^|\/)anthropic\/claude(?:-|\b)/i.test(input.model.id)) ||
@@ -1208,6 +1822,217 @@ export async function runBrainSubconsciousObserver(
       error: reason,
     };
   }
+}
+
+export async function runBrainSubconsciousDaemonIteration(
+  input: BrainSubconsciousDaemonStartInput = {},
+): Promise<BrainSubconsciousDaemonIterationResult> {
+  const logger =
+    input.activityLogger ??
+    ((event: string, details: string) => {
+      appendOmActivityLine(SUBCONSCIOUS_DAEMON_LAYER, event, details);
+    });
+
+  const cfg = input.resolveCfg?.() ?? input.cfg;
+  const workspaceDir = input.resolveWorkspaceDir?.() ?? input.workspaceDir ?? OM_ACTIVITY_LOG_DIR;
+  const runtime = resolveBrainSubconsciousDaemonRuntimeConfig({
+    cfg,
+    enabled: input.enabled,
+    modelRef: input.modelRef,
+    timeoutMs: input.timeoutMs,
+    intervalMs: input.intervalMs,
+    windowMinutes: input.windowMinutes,
+    maxEntries: input.maxEntries,
+    tailBytes: input.tailBytes,
+    temperature: input.temperature,
+  });
+
+  if (!runtime.enabled) {
+    return { status: "skipped", reason: "disabled" };
+  }
+
+  const startedAt = Date.now();
+  const nowMs = startedAt;
+  const auraStressLevel = await readAuraStressLevel(workspaceDir);
+  const dynamicCfg = calculateDynamicCFG(auraStressLevel);
+  const temperature = mapDynamicCfgToTemperature(dynamicCfg, runtime.baseTemperature);
+
+  const parsedRef = parseModelRef(runtime.modelRef);
+  if (!parsedRef) {
+    logger("FAIL_OPEN", `reason=invalid_model_ref;model=${sanitizeLogDetail(runtime.modelRef)}`);
+    return { status: "fail_open", reason: "invalid-model-ref" };
+  }
+
+  const resolver = input.modelResolver ?? defaultModelResolver;
+  const resolved = resolver({
+    provider: parsedRef.provider,
+    modelId: parsedRef.modelId,
+    cfg,
+    agentDir: undefined,
+  });
+  if (!resolved.model) {
+    logger("FAIL_OPEN", `reason=model_resolve_failed;model=${sanitizeLogDetail(runtime.modelRef)}`);
+    return { status: "fail_open", reason: "model-resolve-failed" };
+  }
+
+  const noiseLines = await readRecentDaemonNoiseWindow({
+    workspaceDir,
+    nowMs,
+    windowMinutes: runtime.windowMinutes,
+    maxEntries: runtime.maxEntries,
+    tailBytes: runtime.tailBytes,
+  });
+  const prompt = buildDaemonPrompt({
+    dynamicCfg,
+    auraStressLevel,
+    noiseLines,
+  });
+
+  const invoker = input.modelInvoker ?? defaultModelInvoker;
+  const apiKey = resolveSubconsciousApiKey(cfg, resolved.model.provider);
+  try {
+    const raw = await runWithTimeout(runtime.timeoutMs, (signal) =>
+      invoker({
+        model: resolved.model!,
+        userMessage: "subconscious-daemon",
+        prompt,
+        signal,
+        apiKey,
+        temperature,
+      }),
+    );
+    const parsed = parseIntuitionPayloadFromRaw(raw, {
+      nowMs,
+      dynamicCfg,
+      auraStressLevel,
+    });
+    await BrainState.setLatestIntuition(parsed.payload);
+    const surge = evaluateSurge(parsed.payload);
+    logger(
+      "TICK",
+      [
+        `durationMs=${Date.now() - startedAt}`,
+        `noise=${noiseLines.length}`,
+        `parse=${parsed.mode}`,
+        `cfg=${dynamicCfg.toFixed(2)}`,
+        `temp=${temperature.toFixed(2)}`,
+        `surge=${surge.triggered ? "yes" : "no"}`,
+      ].join(";"),
+    );
+    return {
+      status: "ok",
+      intuition: parsed.payload,
+      surgeTriggered: surge.triggered,
+    };
+  } catch (err) {
+    const fallback = buildFallbackNoiseIntuition({
+      nowMs,
+      dynamicCfg,
+      auraStressLevel,
+    });
+    try {
+      await BrainState.setLatestIntuition(fallback);
+      evaluateSurge(fallback);
+    } catch {
+      // fail-open: daemon must never propagate storage errors.
+    }
+    logger(
+      "FAIL_OPEN",
+      [
+        `durationMs=${Date.now() - startedAt}`,
+        `reason=${normalizeErrorMessage(err)}`,
+        "fallback=noise_intuition",
+      ].join(";"),
+    );
+    return {
+      status: "fail_open",
+      reason: normalizeErrorMessage(err),
+      intuition: fallback,
+      surgeTriggered: false,
+    };
+  }
+}
+
+export function startBrainSubconsciousDaemon(
+  input: BrainSubconsciousDaemonStartInput = {},
+): BrainSubconsciousDaemonHandle {
+  let stopped = false;
+  let inFlight = false;
+  const logger =
+    input.activityLogger ??
+    ((event: string, details: string) => {
+      appendOmActivityLine(SUBCONSCIOUS_DAEMON_LAYER, event, details);
+    });
+
+  const cfg = input.resolveCfg?.() ?? input.cfg;
+  const runtime = resolveBrainSubconsciousDaemonRuntimeConfig({
+    cfg,
+    enabled: input.enabled,
+    modelRef: input.modelRef,
+    timeoutMs: input.timeoutMs,
+    intervalMs: input.intervalMs,
+    windowMinutes: input.windowMinutes,
+    maxEntries: input.maxEntries,
+    tailBytes: input.tailBytes,
+    temperature: input.temperature,
+  });
+
+  if (!runtime.enabled) {
+    logger("SKIPPED", "reason=disabled");
+    return {
+      stop: () => {},
+      isRunning: () => false,
+    };
+  }
+
+  const runTick = async (reason: string) => {
+    if (stopped || inFlight) {
+      return;
+    }
+    inFlight = true;
+    try {
+      const result = await runBrainSubconsciousDaemonIteration({
+        ...input,
+        activityLogger: logger,
+      });
+      if (result.status === "skipped") {
+        logger("SKIPPED", `reason=${result.reason ?? "unknown"}`);
+      }
+    } catch (err) {
+      logger("FAIL_OPEN", `reason=${normalizeErrorMessage(err)};tick=${reason}`);
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  const timer = setInterval(() => {
+    void runTick("interval");
+  }, runtime.intervalMs);
+  timer.unref?.();
+
+  logger(
+    "START",
+    [
+      `intervalMs=${runtime.intervalMs}`,
+      `windowMinutes=${runtime.windowMinutes}`,
+      `maxEntries=${runtime.maxEntries}`,
+      `tailBytes=${runtime.tailBytes}`,
+      `model=${sanitizeLogDetail(runtime.modelRef)}`,
+    ].join(";"),
+  );
+  void runTick("bootstrap");
+
+  return {
+    stop: () => {
+      if (stopped) {
+        return;
+      }
+      stopped = true;
+      clearInterval(timer);
+      logger("STOP", "daemon stopped");
+    },
+    isRunning: () => !stopped,
+  };
 }
 
 export function createBrainSubconsciousObserverEntry(

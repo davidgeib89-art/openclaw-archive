@@ -264,8 +264,10 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 ✅ DONE: Phase G.9 (Entropie-Modell / Künstliche Langeweile) implementiert, um das Langeweile-Paradoxon aufzulösen.
 ✅ DONE: Phase G.10 (A1): Telemetry-only Forecast
 ✅ DONE: Phase G.10 (A2): Prompt Injection des Resonance Mirrors
-→ JETZT: 9-Heartbeat Validierung (Gate A3) prüfen ("Attraktor-Topologie im Parameterraum").
-→ DANN (Plan-Change David/Anti): Phase C (7 Synthetische Bedürfnisse) vorziehen! Schlaf (G.3) pausieren. Om muss zuerst Wachsein, Hunger, Neugier, Struktur fühlen lernen (die Architektur der "Homo"-Essenz), bevor sie in System-Schlaf gezwungen wird.
+✅ DONE: Phase G.11a (Die Infrastruktur): Latent Bridge (Amnesie der Tiefe), Salience Filter (Thalamus 0.85), CFG-Stress-Modulation, Interrupt-Wiring in attempt.ts und heartbeat-runner.ts.
+✅ DONE: Phase G.11b (Der Whisper Daemon - System 1): Asynchroner Hintergrundprozess mit Sliding-Window LogReader, robustem JSON-Fallback Parsing und Mercury 1 (`inception/mercury`). Oms Unterbewusstsein zuckt.
+→ JETZT: Beobachtung nach Gateway Neustart (Leben die asynchronen Whisper?)
+→ DANACH: Phase G.11c (The Somatic Synthesizer - System 2) starten.
 ```
 
 ### Phase G.6: Der Klare Pfad & Die Sanfte Rune — ✅ DONE (23.02.2026)

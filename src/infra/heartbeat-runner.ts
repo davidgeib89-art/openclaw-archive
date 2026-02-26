@@ -22,6 +22,8 @@ import {
 } from "../auto-reply/heartbeat.js";
 import { getReplyFromConfig } from "../auto-reply/reply.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import { onSubconsciousSurge } from "../brain/salience.js";
+import { startBrainSubconsciousDaemon } from "../brain/subconscious.js";
 import { getChannelPlugin } from "../channels/plugins/index.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { loadConfig } from "../config/config.js";
@@ -376,16 +378,16 @@ function normalizeHeartbeatReply(
   ackMaxChars: number,
 ) {
   const hasMedia = Boolean(payload.mediaUrl || (payload.mediaUrls?.length ?? 0) > 0);
-  
+
   // If there is media (like TTS audio), we want to preserve the text no matter the length.
   // Otherwise, if it's just short text and a token, we consider it a silent heartbeat.
   const stripMode = hasMedia ? "message" : "heartbeat";
-  
+
   const stripped = stripHeartbeatToken(payload.text, {
     mode: stripMode,
     maxAckChars: ackMaxChars,
   });
-  
+
   if (stripped.shouldSkip && !hasMedia) {
     return {
       shouldSkip: true,
@@ -436,7 +438,10 @@ export async function runHeartbeatOnce(opts: {
   // they have pending system events to process regardless of HEARTBEAT.md content.
   const isExecEventReason = opts.reason === "exec-event";
   const isCronEventReason = Boolean(opts.reason?.startsWith("cron:"));
-  const isWakeReason = opts.reason === "wake" || Boolean(opts.reason?.startsWith("hook:"));
+  const isWakeReason =
+    opts.reason === "wake" ||
+    opts.reason === "subconscious-surge" ||
+    Boolean(opts.reason?.startsWith("hook:"));
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
   const heartbeatFilePath = path.join(workspaceDir, DEFAULT_HEARTBEAT_FILENAME);
   try {
@@ -955,6 +960,20 @@ export function startHeartbeatRunner(opts: {
   };
 
   const wakeHandler: HeartbeatWakeHandler = async (params) => run({ reason: params.reason });
+  const subconsciousDaemon = startBrainSubconsciousDaemon({
+    resolveCfg: () => state.cfg,
+    resolveWorkspaceDir: () =>
+      resolveAgentWorkspaceDir(state.cfg, resolveDefaultAgentId(state.cfg)),
+  });
+  const disposeSubconsciousSurge = onSubconsciousSurge((event) => {
+    if (state.stopped || state.agents.size === 0 || !heartbeatsEnabled) {
+      return;
+    }
+    log.debug("heartbeat: subconscious surge wake", {
+      salience: Math.round(event.salience * 100) / 100,
+    });
+    requestHeartbeatNow({ reason: "subconscious-surge", coalesceMs: 0 });
+  });
   const disposeWakeHandler = setHeartbeatWakeHandler(wakeHandler);
   updateConfig(state.cfg);
 
@@ -963,6 +982,8 @@ export function startHeartbeatRunner(opts: {
       return;
     }
     state.stopped = true;
+    disposeSubconsciousSurge();
+    subconsciousDaemon.stop();
     disposeWakeHandler();
     if (state.timer) {
       clearTimeout(state.timer);
