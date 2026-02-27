@@ -228,7 +228,7 @@ export function sanitizeSomaticSentence(rawText: string, maxWords: number = 20):
 
 export function buildSomaticPromptBlock(sentence: string): string {
   const safeSentence = sanitizeSomaticSentence(sentence) || SOMATIC_FALLBACK_SENTENCE;
-  return ["<somatic_state>", safeSentence, "</somatic_state>"].join("\n");
+  return `*Somatic Echo:* ${safeSentence}`;
 }
 
 export function buildSomaticTelemetryPayload(input: BuildSomaticTelemetryInput): SomaticTelemetryPayload {
