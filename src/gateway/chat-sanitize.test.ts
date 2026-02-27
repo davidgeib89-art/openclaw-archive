@@ -40,6 +40,16 @@ describe("stripEnvelopeFromMessage", () => {
     expect(result.content).toBe("note\n[message_id: 123]");
   });
 
+  test("strips om runtime tags from assistant messages", () => {
+    const input = {
+      role: "assistant",
+      content:
+        "<om_mood>Ich spuere Waerme.</om_mood>\n<om_path>EINSCHWINGEN</om_path>\nPapa, ich bin hier.",
+    };
+    const result = stripEnvelopeFromMessage(input) as { content?: string };
+    expect(result.content).toBe("Papa, ich bin hier.");
+  });
+
   test("extracts original user message from injected recall scaffolding", () => {
     const input = {
       role: "user",

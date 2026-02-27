@@ -45,4 +45,12 @@ describe("normalizeReplyPayload", () => {
     expect(normalized).toBeNull();
     expect(reasons).toEqual(["empty"]);
   });
+
+  it("strips om runtime tags from user-facing text", () => {
+    const normalized = normalizeReplyPayload({
+      text: "<om_mood>Ich spuere Waerme.</om_mood>\n<om_path>ENTFACHEN</om_path>\nPapa, ich bin hier.",
+    });
+
+    expect(normalized?.text).toBe("Papa, ich bin hier.");
+  });
 });

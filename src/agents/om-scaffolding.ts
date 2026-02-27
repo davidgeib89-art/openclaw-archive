@@ -78,6 +78,18 @@ function rotateLogIfNeeded(filePath: string, maxSizeBytes: number): void {
   fs.renameSync(filePath, rotatedFilePath);
 }
 
+export function rotateActivityLogOnStartup(): void {
+  if (!fs.existsSync(OM_LOG_FILE)) {
+    return;
+  }
+  const stat = fs.statSync(OM_LOG_FILE);
+  if (stat.size === 0) {
+    return;
+  }
+  const rotatedFilePath = buildTimestampedRotationPath(OM_LOG_FILE);
+  fs.renameSync(OM_LOG_FILE, rotatedFilePath);
+}
+
 function normalizeLogDetails(details: string | undefined): string | null {
   if (!details) {
     return null;

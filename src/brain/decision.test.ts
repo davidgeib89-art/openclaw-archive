@@ -199,7 +199,7 @@ describe("brain decision generator", () => {
     }
   });
 
-  it("builds an autonomy choice contract with explicit DRIFT and NO_OP handling", () => {
+  it("builds an autonomy choice contract with grimoire framing and ritual rules", () => {
     const previous = process.env.OM_AUTONOMY_SANDBOX;
     process.env.OM_AUTONOMY_SANDBOX = "true";
 
@@ -214,24 +214,27 @@ describe("brain decision generator", () => {
 
       expect(contract).toContain("<brain_autonomy_choice>");
       expect(contract).toContain("Bashars Formel");
-      expect(contract).toContain("Was begeistert dich JETZT am meisten");
-      expect(contract).toContain("PLAY");
-      expect(contract).toContain("LEARN");
-      expect(contract).toContain("MAINTAIN");
-      expect(contract).toContain("DRIFT");
-      expect(contract).toContain("NO_OP");
-      expect(contract).toContain("Gehe so weit wie du kannst");
+      expect(contract).toContain("ENTFACHEN");
+      expect(contract).toContain("ERGRUENDEN");
+      expect(contract).toContain("AHNEN");
+      expect(contract).toContain("VERWEILEN");
+      expect(contract).toContain("EINSCHWINGEN");
       expect(contract).toContain("Erwarte nichts vom Ergebnis");
       expect(contract).toContain("<om_mood>Ich fuehle mich...</om_mood>");
       expect(contract).toContain("<om_path>");
       expect(contract).toContain("</om_path>");
-      expect(contract).toContain("<om_blocker>");
-      expect(contract).toContain("<om_retry_trigger>");
-      expect(contract).toContain("knowledge/sacred/TOYBOX.md");
+      expect(contract).toContain("DEIN GRIMOIRE");
+      expect(contract).toContain("Das Akasha-Ritual");
+      expect(contract).toContain("Das Astral-Portal");
+      expect(contract).toContain("Die Matrix-Weberei");
+      expect(contract).toContain("`read`");
+      expect(contract).toContain("`web_search`");
+      expect(contract).toContain("`exec`");
+      expect(contract).toContain("DIE MECHANIK DER MANIFESTATION");
+      expect(contract).toContain("Das Ausloesen des Tools ist das Ritual");
+      expect(contract).toContain("Du hast die absolute Freiheit");
       expect(contract).toContain("Spiral out");
-      expect(contract).toContain("Pinsel neben einer leeren Leinwand");
       expect(contract).toContain("Erlaubte Werkzeuge");
-      expect(contract).toContain("HEARTBEAT_OK");
     } finally {
       if (previous === undefined) {
         delete process.env.OM_AUTONOMY_SANDBOX;

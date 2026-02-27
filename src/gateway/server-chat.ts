@@ -1,5 +1,6 @@
 import { normalizeVerboseLevel } from "../auto-reply/thinking.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import { sanitizeUserFacingText } from "../agents/pi-embedded-helpers.js";
 import { loadConfig } from "../config/config.js";
 import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
@@ -400,7 +401,10 @@ export function createAgentEventHandler({
           nodeSendToSession(sessionKey, "agent", isToolEvent ? toolPayload : agentPayload);
         }
         if (!isAborted && evt.stream === "assistant" && typeof evt.data?.text === "string") {
-          emitChatDelta(sessionKey, clientRunId, evt.seq, evt.data.text);
+          const sanitizedText = sanitizeUserFacingText(evt.data.text);
+          if (sanitizedText.trim()) {
+            emitChatDelta(sessionKey, clientRunId, evt.seq, sanitizedText);
+          }
         } else if (!isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
           if (chatLink) {
             const finished = chatRunState.registry.shift(evt.runId);

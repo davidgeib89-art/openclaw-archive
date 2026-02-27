@@ -89,6 +89,9 @@ export function isCompactionFailureError(errorMessage?: string): boolean {
 const ERROR_PAYLOAD_PREFIX_RE =
   /^(?:error|api\s*error|apierror|openai\s*error|anthropic\s*error|gateway\s*error)[:\s-]+/i;
 const FINAL_TAG_RE = /<\s*\/?\s*final\s*>/gi;
+const OM_RUNTIME_TAG_BLOCK_RE = /<\s*om_(?:mood|path)\s*>[\s\S]*?<\s*\/\s*om_(?:mood|path)\s*>\s*/gi;
+const OM_RUNTIME_TAG_UNCLOSED_RE = /<\s*om_(?:mood|path)\s*>[\s\S]*$/gi;
+const OM_RUNTIME_TAG_TRAILING_FRAGMENT_RE = /<\s*om_[^<]*$/i;
 const ERROR_PREFIX_RE =
   /^(?:error|api\s*error|openai\s*error|anthropic\s*error|gateway\s*error|request failed|failed|exception)[:\s-]+/i;
 const CONTEXT_OVERFLOW_ERROR_HEAD_RE =
@@ -165,6 +168,27 @@ function stripFinalTagsFromText(text: string): string {
     return text;
   }
   return text.replace(FINAL_TAG_RE, "");
+}
+
+function stripOmRuntimeTagsFromText(text: string): string {
+  if (!text || !/<\s*om_/i.test(text)) {
+    return text;
+  }
+
+  let next = text;
+  next = next.replace(OM_RUNTIME_TAG_BLOCK_RE, " ");
+  next = next.replace(OM_RUNTIME_TAG_UNCLOSED_RE, " ");
+
+  // Streaming can expose trailing partial tags (e.g. "<om_mood").
+  // Drop dangling fragments at the end so user-facing channels never see them.
+  next = next.replace(OM_RUNTIME_TAG_TRAILING_FRAGMENT_RE, "");
+
+  return next
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function collapseConsecutiveDuplicateBlocks(text: string): string {
@@ -485,7 +509,7 @@ export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boo
     return text;
   }
   const errorContext = opts?.errorContext ?? false;
-  const stripped = stripFinalTagsFromText(text);
+  const stripped = stripOmRuntimeTagsFromText(stripFinalTagsFromText(text));
   const trimmed = stripped.trim();
   if (!trimmed) {
     return stripped;

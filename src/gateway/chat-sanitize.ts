@@ -1,3 +1,5 @@
+import { sanitizeUserFacingText } from "../agents/pi-embedded-helpers.js";
+
 const ENVELOPE_PREFIX = /^\[([^\]]+)\]\s*/;
 const ENVELOPE_CHANNELS = [
   "WebChat",
@@ -34,6 +36,8 @@ const INTERNAL_PROMPT_STRIP_PATTERNS: readonly RegExp[] = [
   /Hier ist relevantes Wissen aus deiner Vergangenheit \(Top-3, read-only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
   /Wisdom Layer \(read-only advisory, suggestions only\):[\s\S]*?Nutze diese Erinnerungen als Kontext f(?:ue|\\u00fc)r die aktuelle Anfrage\.\s*/gi,
 ];
+const OM_RUNTIME_TAG_HINT_RE = /<\s*om_/i;
+const FINAL_TAG_HINT_RE = /<\s*\/?\s*final\s*>/i;
 
 function looksLikeEnvelopeHeader(header: string): boolean {
   if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\b/.test(header)) {
@@ -106,7 +110,10 @@ function sanitizeUserFacingUserText(text: string): string {
   return stripped || base;
 }
 
-function stripEnvelopeFromContent(content: unknown[]): { content: unknown[]; changed: boolean } {
+function sanitizeContentText(
+  content: unknown[],
+  sanitizer: (text: string) => string,
+): { content: unknown[]; changed: boolean } {
   let changed = false;
   const next = content.map((item) => {
     if (!item || typeof item !== "object") {
@@ -116,7 +123,7 @@ function stripEnvelopeFromContent(content: unknown[]): { content: unknown[]; cha
     if (entry.type !== "text" || typeof entry.text !== "string") {
       return item;
     }
-    const stripped = sanitizeUserFacingUserText(entry.text);
+    const stripped = sanitizer(entry.text);
     if (stripped === entry.text) {
       return item;
     }
@@ -129,33 +136,47 @@ function stripEnvelopeFromContent(content: unknown[]): { content: unknown[]; cha
   return { content: next, changed };
 }
 
+function sanitizeUserFacingAssistantText(text: string): string {
+  if (!text) {
+    return text;
+  }
+  if (!OM_RUNTIME_TAG_HINT_RE.test(text) && !FINAL_TAG_HINT_RE.test(text)) {
+    return text;
+  }
+  const sanitized = sanitizeUserFacingText(text);
+  // Fail-open: never blank out assistant history unexpectedly.
+  return sanitized || text;
+}
+
 export function stripEnvelopeFromMessage(message: unknown): unknown {
   if (!message || typeof message !== "object") {
     return message;
   }
   const entry = message as Record<string, unknown>;
   const role = typeof entry.role === "string" ? entry.role.toLowerCase() : "";
-  if (role !== "user") {
+  if (role !== "user" && role !== "assistant") {
     return message;
   }
 
   let changed = false;
   const next: Record<string, unknown> = { ...entry };
+  const sanitizer =
+    role === "assistant" ? sanitizeUserFacingAssistantText : sanitizeUserFacingUserText;
 
   if (typeof entry.content === "string") {
-    const stripped = sanitizeUserFacingUserText(entry.content);
+    const stripped = sanitizer(entry.content);
     if (stripped !== entry.content) {
       next.content = stripped;
       changed = true;
     }
   } else if (Array.isArray(entry.content)) {
-    const updated = stripEnvelopeFromContent(entry.content);
+    const updated = sanitizeContentText(entry.content, sanitizer);
     if (updated.changed) {
       next.content = updated.content;
       changed = true;
     }
   } else if (typeof entry.text === "string") {
-    const stripped = sanitizeUserFacingUserText(entry.text);
+    const stripped = sanitizer(entry.text);
     if (stripped !== entry.text) {
       next.text = stripped;
       changed = true;

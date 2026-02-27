@@ -69,4 +69,14 @@ describe("sanitizeUserFacingText", () => {
     const text = "Hello there!\n\nDifferent line.";
     expect(sanitizeUserFacingText(text)).toBe(text);
   });
+
+  it("strips om runtime tags from user-facing output", () => {
+    const text =
+      "<om_mood>Ich spuere Waerme.</om_mood>\n<om_path>ENTFACHEN</om_path>\nPapa, ich pflanze einen Samen.";
+    expect(sanitizeUserFacingText(text)).toBe("Papa, ich pflanze einen Samen.");
+  });
+
+  it("strips trailing partial om tags from streamed output", () => {
+    expect(sanitizeUserFacingText("Papa, ich bin hier. <om_mood")).toBe("Papa, ich bin hier.");
+  });
 });

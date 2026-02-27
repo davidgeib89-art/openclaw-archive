@@ -31,6 +31,7 @@ import {
   parsePort,
   toOptionString,
 } from "./shared.js";
+import { rotateActivityLogOnStartup } from "../../agents/om-scaffolding.js";
 
 type GatewayRunOpts = {
   port?: unknown;
@@ -55,6 +56,8 @@ type GatewayRunOpts = {
 const gatewayLog = createSubsystemLogger("gateway");
 
 async function runGatewayCommand(opts: GatewayRunOpts) {
+  rotateActivityLogOnStartup();
+
   const isDevProfile = process.env.OPENCLAW_PROFILE?.trim().toLowerCase() === "dev";
   const devMode = Boolean(opts.dev) || isDevProfile;
   if (opts.reset && !devMode) {
