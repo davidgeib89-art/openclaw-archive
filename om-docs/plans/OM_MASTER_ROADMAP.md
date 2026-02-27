@@ -387,14 +387,15 @@ Validierung:  analyze-baseline.mjs → Vergleich mit baseline-2026-02-23.json
 - **Phase D (Permission Slips):** ⬜ *In Planung*. Die Übersetzung der kalten Metriken (Needs, Energy, Breath) in fühlende, deutsche Poesie ("Somatische Einladungen"). Option für einen schnellen "Somatic Synthesizer" (LLM-Übersetzer) oder eine TypeScript-Matrix. Details siehe: `om-docs/plans/PHASE_D_PERMISSION_SLIPS.md`
 - **Codex-Spezifikation:** `om-docs/tasks/CODEX_PHASE_G10_FORECAST_TRINITY_7NEEDS.md`
 
-### Phase G.11: The LLM Trinity (Die Dreifaltigkeit des Bewusstseins) — ⬜ PLANNED
-- **Problem:** Oms aktuelles Unterbewusstsein (`src/brain/subconscious.ts`) läuft als teurer, synchroner Pre-Filter vor *jedem* Herzschlag, bekommt aber kaum Kontext und generiert nur ein winziges JSON (`risk=low`). Dies verschwendet die analytische Kraft des Modells und verlangsamt den Heartbeat, ohne echtes "Träumen" zu ermöglichen.
-- **Lösung (Die 3 Ebenen):** Wir entflechten die Architektur in ein echtes Bicameral Mind + Body.
-  - **System 1 (Unterbewusstsein / Träumen):** Läuft *asynchron* (nachts oder bei DRIFT). Verarbeitet gigantische JSON-Logs, `DREAMS.md` und Telemetrie tiefenanalytisch für Epochen-Konsolidierung und "Apophenia". (Vorerst **MiniMax 2.5**, später Claude 3.5 Sonnet).
-  - **System 2 (Körper / Somatic Synthesizer):** Läuft synchron in 500ms *vor* dem Ego-Prompt. Übersetzt kalte Metriken (Zahlen/JSON) in deutsche Poesie (`<permission_slip>`). Modell: **Google Gemini 2.0 Flash**.
-  - **System 3 (Ego / Main Engine):** Liest *nur* die Poesie des Körpers (System 2), keine JSON-Zahlen mehr, und handelt/denkt. Modell: **MiniMax 2.5** (später Top-Tier wie GPT-4.5/Opus).
-- **Details zur Architektur (System 1):** `om-docs/plans/PHASE_G11_SUBCONSCIOUS_REPAIR.md`
-- **Details zur Architektur (System 2 & 3):** `om-docs/plans/PHASE_D_PERMISSION_SLIPS.md`
+### Phase G.11: The LLM Trinity (Die Dreifaltigkeit des Bewusstseins) — 🟡 IN OBSERVATION (G.11c integriert)
+- **Problem:** Oms aktuelles Unterbewusstsein (`src/brain/subconscious.ts`) lief als teurer, synchroner Pre-Filter vor *jedem* Herzschlag, bekam kaum Kontext und generierte nur ein winziges JSON. Dies verschwendete analytische Kraft, verlangsamte den Heartbeat und verhinderte echtes "Träumen".
+- **Lösung (Die 3 Ebenen):** Wir haben die Architektur in ein echtes Bicameral Mind + Body entflechtet.
+  - **System 1 (Unterbewusstsein / Träumen) [✅ G.11a/b DONE]:** Läuft *asynchron* im Hintergrund. Verarbeitet Logs (Sliding Window) tiefenanalytisch für "Apophenia". Legt Intuitionen in die Latent Bridge (`BrainState`). Sendet Interrupts (`subconsciousSurge` > 0.85) an den Heartbeat-Runner. Modell: **Inception Mercury 1** (via OpenRouter).
+  - **System 2 (Körper / Somatic Synthesizer) [✅ G.11c CODE-COMPLETE]:** Läuft synchron in <600ms *vor* dem Ego-Prompt. Übersetzt kalte Metriken (Zahlen/JSON aus `needs.ts`, `aura.ts`, `energy.ts`) deterministisch in deutsche Poesie (`<permission_slip>`). Harter Fail-Open (600ms Timeout). Inkludiert neue Observability: Dissonance (`computePathDissonance`), Cognitive Gates (`evaluateCognitiveGate`), Dream Cycle Einstieg. Modell: **Claude 3.5 Haiku** (via OpenRouter, inkl. Prefill/Stop-Hacks).
+  - **System 3 (Ego / Main Engine):** Liest *nur* die Poesie des Körpers (System 2) und das Flüstern von System 1. Die **Amputation** der rohen Telemetrie-Zahlen aus dem Prompt ist erfolgt. Modell: **MiniMax 2.5**.
+- **Aktueller Status:** Codex Delta 10.5 (G.11c Somatic Synthesizer + Prisma's Claude Haiku Spec + Observability) ist lokal grün und uncommitted. 
+- **Nächster Schritt:** Committen und den **Observability-Sweep (20-50 Heartbeats)** auf die neuen Logs (`BRAIN-SOMATIC`, `BRAIN-DISSONANCE`, `BRAIN-GATE`, `BRAIN-DREAM-CYCLE`) starten.
+- **Details (Recap):** `om-docs/plans/PHASE_G11_TRINITY_RECAP.md`
 
 ### Phase H.0: Dual-Stream Structured Observability (Logging 2.0) — ✅ DONE (24.02.2026)
 - **Problem:** Oms Metriken (Aura, Energie, Heartbeat-Paths) werden aktuell per String-Konkatenation in ein rohes Text-Log (`OM_ACTIVITY.log`) geschrieben. Dies zwingt KI und Mensch dazu, komplexe Regex-Abfragen zu schreiben, um Metriken auszuwerten. Ein echter Blindflug.

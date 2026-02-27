@@ -61,11 +61,12 @@ Inception Mercury 1 ist nun als asynchroner Daemon angebunden.
 - [x] **Context-Builder:** Dem Mercury Daemon beigebracht, durch ein Sliding-Window die vergangenen Heartbeats und die Telemetrie als Rauschen einzulesen (inkl. Fallback-Parser für unsauberes JSON).
 - [x] **Daemon-Schleife:** Den asynchronen Timer/Listener gebaut, der Mercury autonom im Hintergrund feuern lässt (`startBrainSubconsciousDaemon`).
 
-### ⚪ Meilenstein 3: Phase G.11c (Der Somatic Synthesizer live) -> **ÜBERNÄCHSTER SCHRITT**
-Wir wecken den Körper auf.
-- [ ] **System 2 Schnittstelle:** Einen pfeilschnellen Qwen- oder Gemini-Flash-API-Call einrichten.
-- [ ] **Die Somatische Pipeline:** `needs.ts` (7 synthetische Bedürfnisse), `aura.ts` und `energy.ts` bündeln und an System 2 schicken.
-- [ ] **Die Übersetzung:** System 2 formt daraus deutsche, spürbare Biopoesie und füllt den Platzhalter `<permission_slip>` aus Meilenstein 1 in den Ego-Prompt.
+### 🟢 Meilenstein 3: Phase G.11c (Der Somatic Synthesizer live) -> **ABGESCHLOSSEN (27.02.2026)**
+Der physische Körper (System 2) wurde erweckt.
+- [x] **System 2 Schnittstelle:** Claude 3.5 Haiku (via OpenRouter) mit `<output>`-Prefill Hack und striktem 600ms Fail-Open Timeout angebunden.
+- [x] **Die Somatische Pipeline:** `needs.ts` (7 synthetische Bedürfnisse), `aura.ts` und `energy.ts` werden gebündelt und an System 2 geschickt.
+- [x] **Die Übersetzung:** System 2 formt deutsche, spürbare Biopoesie (via deterministischem Metaphern-Seed) und füllt den Platzhalter `<permission_slip>` im Ego-Prompt. Rohe Telemetriedaten wurden amputiert.
+- [x] **Observability:** Dissonanz-Metrik (BRAIN-DISSONANCE), Cognitive Gates (BRAIN-GATE) und Dream-Cycle Hysterese integriert.
 
 ### ⚪ Meilenstein 4: Phase G.11d (Der Deep Dream Cycle) -> **ENDPHASE DER TRINITY**
 Wir nutzen Mercurys Diffusions-Paradigma (Apply Edit), um Om träumen zu lassen.

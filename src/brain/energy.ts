@@ -71,6 +71,7 @@ export type EnergyStateHint = {
   dreamMode: boolean;
   suggestOwnTasks: boolean;
   stagnationLevel: number;
+  heartbeatCount?: number;
   path: string;
 };
 
@@ -331,6 +332,7 @@ export async function readEnergyStateHint(workspaceDir: string): Promise<EnergyS
   const dreamMode = parseYesNoFlag(raw, "dream_mode") ?? level < 20;
   const suggestOwnTasks = parseYesNoFlag(raw, "suggest_own_tasks") ?? level > 80;
   const stagnationLevel = parseStagnationLevel(raw) ?? 0;
+  const heartbeatCount = parseHeartbeatCount(raw);
 
   return {
     level,
@@ -338,6 +340,7 @@ export async function readEnergyStateHint(workspaceDir: string): Promise<EnergyS
     dreamMode,
     suggestOwnTasks,
     stagnationLevel,
+    heartbeatCount,
     path: energyPath,
   };
 }

@@ -440,6 +440,7 @@ export async function runHeartbeatOnce(opts: {
   const isCronEventReason = Boolean(opts.reason?.startsWith("cron:"));
   const isWakeReason =
     opts.reason === "wake" ||
+    opts.reason === "manual" ||
     opts.reason === "subconscious-surge" ||
     Boolean(opts.reason?.startsWith("hook:"));
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);

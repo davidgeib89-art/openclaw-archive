@@ -48,17 +48,17 @@ const OM_ACTIVITY_JSONL_FILE = path.join(OM_ACTIVITY_LOG_DIR, "OM_ACTIVITY.jsonl
 const AURA_SACRED_FILE = path.join(OM_ACTIVITY_LOG_DIR, "knowledge", "sacred", "AURA.md");
 const AURA_OVERALL_REGEX = /##\s*Gesamt-Aura:\s*([0-9]+(?:[.,][0-9]+)?)/i;
 const DEFAULT_DAEMON_MODEL_REF = "openrouter/inception/mercury";
-const DEFAULT_DAEMON_INTERVAL_MS = 20_000;
+const DEFAULT_DAEMON_INTERVAL_MS = 144_000;
 const MIN_DAEMON_INTERVAL_MS = 5_000;
-const MAX_DAEMON_INTERVAL_MS = 120_000;
+const MAX_DAEMON_INTERVAL_MS = 300_000;
 const DEFAULT_DAEMON_WINDOW_MINUTES = 20;
 const MIN_DAEMON_WINDOW_MINUTES = 5;
 const MAX_DAEMON_WINDOW_MINUTES = 30;
 const DEFAULT_DAEMON_MAX_ENTRIES = 90;
 const MIN_DAEMON_MAX_ENTRIES = 20;
 const MAX_DAEMON_MAX_ENTRIES = 160;
-const DEFAULT_DAEMON_TAIL_BYTES = 256_000;
-const MIN_DAEMON_TAIL_BYTES = 32_000;
+const DEFAULT_DAEMON_TAIL_BYTES = 64_000;
+const MIN_DAEMON_TAIL_BYTES = 16_000;
 const MAX_DAEMON_TAIL_BYTES = 1_048_576;
 const DEFAULT_DAEMON_TIMEOUT_MS = 7_000;
 const DEFAULT_DAEMON_BASE_TEMPERATURE = 0.45;
@@ -1020,13 +1020,31 @@ function parseDaemonNoiseEntries(raw: string): DaemonNoiseEntry[] {
     const headerMatch = line.match(
       /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[([^\]]+)\]\s*(.*)$/,
     );
+    const layer = (headerMatch?.[2] ?? "unknown").trim();
+    const semanticLayers = new Set([
+      "OM-REPLY",
+      "USER-MSG",
+      "BRAIN-AURA",
+      "BRAIN-ENERGY",
+      "BRAIN-CHOICE",
+      "BRAIN-GATE",
+      "BRAIN-LOOP-CAUSE",
+      "BRAIN-FORECAST",
+      "BRAIN-RECALL",
+      "BRAIN-THOUGHT",
+    ]);
+
+    if (!semanticLayers.has(layer) && headerMatch) {
+      continue;
+    }
+
     if (headerMatch) {
       if (current) {
         entries.push(current);
       }
       current = {
         timestampMs: parseActivityTimestamp(headerMatch[1] ?? ""),
-        layer: (headerMatch[2] ?? "unknown").trim(),
+        layer,
         event: (headerMatch[3] ?? "").trim(),
         details: "",
       };
@@ -1911,6 +1929,7 @@ export async function runBrainSubconsciousDaemonIteration(
     logger(
       "TICK",
       [
+        `intuition=${truncateDaemonText(parsed.payload.content, 180)}`,
         `durationMs=${Date.now() - startedAt}`,
         `noise=${noiseLines.length}`,
         `parse=${parsed.mode}`,

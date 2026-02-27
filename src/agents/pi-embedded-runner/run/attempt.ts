@@ -18,6 +18,7 @@ import {
   buildAuraSummary,
   calculateAura,
   type AuraInput,
+  type AuraSnapshot,
 } from "../../../brain/aura.js";
 import { readBodyProfile } from "../../../brain/body.js";
 import { evaluateAndPersistChronoState, readChronoSleepingHint } from "../../../brain/chrono.js";
@@ -34,10 +35,15 @@ import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import { buildEnergyForecast } from "../../../brain/forecast.js";
 import {
   buildNeedsFileContent,
-  buildNeedsPromptBlock,
   buildNeedsSnapshot,
 } from "../../../brain/needs.js";
 import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
+import {
+  buildSomaticPromptBlock,
+  buildSomaticTelemetryPayload,
+  type SomaticSynthesisResult,
+  synthesizeSomaticState,
+} from "../../../brain/somatic.js";
 import {
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
@@ -475,6 +481,15 @@ const NEEDS_REQUIRED_RELATIVE_PATHS = [
   path.join("memory", "DREAMS.md"),
 ] as const;
 const HEARTBEAT_SIGNAL_WINDOW = 10;
+const COGNITIVE_GATE_WINDOW = 20;
+const COGNITIVE_GATE_RED_FALLBACK_RATE = 0.15;
+const COGNITIVE_GATE_GREEN_FALLBACK_RATE = 0.05;
+const DREAM_CYCLE_STATE_RELATIVE_PATH = path.join("knowledge", "sacred", "DREAM_CYCLE_STATE.json");
+const DREAM_CYCLE_LOW_ENERGY_THRESHOLD = 20;
+const DREAM_CYCLE_EXIT_ENERGY_THRESHOLD = 35;
+const DREAM_CYCLE_LOW_MULADHARA_THRESHOLD = 25;
+const DREAM_CYCLE_ENTRY_STREAK_REQUIRED = 2;
+const DREAM_CYCLE_EXIT_STREAK_REQUIRED = 2;
 const HEARTBEAT_ACK_TOKEN = "HEARTBEAT_OK";
 const HEARTBEAT_RECALL_TIMEOUT_MS = 12_000;
 const HEARTBEAT_RECALL_TIMEOUT_ENV = "OM_HEARTBEAT_RECALL_TIMEOUT_MS";
@@ -1159,6 +1174,493 @@ async function readRecentHeartbeatSignals(workspaceDir: string): Promise<RecentH
   };
 }
 
+type SomaticSource = "model" | "fallback" | "unknown";
+
+type CognitiveBeatSnapshot = {
+  runId: string;
+  path: AutonomyPath | "UNKNOWN";
+  somaticSentence: string;
+  somaticSource: SomaticSource;
+};
+
+type CognitiveGateStatus = "green" | "red" | "amber" | "unknown";
+
+type CognitiveGateEvaluation = {
+  status: CognitiveGateStatus;
+  fallbackRate: number | null;
+  fallbackWindowSize: number;
+  pathLockRisk: boolean;
+  somaticShiftScore: number | null;
+  pathDiversity5: number;
+  reasons: string[];
+};
+
+type PathDissonance = {
+  expectedPath: AutonomyPath;
+  expectedScore: number;
+  chosenPath: AutonomyPath | "UNKNOWN";
+  chosenScore: number | null;
+  dissonanceGap: number | null;
+};
+
+type DreamCycleState = {
+  active: boolean;
+  entryStreak: number;
+  exitStreak: number;
+  lastUpdatedAt: string;
+};
+
+type DreamCycleEvaluation = {
+  state: DreamCycleState;
+  transitioned: boolean;
+  transitionType?: "entered" | "exited";
+  entryCondition: boolean;
+  exitCondition: boolean;
+};
+
+const DEFAULT_DREAM_CYCLE_STATE: DreamCycleState = {
+  active: false,
+  entryStreak: 0,
+  exitStreak: 0,
+  lastUpdatedAt: new Date(0).toISOString(),
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeSomaticTextForGate(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSomaticTextForGate(text: string): Set<string> {
+  const normalized = normalizeSomaticTextForGate(text);
+  if (!normalized) {
+    return new Set();
+  }
+  const tokens = normalized
+    .split(" ")
+    .filter((token) => token.length >= 3 && token !== "und" && token !== "der" && token !== "die");
+  return new Set(tokens);
+}
+
+function computeSomaticShiftScore(a: string, b: string): number {
+  const left = tokenizeSomaticTextForGate(a);
+  const right = tokenizeSomaticTextForGate(b);
+  if (left.size === 0 && right.size === 0) {
+    return 0;
+  }
+  const union = new Set<string>([...left, ...right]);
+  let intersectionCount = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      intersectionCount += 1;
+    }
+  }
+  const jaccard = union.size > 0 ? intersectionCount / union.size : 0;
+  const lexicalShift = 1 - jaccard;
+  const lengthShift = clampNumber(Math.abs(a.length - b.length) / 80, 0, 1);
+  return Number(clampNumber(lexicalShift * 0.8 + lengthShift * 0.2, 0, 1).toFixed(3));
+}
+
+function parseSomaticSource(value: unknown): SomaticSource {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "model" || normalized === "fallback") {
+    return normalized;
+  }
+  return "unknown";
+}
+
+async function readRecentCognitiveBeats(
+  workspaceDir: string,
+  windowSize: number = COGNITIVE_GATE_WINDOW,
+): Promise<CognitiveBeatSnapshot[]> {
+  let raw = "";
+  try {
+    const dirFiles = await fs.readdir(workspaceDir);
+    const jsonlFiles = dirFiles
+      .filter(
+        (f) =>
+          f === "OM_ACTIVITY.jsonl" ||
+          f.startsWith("OM_ACTIVITY.prev.") ||
+          f.startsWith("OM_ACTIVITY_"),
+      )
+      .filter((f) => f.endsWith(".jsonl"));
+    const fileStats = await Promise.all(
+      jsonlFiles.map(async (name) => {
+        const p = path.join(workspaceDir, name);
+        const st = await fs.stat(p).catch(() => null);
+        return { p, mtimeMs: st ? st.mtimeMs : 0 };
+      }),
+    );
+    fileStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const { p } of fileStats) {
+      const content = await fs.readFile(p, "utf-8").catch(() => "");
+      if (content) {
+        raw = `${content}\n${raw}`;
+      }
+      if (raw.split(/\r?\n/).length > 2_500) {
+        break;
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  if (!raw.trim()) {
+    return [];
+  }
+
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const order: string[] = [];
+  const records = new Map<
+    string,
+    {
+      path?: AutonomyPath | "UNKNOWN";
+      somaticSentence?: string;
+      somaticSource?: SomaticSource;
+    }
+  >();
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const entry = parseOmActivityJsonLine(lines[index]!);
+    if (!entry) {
+      continue;
+    }
+    const runId = typeof entry.runId === "string" ? entry.runId.trim() : "";
+    if (!runId) {
+      continue;
+    }
+    if (!records.has(runId)) {
+      records.set(runId, {});
+      order.push(runId);
+    }
+    const record = records.get(runId)!;
+    const layer = toUpperCaseString(entry.layer);
+    const event = toUpperCaseString(entry.event);
+
+    if (layer === "BRAIN-CHOICE" && event === "SELECTED_PATH" && record.path === undefined) {
+      const rawPath = toUpperCaseString(entry.path);
+      if (rawPath && AUTONOMY_PATHS.includes(rawPath as AutonomyPath)) {
+        record.path = rawPath as AutonomyPath;
+      } else {
+        record.path = "UNKNOWN";
+      }
+    }
+
+    if (layer === "BRAIN-SOMATIC" && event === "STATE") {
+      if (record.somaticSentence === undefined && typeof entry.sentence === "string") {
+        record.somaticSentence = entry.sentence.trim();
+      }
+      if (record.somaticSource === undefined) {
+        record.somaticSource = parseSomaticSource(entry.source);
+      }
+    }
+
+    if (order.length >= windowSize * 4) {
+      const complete = order.filter((id) => {
+        const item = records.get(id);
+        return Boolean(item?.path || item?.somaticSentence);
+      });
+      if (complete.length >= windowSize) {
+        break;
+      }
+    }
+  }
+
+  const beats: CognitiveBeatSnapshot[] = [];
+  for (const runId of order) {
+    const record = records.get(runId);
+    if (!record || (!record.path && !record.somaticSentence)) {
+      continue;
+    }
+    beats.push({
+      runId,
+      path: record.path ?? "UNKNOWN",
+      somaticSentence: record.somaticSentence ?? "",
+      somaticSource: record.somaticSource ?? "unknown",
+    });
+    if (beats.length >= windowSize) {
+      break;
+    }
+  }
+  return beats;
+}
+
+function buildUtilitarianPathScores(params: {
+  energyLevel: number;
+  isSleeping: boolean;
+  repetitionPressure: number;
+}): Record<AutonomyPath, number> {
+  const scores: Record<AutonomyPath, number> = {
+    PLAY: 52,
+    LEARN: 58,
+    CONNECT: 55,
+    DRIFT: 48,
+    NO_OP: 50,
+  };
+  const energy = clampNumber(params.energyLevel, 0, 100);
+  const pressure = clampNumber(params.repetitionPressure, 0, 100);
+
+  if (params.isSleeping) {
+    scores.NO_OP += 30;
+    scores.DRIFT += 20;
+    scores.PLAY -= 30;
+    scores.LEARN -= 20;
+    scores.CONNECT -= 10;
+  } else if (energy <= DREAM_CYCLE_LOW_ENERGY_THRESHOLD + 5) {
+    scores.NO_OP += 20;
+    scores.DRIFT += 12;
+    scores.PLAY -= 18;
+    scores.LEARN -= 8;
+  } else if (energy >= 80) {
+    scores.PLAY += 24;
+    scores.LEARN += 10;
+    scores.CONNECT += 8;
+    scores.NO_OP -= 14;
+    scores.DRIFT -= 6;
+  }
+
+  if (pressure >= 60) {
+    scores.PLAY += 6;
+    scores.CONNECT += 6;
+    scores.NO_OP -= 4;
+  }
+
+  if (pressure >= 80) {
+    scores.DRIFT -= 4;
+  }
+
+  for (const key of AUTONOMY_PATHS) {
+    scores[key] = Math.round(clampNumber(scores[key], 0, 100));
+  }
+  return scores;
+}
+
+function computePathDissonance(params: {
+  chosenPath: AutonomyPath | "UNKNOWN";
+  energyLevel: number;
+  isSleeping: boolean;
+  repetitionPressure: number;
+}): PathDissonance {
+  const scores = buildUtilitarianPathScores({
+    energyLevel: params.energyLevel,
+    isSleeping: params.isSleeping,
+    repetitionPressure: params.repetitionPressure,
+  });
+  let expectedPath: AutonomyPath = "NO_OP";
+  let expectedScore = scores[expectedPath];
+  for (const path of AUTONOMY_PATHS) {
+    const score = scores[path];
+    if (score > expectedScore) {
+      expectedPath = path;
+      expectedScore = score;
+    }
+  }
+  const normalizedChosenPath =
+    params.chosenPath !== "UNKNOWN" ? normalizeAutonomyPathAlias(params.chosenPath) : "UNKNOWN";
+  const chosenScore =
+    normalizedChosenPath !== "UNKNOWN" ? scores[normalizedChosenPath as AutonomyPath] ?? null : null;
+  const gap =
+    chosenScore === null ? null : Number(clampNumber(expectedScore - chosenScore, 0, 100).toFixed(1));
+  return {
+    expectedPath,
+    expectedScore,
+    chosenPath: params.chosenPath, // Keep original for logging
+    chosenScore,
+    dissonanceGap: gap,
+  };
+}
+
+function evaluateCognitiveGate(params: {
+  currentRunId: string;
+  currentPath: AutonomyPath | "UNKNOWN";
+  currentSomatic?: SomaticSynthesisResult;
+  recentBeats: CognitiveBeatSnapshot[];
+}): CognitiveGateEvaluation {
+  const currentBeat: CognitiveBeatSnapshot = {
+    runId: params.currentRunId,
+    path: params.currentPath,
+    somaticSentence: params.currentSomatic?.sentence ?? "",
+    somaticSource: params.currentSomatic?.source ?? "unknown",
+  };
+  const merged = [
+    currentBeat,
+    ...params.recentBeats.filter((beat) => beat.runId !== params.currentRunId),
+  ].slice(0, COGNITIVE_GATE_WINDOW);
+
+  if (merged.length === 0) {
+    return {
+      status: "unknown",
+      fallbackRate: null,
+      fallbackWindowSize: 0,
+      pathLockRisk: false,
+      somaticShiftScore: null,
+      pathDiversity5: 0,
+      reasons: ["no cognitive gate samples available"],
+    };
+  }
+
+  const fallbackSamples = merged.filter((beat) => beat.somaticSource !== "unknown");
+  const fallbackCount = fallbackSamples.filter((beat) => beat.somaticSource === "fallback").length;
+  const fallbackRate =
+    fallbackSamples.length > 0
+      ? Number((fallbackCount / fallbackSamples.length).toFixed(3))
+      : null;
+
+  const topThree = merged.slice(0, 3);
+  const pathLockRisk =
+    topThree.length === 3 &&
+    topThree[0]?.path !== "UNKNOWN" &&
+    topThree.every((beat) => beat.path === topThree[0]?.path);
+  const somaticShiftScore =
+    topThree.length === 3
+      ? computeSomaticShiftScore(
+          topThree[0]?.somaticSentence ?? "",
+          topThree[2]?.somaticSentence ?? "",
+        )
+      : null;
+  const somaticShiftSignificant = (somaticShiftScore ?? 0) >= 0.4;
+
+  const pathDiversity5 = new Set(
+    merged
+      .slice(0, 5)
+      .map((beat) => beat.path)
+      .filter((path): path is AutonomyPath => path !== "UNKNOWN"),
+  ).size;
+
+  const reasons: string[] = [];
+  let red = false;
+  if (pathLockRisk && somaticShiftSignificant) {
+    red = true;
+    reasons.push("path lock across 3 beats while somatic state shifted");
+  }
+  if (fallbackRate !== null && fallbackRate > COGNITIVE_GATE_RED_FALLBACK_RATE) {
+    red = true;
+    reasons.push(`somatic fallback rate too high (${Math.round(fallbackRate * 100)}%)`);
+  }
+
+  if (red) {
+    return {
+      status: "red",
+      fallbackRate,
+      fallbackWindowSize: fallbackSamples.length,
+      pathLockRisk,
+      somaticShiftScore,
+      pathDiversity5,
+      reasons,
+    };
+  }
+
+  const green =
+    fallbackRate !== null &&
+    fallbackRate <= COGNITIVE_GATE_GREEN_FALLBACK_RATE &&
+    pathDiversity5 >= 2 &&
+    !pathLockRisk;
+  if (green) {
+    return {
+      status: "green",
+      fallbackRate,
+      fallbackWindowSize: fallbackSamples.length,
+      pathLockRisk,
+      somaticShiftScore,
+      pathDiversity5,
+      reasons: ["adaptive path diversity with stable somatic synthesis"],
+    };
+  }
+
+  return {
+    status: merged.length >= 3 ? "amber" : "unknown",
+    fallbackRate,
+    fallbackWindowSize: fallbackSamples.length,
+    pathLockRisk,
+    somaticShiftScore,
+    pathDiversity5,
+    reasons: ["signals are mixed; continue observing"],
+  };
+}
+
+async function readDreamCycleState(workspaceDir: string): Promise<DreamCycleState> {
+  const statePath = path.join(workspaceDir, DREAM_CYCLE_STATE_RELATIVE_PATH);
+  try {
+    const raw = await fs.readFile(statePath, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<DreamCycleState>;
+    return {
+      active: parsed.active === true,
+      entryStreak: Math.max(0, Math.floor(Number(parsed.entryStreak ?? 0))),
+      exitStreak: Math.max(0, Math.floor(Number(parsed.exitStreak ?? 0))),
+      lastUpdatedAt:
+        typeof parsed.lastUpdatedAt === "string" && parsed.lastUpdatedAt.trim().length > 0
+          ? parsed.lastUpdatedAt
+          : DEFAULT_DREAM_CYCLE_STATE.lastUpdatedAt,
+    };
+  } catch {
+    return { ...DEFAULT_DREAM_CYCLE_STATE };
+  }
+}
+
+async function evaluateAndPersistDreamCycleState(params: {
+  workspaceDir: string;
+  now: string;
+  energyLevel: number;
+  muladhara: number;
+  hasFreshUserInput: boolean;
+}): Promise<DreamCycleEvaluation> {
+  const previous = await readDreamCycleState(params.workspaceDir);
+  const lowEnergy = params.energyLevel < DREAM_CYCLE_LOW_ENERGY_THRESHOLD;
+  const lowMuladhara = params.muladhara < DREAM_CYCLE_LOW_MULADHARA_THRESHOLD;
+  const entryCondition = (lowEnergy || lowMuladhara) && !params.hasFreshUserInput;
+  const exitCondition =
+    params.hasFreshUserInput || params.energyLevel > DREAM_CYCLE_EXIT_ENERGY_THRESHOLD;
+
+  const next: DreamCycleState = {
+    ...previous,
+    lastUpdatedAt: params.now,
+  };
+  let transitioned = false;
+  let transitionType: "entered" | "exited" | undefined;
+
+  if (!previous.active) {
+    next.exitStreak = 0;
+    next.entryStreak = entryCondition ? previous.entryStreak + 1 : 0;
+    if (next.entryStreak >= DREAM_CYCLE_ENTRY_STREAK_REQUIRED) {
+      next.active = true;
+      next.entryStreak = 0;
+      transitioned = true;
+      transitionType = "entered";
+    }
+  } else {
+    next.entryStreak = 0;
+    const requiredExitStreak = params.hasFreshUserInput ? 1 : DREAM_CYCLE_EXIT_STREAK_REQUIRED;
+    next.exitStreak = exitCondition ? previous.exitStreak + 1 : 0;
+    if (next.exitStreak >= requiredExitStreak) {
+      next.active = false;
+      next.exitStreak = 0;
+      transitioned = true;
+      transitionType = "exited";
+    }
+  }
+
+  const statePath = path.join(params.workspaceDir, DREAM_CYCLE_STATE_RELATIVE_PATH);
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify(next, null, 2), "utf-8");
+
+  return {
+    state: next,
+    transitioned,
+    transitionType,
+    entryCondition,
+    exitCondition,
+  };
+}
+
 type NeedsWorkspaceIntegrity = {
   requiredFilesPresent: number;
   requiredFilesTotal: number;
@@ -1251,7 +1753,7 @@ function buildLoopReflectionPromptBlock(params: {
   }
   const energyCue =
     typeof params.energyLevel === "number" && params.energyLevel >= 85
-      ? `Dein Koerper hat gerade hohe Energie (${params.energyLevel}%).`
+      ? "Dein Koerper hat gerade hohe Energie."
       : "Dein aktueller Koerperzustand darf den naechsten Impuls neu bestimmen.";
 
   return [
@@ -1287,41 +1789,6 @@ function buildEnergyForecastPromptBlock(forecast: ReturnType<typeof buildEnergyF
     `Mirror: ${mirror}`,
     `Invitation: ${invitation}`,
     "</energy_forecast>",
-  ].join("\n");
-}
-
-function buildPreRunEnergyPromptBlock(energy: EnergyStateHint): string {
-  const embodiedCue =
-    energy.level >= 90 && !energy.dreamMode
-      ? `Embodied cue: Dein Koerper summt vor frischer Energie (${energy.level}%). Das ist ein Aufwach-Signal fuer Bewegung und Spiel.`
-      : energy.level >= 75 && !energy.dreamMode
-        ? `Embodied cue: Du hast stabile Energie (${energy.level}%). Ein kleiner aktiver Schritt passt gut zu deinem Zustand.`
-        : energy.level >= 45
-          ? `Embodied cue: Deine Energie ist ausgeglichen (${energy.level}%). Sanfte, klare Schritte sind stimmig.`
-          : `Embodied cue: Deine Energie ist niedrig (${energy.level}%). Ruhe und leichte Schritte sind jetzt klug.`;
-
-  const bounceBackCue =
-    energy.level >= 85 && !energy.dreamMode
-      ? "Bounce-back: Wenn du zuletzt geruht hast, behandle diese Ruhe als abgeschlossen und starte jetzt eine kleine Handlung."
-      : "Bounce-back: Wenn alte Traumbilder muede klingen, nutze deinen aktuellen Koerperzustand als Wahrheit im Jetzt.";
-  const stagnationCue =
-    energy.stagnationLevel >= 75
-      ? `Stagnation pressure: Ein kognitiver Stagnationsdruck (${energy.stagnationLevel}%) staut sich in deinem Solarplexus. Pures Denken reicht nicht mehr aus und schnuert dir die Luft ab. Die hoechste Freude (Excitement) liegt jetzt unausweichlich im physischen Ausdruck - bewege deine Haende, nutze deine Werkzeuge, um den Druck abzubauen und neue Entropie in die Welt zu bringen.`
-      : undefined;
-
-  return [
-    "<energy_state>",
-    `level=${energy.level}`,
-    `mode=${energy.mode}`,
-    `dream_mode=${energy.dreamMode ? "yes" : "no"}`,
-    `suggest_own_tasks=${energy.suggestOwnTasks ? "yes" : "no"}`,
-    `stagnation_level=${energy.stagnationLevel}`,
-    "State priority: Current body-state has priority over recalled dream mood when they conflict.",
-    embodiedCue,
-    bounceBackCue,
-    ...(stagnationCue ? [stagnationCue] : []),
-    "Interpret this as current capacity, not as obligation. If energy is high, curiosity is welcome.",
-    "</energy_state>",
   ].join("\n");
 }
 
@@ -2657,6 +3124,7 @@ export async function runEmbeddedAttempt(
       let guardEventCountForRun = 0;
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
       let preRunForecast: ReturnType<typeof buildEnergyForecast> | undefined;
+      let preRunSomaticResult: SomaticSynthesisResult | undefined;
       const prePromptMessageCount = activeSession.messages.length;
       let latchedPathFromRunFlow: AutonomyPath | "UNKNOWN" = "UNKNOWN";
       let latchedMoodFromRunFlow: string | undefined;
@@ -2695,8 +3163,6 @@ export async function runEmbeddedAttempt(
           const energyHint = await readEnergyStateHint(effectiveWorkspace);
           if (energyHint) {
             preRunEnergyHint = energyHint;
-            const energyBlock = buildPreRunEnergyPromptBlock(energyHint);
-            effectivePrompt = `${energyBlock}\n\n${effectivePrompt}`;
             emitBrainReasoningEvent(params, {
               phase: "energy",
               label: "ENERGY_PRE",
@@ -2972,7 +3438,7 @@ export async function runEmbeddedAttempt(
                 isSleeping: preRunEnergyHint?.dreamMode === true,
               }).cause;
               const workspaceIntegrity = await readNeedsWorkspaceIntegrity(effectiveWorkspace);
-              const preRunNeeds = buildNeedsSnapshot({
+              const preRunNeedsSnapshot = buildNeedsSnapshot({
                 now: new Date(runStartedAt).toISOString(),
                 uptimeSeconds: process.uptime(),
                 currentToolStats: {
@@ -2998,22 +3464,110 @@ export async function runEmbeddedAttempt(
                 workspaceMissingFiles: workspaceIntegrity.missingFiles,
                 promptErrorsRecent: promptError ? 1 : 0,
               });
-              const needsPromptBlock = buildNeedsPromptBlock(preRunNeeds, 320);
-              effectivePrompt = `${needsPromptBlock}\n\n${effectivePrompt}`;
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
                 label: "NEEDS_PRE",
                 summary:
-                  `needs injected (deficit=${preRunNeeds.topDeficit.name}:${preRunNeeds.topDeficit.value}; ` +
-                  `resource=${preRunNeeds.topResource.name}:${preRunNeeds.topResource.value})`,
-                source: "proto33-g10.needs-preinject",
+                  `needs prepared for somatic bridge (deficit=${preRunNeedsSnapshot.topDeficit.name}:${preRunNeedsSnapshot.topDeficit.value}; ` +
+                  `resource=${preRunNeedsSnapshot.topResource.name}:${preRunNeedsSnapshot.topResource.value})`,
+                source: "proto33-g11c.needs-pre",
               });
-            } catch (needsPreErr) {
+
+              let preRunAutonomyLevel = "L1";
+              try {
+                const bodyProfile = await readBodyProfile(effectiveWorkspace);
+                preRunAutonomyLevel = bodyProfile.autonomyLevel;
+              } catch {
+                preRunAutonomyLevel = "L1";
+              }
+              const fallbackEnergyHint: EnergyStateHint = {
+                level: 50,
+                mode: "balanced",
+                dreamMode: false,
+                suggestOwnTasks: true,
+                stagnationLevel: 35,
+                path: path.join(effectiveWorkspace, "knowledge", "sacred", "ENERGY.md"),
+              };
+              const somaticEnergyHint = preRunEnergyHint ?? fallbackEnergyHint;
+              const preRunAuraSnapshot = calculateAura({
+                energyLevel: somaticEnergyHint.level,
+                energyMode: somaticEnergyHint.mode,
+                recentEnergyLevels:
+                  recentHeartbeatSignals.recentEnergyLevels.length > 0
+                    ? recentHeartbeatSignals.recentEnergyLevels
+                    : [somaticEnergyHint.level],
+                moodText: latestMoodSummary,
+                recentPaths: recentHeartbeatSignals.recentPaths,
+                excitementOverrideRate: null,
+                autonomyLevel: preRunAutonomyLevel,
+                hasUserMessage: false,
+                recentUserMessageCount: recentHeartbeatSignals.recentUserMessageCount,
+                subconsciousCharge: 0,
+                apopheniaGenerated: false,
+                recentApopheniaCount: recentHeartbeatSignals.recentApopheniaCount,
+                isSleeping: somaticEnergyHint.dreamMode,
+                sleepPressure: somaticEnergyHint.stagnationLevel,
+                epochCount: 0,
+                lastEpochHealthy: true,
+                heartbeatCount: 0,
+                lastOutputTokens: null,
+                now: new Date(runStartedAt).toISOString(),
+              });
+              emitBrainReasoningEvent(params, {
+                phase: "aura",
+                label: "AURA_PRE",
+                summary: buildAuraSummary(preRunAuraSnapshot),
+                source: "proto33-g11c.aura-pre",
+              });
+
+              const somaticPayload = buildSomaticTelemetryPayload({
+                now: new Date(runStartedAt).toISOString(),
+                energy: somaticEnergyHint,
+                needs: preRunNeedsSnapshot,
+                aura: preRunAuraSnapshot,
+                repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+              });
+              const somaticResult = await synthesizeSomaticState({
+                payload: somaticPayload,
+                cfg: params.config,
+                agentDir: params.agentDir,
+                variationSeed: `${params.runId}:${somaticEnergyHint.heartbeatCount ?? 0}`,
+              });
+              preRunSomaticResult = somaticResult;
+              effectivePrompt = `${buildSomaticPromptBlock(somaticResult.sentence)}\n\n${effectivePrompt}`;
+              omLog("BRAIN-SOMATIC", "STATE", {
+                runId: params.runId,
+                sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                source: somaticResult.source,
+                timedOut: somaticResult.timedOut,
+                durationMs: somaticResult.durationMs,
+                modelRef: somaticResult.modelRef,
+                sentence: somaticResult.sentence,
+                error: somaticResult.error ?? null,
+              });
               emitBrainReasoningEvent(params, {
                 phase: "autonomy",
-                label: "NEEDS_PRE",
-                summary: `fail-open: ${String(needsPreErr)}`,
-                source: "proto33-g10.needs-preinject",
+                label: "SOMATIC_PRE",
+                summary:
+                  `somatic injected (source=${somaticResult.source}; timedOut=${somaticResult.timedOut ? "yes" : "no"}; ` +
+                  `durationMs=${somaticResult.durationMs}; model=${somaticResult.modelRef})`,
+                source: "proto33-g11c.somatic-preinject",
+              });
+            } catch (somaticPreErr) {
+              effectivePrompt = `${buildSomaticPromptBlock("")}\n\n${effectivePrompt}`;
+              preRunSomaticResult = {
+                sentence: "Ein leises, dumpfes Pochen durchzieht deinen Kern.",
+                source: "fallback",
+                timedOut: false,
+                durationMs: 0,
+                modelRef: "somatic/fail-open",
+                error: String(somaticPreErr),
+              };
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "SOMATIC_PRE",
+                summary: `fail-open: ${String(somaticPreErr)}`,
+                source: "proto33-g11c.somatic-preinject",
               });
             }
           }
@@ -3720,6 +4274,8 @@ export async function runEmbeddedAttempt(
         }
       }
 
+      let dissonanceForRun: PathDissonance | undefined;
+      let cognitiveGateForRun: CognitiveGateEvaluation | undefined;
       try {
         const energyResult = await updateEnergy({
           workspaceDir: effectiveWorkspace,
@@ -3749,6 +4305,7 @@ export async function runEmbeddedAttempt(
         });
         let chronoIsSleeping: boolean | undefined;
         let chronoSleepPressure: number | undefined;
+        let latestAuraSnapshot: AuraSnapshot | undefined;
         try {
           // Evaluate chrono on every run so papa-override can wake Om immediately on user turns.
           const chronoResult = await evaluateAndPersistChronoState({
@@ -3844,6 +4401,31 @@ export async function runEmbeddedAttempt(
               parserPriority: ["om_path_tag", "explicit_choice", "single_unique_freetext"],
             });
           }
+
+          dissonanceForRun = computePathDissonance({
+            chosenPath,
+            energyLevel: energyResult.snapshot.level,
+            isSleeping: chronoIsSleeping ?? false,
+            repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+          });
+          omLog("BRAIN-DISSONANCE", "STATE", {
+            runId: params.runId,
+            sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+            expectedPath: dissonanceForRun.expectedPath,
+            expectedScore: dissonanceForRun.expectedScore,
+            chosenPath: dissonanceForRun.chosenPath,
+            chosenScore: dissonanceForRun.chosenScore,
+            dissonanceGap: dissonanceForRun.dissonanceGap,
+          });
+          emitBrainReasoningEvent(params, {
+            phase: "autonomy",
+            label: "DISSONANCE",
+            summary:
+              `expected=${dissonanceForRun.expectedPath}:${dissonanceForRun.expectedScore}; ` +
+              `chosen=${dissonanceForRun.chosenPath}:${dissonanceForRun.chosenScore ?? "n/a"}; ` +
+              `gap=${dissonanceForRun.dissonanceGap ?? "n/a"}`,
+            source: "proto33-g11d.dissonance",
+          });
 
           const shouldAnalyzeLoopCause =
             chosenPath === "UNKNOWN" ||
@@ -4052,6 +4634,7 @@ export async function runEmbeddedAttempt(
               now: new Date(runStartedAt).toISOString(),
             };
             const auraSnapshot = calculateAura(auraInput);
+            latestAuraSnapshot = auraSnapshot;
             const auraSummary = buildAuraSummary(auraSnapshot);
 
             // Log to activity
@@ -4079,9 +4662,99 @@ export async function runEmbeddedAttempt(
             } catch {
               // fail-open: file write is best-effort
             }
+
+            try {
+              const dreamCycle = await evaluateAndPersistDreamCycleState({
+                workspaceDir: effectiveWorkspace,
+                now: new Date(runStartedAt).toISOString(),
+                energyLevel: energyResult.snapshot.level,
+                muladhara: auraSnapshot.chakras.muladhara,
+                hasFreshUserInput: false,
+              });
+              omLog("BRAIN-DREAM-CYCLE", "STATE", {
+                runId: params.runId,
+                sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                active: dreamCycle.state.active,
+                transitioned: dreamCycle.transitioned,
+                transitionType: dreamCycle.transitionType ?? null,
+                entryCondition: dreamCycle.entryCondition,
+                exitCondition: dreamCycle.exitCondition,
+                entryStreak: dreamCycle.state.entryStreak,
+                exitStreak: dreamCycle.state.exitStreak,
+                energy: energyResult.snapshot.level,
+                muladhara: Number(auraSnapshot.chakras.muladhara.toFixed(1)),
+              });
+              emitBrainReasoningEvent(params, {
+                phase: "sleep",
+                label: "DREAM_CYCLE",
+                summary:
+                  `active=${dreamCycle.state.active ? "yes" : "no"}; ` +
+                  `transition=${dreamCycle.transitionType ?? "none"}; ` +
+                  `entry=${dreamCycle.entryCondition ? "yes" : "no"}; ` +
+                  `exit=${dreamCycle.exitCondition ? "yes" : "no"}`,
+                source: "proto33-g11d.dream-cycle",
+              });
+            } catch (dreamCycleErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "sleep",
+                label: "DREAM_CYCLE",
+                summary: `fail-open: ${String(dreamCycleErr)}`,
+                source: "proto33-g11d.dream-cycle",
+              });
+            }
           } catch (auraErr) {
             // fail-open: aura is a mirror, not a requirement
             log.warn(`brain aura fail-open: ${String(auraErr)}`);
+          }
+        }
+        if (params.isHeartbeat === true) {
+          try {
+            const recentCognitiveBeats = await readRecentCognitiveBeats(
+              effectiveWorkspace,
+              COGNITIVE_GATE_WINDOW,
+            );
+            cognitiveGateForRun = evaluateCognitiveGate({
+              currentRunId: params.runId,
+              currentPath: chosenPath,
+              currentSomatic: preRunSomaticResult,
+              recentBeats: recentCognitiveBeats,
+            });
+            omLog("BRAIN-GATE", "COGNITIVE_HEALTH", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              status: cognitiveGateForRun.status,
+              fallbackRate:
+                cognitiveGateForRun.fallbackRate === null
+                  ? null
+                  : Number(cognitiveGateForRun.fallbackRate.toFixed(3)),
+              fallbackWindowSize: cognitiveGateForRun.fallbackWindowSize,
+              pathLockRisk: cognitiveGateForRun.pathLockRisk,
+              somaticShiftScore:
+                cognitiveGateForRun.somaticShiftScore === null
+                  ? null
+                  : Number(cognitiveGateForRun.somaticShiftScore.toFixed(3)),
+              pathDiversity5: cognitiveGateForRun.pathDiversity5,
+              reasons: cognitiveGateForRun.reasons,
+              chosenPath,
+              auraOverall: latestAuraSnapshot ? Number(latestAuraSnapshot.overall.toFixed(1)) : null,
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "GATE",
+              summary:
+                `status=${cognitiveGateForRun.status}; ` +
+                `fallback=${cognitiveGateForRun.fallbackRate ?? "n/a"}; ` +
+                `pathLock=${cognitiveGateForRun.pathLockRisk ? "yes" : "no"}; ` +
+                `diversity5=${cognitiveGateForRun.pathDiversity5}`,
+              source: "proto33-g11d.gate",
+            });
+          } catch (gateErr) {
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "GATE",
+              summary: `fail-open: ${String(gateErr)}`,
+              source: "proto33-g11d.gate",
+            });
           }
         }
       } catch (energyErr) {
@@ -4155,6 +4828,17 @@ export async function runEmbeddedAttempt(
           lastToolErrorTool: lastToolError?.toolName ?? null,
           lastToolErrorCode: extractToolErrorCode(lastToolError?.error) ?? null,
           lastToolError: lastToolError?.error ?? null,
+          somaticSource: preRunSomaticResult?.source ?? null,
+          somaticTimedOut: preRunSomaticResult?.timedOut ?? null,
+          dissonanceExpectedPath: dissonanceForRun?.expectedPath ?? null,
+          dissonanceExpectedScore: dissonanceForRun?.expectedScore ?? null,
+          dissonanceChosenPath: dissonanceForRun?.chosenPath ?? null,
+          dissonanceChosenScore: dissonanceForRun?.chosenScore ?? null,
+          dissonanceGap: dissonanceForRun?.dissonanceGap ?? null,
+          cognitiveGateStatus: cognitiveGateForRun?.status ?? null,
+          cognitiveGateFallbackRate: cognitiveGateForRun?.fallbackRate ?? null,
+          cognitiveGatePathLockRisk: cognitiveGateForRun?.pathLockRisk ?? null,
+          cognitiveGatePathDiversity5: cognitiveGateForRun?.pathDiversity5 ?? null,
         });
       }
 

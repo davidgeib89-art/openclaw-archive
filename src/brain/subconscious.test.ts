@@ -137,7 +137,7 @@ describe("brain subconscious observer", () => {
         enabled: true,
       });
       expect(runtime.modelRef).toBe("openrouter/inception/mercury");
-      expect(runtime.intervalMs).toBe(20_000);
+      expect(runtime.intervalMs).toBe(144_000);
       expect(runtime.windowMinutes).toBe(20);
     } finally {
       if (typeof previousEnabled === "string") {
