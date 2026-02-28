@@ -45,6 +45,7 @@ import {
   synthesizeSomaticState,
 } from "../../../brain/somatic.js";
 import {
+  BrainState,
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
   runBrainSubconsciousObserver,
@@ -3767,6 +3768,31 @@ export async function runEmbeddedAttempt(
               log.debug(
                 `brain subconscious dry-run logged: status=${subconsciousResult.status} path=${subconsciousLogPath}`,
               );
+            }
+          }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const deepIntuition = await BrainState.consumeIntuition();
+              const whisperRaw = deepIntuition?.content.replace(/\s+/g, " ").trim();
+              if (whisperRaw && whisperRaw.length > 0) {
+                const whisperText =
+                  whisperRaw.length > 420 ? `${whisperRaw.slice(0, 417).trimEnd()}...` : whisperRaw;
+                const whisperBlock = `*Ein Fluestern aus der Tiefe deines Geistes:* "${whisperText}"`;
+                effectivePrompt = `${whisperBlock}\n\n${effectivePrompt}`;
+                emitBrainReasoningEvent(params, {
+                  phase: "inject",
+                  label: "INTUITION_PRE",
+                  summary: `system_1 intuition injected (${whisperText.length} chars)`,
+                  source: "proto33-g11e.intuition-preinject",
+                });
+              }
+            } catch (intuitionErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "inject",
+                label: "INTUITION_PRE",
+                summary: `fail-open: ${String(intuitionErr)}`,
+                source: "proto33-g11e.intuition-preinject",
+              });
             }
           }
         } catch (brainErr) {

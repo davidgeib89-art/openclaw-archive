@@ -136,7 +136,7 @@ describe("brain subconscious observer", () => {
       const runtime = resolveBrainSubconsciousDaemonRuntimeConfig({
         enabled: true,
       });
-      expect(runtime.modelRef).toBe("openrouter/inception/mercury");
+      expect(runtime.modelRef).toBe("inception/mercury-2");
       expect(runtime.timeoutMs).toBe(20_000);
       expect(runtime.intervalMs).toBe(144_000);
       expect(runtime.windowMinutes).toBe(20);
