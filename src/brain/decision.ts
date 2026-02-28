@@ -1305,6 +1305,17 @@ function formatGraphFact(row: {
   return `${source} ${predicate.toLowerCase().replace(/_/g, " ")} ${target}.`;
 }
 
+function hasEpisodicRepressedColumn(db: DatabaseSync): boolean {
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    return tableInfo.some((column) => column.name === "repressed");
+  } catch {
+    return false;
+  }
+}
+
 function loadGraphFactsForRecall(params: {
   workspaceDir: string;
   query: string;
@@ -1329,13 +1340,20 @@ function loadGraphFactsForRecall(params: {
     const db = new DatabaseSync(dbPath);
     try {
       const predicatePlan = createGraphPredicateRoutePlan(params.query, params.routePlan.route);
+      const selectSql = hasEpisodicRepressedColumn(db)
+        ? `SELECT r.source_entity, r.predicate, r.target_entity, r.created_at
+             FROM semantic_relationships r
+             LEFT JOIN episodic_entries e
+               ON e.entry_id = r.entry_id
+             WHERE COALESCE(e.repressed, 0) = 0
+             ORDER BY r.created_at DESC
+             LIMIT 200`
+        : `SELECT source_entity, predicate, target_entity, created_at
+             FROM semantic_relationships
+             ORDER BY created_at DESC
+             LIMIT 200`;
       const rows = db
-        .prepare(
-          `SELECT source_entity, predicate, target_entity, created_at
-           FROM semantic_relationships
-           ORDER BY created_at DESC
-           LIMIT 200`,
-        )
+        .prepare(selectSql)
         .all() as Array<{
         source_entity: string;
         predicate: string;

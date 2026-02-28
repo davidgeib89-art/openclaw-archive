@@ -973,6 +973,99 @@ describe("brain sacred recall hook", () => {
     }
   });
 
+  it("excludes repressed episodic graph facts from sacred recall", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-repressed-"));
+    const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS episodic_entries (
+        entry_id TEXT PRIMARY KEY,
+        repressed INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS semantic_relationships (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT,
+        source_entity TEXT NOT NULL,
+        predicate TEXT NOT NULL,
+        target_entity TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_file TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare("INSERT INTO episodic_entries (entry_id, repressed) VALUES (?, ?)").run("entry-dark", 1);
+    db.prepare("INSERT INTO episodic_entries (entry_id, repressed) VALUES (?, ?)").run("entry-light", 0);
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "rel-repressed",
+      "entry-dark",
+      "Alice",
+      "MANAGES",
+      "Auth Team",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now(),
+    );
+    db.prepare(
+      `INSERT INTO semantic_relationships (
+         id,
+         entry_id,
+         source_entity,
+         predicate,
+         target_entity,
+         confidence,
+         source_file,
+         created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "rel-visible",
+      "entry-light",
+      "Bob",
+      "MANAGES",
+      "Auth Team",
+      1,
+      "memory/EPISODIC_JOURNAL.md",
+      Date.now() - 1000,
+    );
+    db.close();
+
+    try {
+      const result = await buildBrainSacredRecallContext({
+        cfg: {} as OpenClawConfig,
+        agentId: "main",
+        workspaceDir,
+        sessionKey: "session-recall-graph-repressed",
+        userMessage: "Who manages Auth Team right now?",
+        maxResults: 3,
+        managerResolver: async () => ({
+          manager: {
+            search: async () => [],
+            readFile: async () => ({ text: "", path: "" }),
+            status: () => ({ backend: "builtin" as const, provider: "test-provider" }),
+            probeEmbeddingAvailability: async () => ({ ok: true }),
+            probeVectorAvailability: async () => true,
+          },
+        }),
+      });
+
+      expect(result.graphFacts).toContain("Bob manages Auth Team.");
+      expect(result.graphFacts).not.toContain("Alice manages Auth Team.");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
   it("prioritizes MANAGES facts for management-oriented project queries", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-recall-graph-route-"));
     const dbPath = path.join(workspaceDir, "logs", "brain", "episodic-memory.sqlite");

@@ -19,15 +19,16 @@ function seedEpisodicEntries(params: { dbPath: string; now: Date }): void {
         ts TEXT NOT NULL,
         score INTEGER NOT NULL,
         primary_kind TEXT NOT NULL,
-        signals TEXT NOT NULL
+        signals TEXT NOT NULL,
+        repressed INTEGER NOT NULL DEFAULT 0
       );
     `);
 
     const nowMs = params.now.getTime();
     const day = 24 * 60 * 60 * 1000;
     const insert = db.prepare(
-      `INSERT INTO episodic_entries (entry_id, created_at, ts, score, primary_kind, signals)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO episodic_entries (entry_id, created_at, ts, score, primary_kind, signals, repressed)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     insert.run(
       "entry-active",
@@ -36,6 +37,7 @@ function seedEpisodicEntries(params: { dbPath: string; now: Date }): void {
       4,
       "identity",
       "identity,emotion",
+      0,
     );
     insert.run(
       "entry-window",
@@ -44,6 +46,7 @@ function seedEpisodicEntries(params: { dbPath: string; now: Date }): void {
       3,
       "goal",
       "goal",
+      0,
     );
     insert.run(
       "entry-long-term",
@@ -52,6 +55,7 @@ function seedEpisodicEntries(params: { dbPath: string; now: Date }): void {
       5,
       "decision",
       "decision,long_turn",
+      0,
     );
     insert.run(
       "entry-archived",
@@ -60,6 +64,16 @@ function seedEpisodicEntries(params: { dbPath: string; now: Date }): void {
       1,
       "general",
       "long_turn",
+      0,
+    );
+    insert.run(
+      "entry-repressed",
+      nowMs - 1 * day,
+      new Date(nowMs - 1 * day).toISOString(),
+      5,
+      "identity",
+      "identity,emotion",
+      1,
     );
   } finally {
     db.close();
@@ -142,6 +156,7 @@ describe("episodic index", () => {
     expect(raw).toContain("entry=entry-window");
     expect(raw).toContain("entry=entry-long-term");
     expect(raw).not.toContain("entry=entry-archived");
+    expect(raw).not.toContain("entry=entry-repressed");
   });
 
   it("returns disabled snapshot when index is turned off", async () => {

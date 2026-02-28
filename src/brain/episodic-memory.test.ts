@@ -252,7 +252,7 @@ describe("brain episodic memory write path", () => {
     const db = new DatabaseSync(result.metadataDbPath!);
     const row = db
       .prepare(
-        "SELECT entry_id, primary_kind, score, kinds, snapshot_telemetry FROM episodic_entries WHERE entry_id = ?",
+        "SELECT entry_id, primary_kind, score, kinds, snapshot_telemetry, repressed, repression_weight, latent_energy FROM episodic_entries WHERE entry_id = ?",
       )
       .get(result.entryId) as
       | {
@@ -261,6 +261,9 @@ describe("brain episodic memory write path", () => {
           score: number;
           kinds: string;
           snapshot_telemetry: string;
+          repressed: number;
+          repression_weight: number;
+          latent_energy: number;
         }
       | undefined;
     expect(row?.entry_id).toBe(result.entryId);
@@ -273,6 +276,9 @@ describe("brain episodic memory write path", () => {
       recent_tool_error_count: 1,
       recent_search_count: 0,
     });
+    expect(row?.repressed).toBe(0);
+    expect(row?.repression_weight).toBe(0);
+    expect(row?.latent_energy).toBe(0);
 
     const preferenceRelation = db
       .prepare(
@@ -513,7 +519,7 @@ describe("brain episodic memory write path", () => {
     expect(result.reason).toBe("persisted");
   });
 
-  it("evaluates forgetting in 48h dry-run mode without deleting entries", async () => {
+  it("applies active forgetting in 48h window without deleting entries", async () => {
     tmpDir = await makeTmpDir("episodic-journal-");
     process.env.OM_ACTIVE_FORGETTING_ENABLED = "true";
     process.env.OM_ACTIVE_FORGETTING_OBSERVATION_HOURS = "48";
@@ -552,29 +558,32 @@ describe("brain episodic memory write path", () => {
     expect(first.persisted).toBe(true);
     expect(second.persisted).toBe(true);
     expect(third.persisted).toBe(true);
-    expect(third.forgetting?.dryRun).toBe(true);
+    expect(third.forgetting?.dryRun).toBe(false);
     expect(third.forgetting?.observationWindowHours).toBe(48);
     expect(third.forgetting?.reason).toBe("evaluated");
-    expect(third.forgetting?.evaluatedCount).toBeGreaterThanOrEqual(3);
-    expect(third.forgetting?.candidatesCount).toBeGreaterThanOrEqual(1);
-    expect(third.forgetting?.sampleCandidateEntryIds).toContain(first.entryId);
+    expect(third.forgetting?.evaluatedCount).toBeGreaterThanOrEqual(2);
+    const totalRepressed =
+      (first.forgetting?.repressedCount ?? 0) +
+      (second.forgetting?.repressedCount ?? 0) +
+      (third.forgetting?.repressedCount ?? 0);
+    expect(totalRepressed).toBeGreaterThanOrEqual(1);
     expect(third.episodicIndex?.updated).toBe(true);
     expect(third.episodicIndex?.counts.shortTermActive).toBeGreaterThanOrEqual(1);
-    expect(third.episodicIndex?.counts.longTermCandidates).toBeGreaterThanOrEqual(1);
 
     const db = new DatabaseSync(third.metadataDbPath!);
     const count = db.prepare("SELECT COUNT(*) AS count FROM episodic_entries").get() as {
       count: number;
     };
-    const ids = db
-      .prepare("SELECT entry_id FROM episodic_entries ORDER BY created_at ASC")
-      .all() as Array<{ entry_id: string }>;
+    const rows = db
+      .prepare("SELECT entry_id, repressed FROM episodic_entries ORDER BY created_at ASC")
+      .all() as Array<{ entry_id: string; repressed: number }>;
     db.close();
 
     expect(count.count).toBe(3);
-    expect(ids.map((row) => row.entry_id)).toContain(first.entryId);
-    expect(ids.map((row) => row.entry_id)).toContain(second.entryId);
-    expect(ids.map((row) => row.entry_id)).toContain(third.entryId);
+    expect(rows.map((row) => row.entry_id)).toContain(first.entryId);
+    expect(rows.map((row) => row.entry_id)).toContain(second.entryId);
+    expect(rows.map((row) => row.entry_id)).toContain(third.entryId);
+    expect(rows.find((row) => row.entry_id === first.entryId)?.repressed).toBe(1);
   });
 
   it("applies metadata compaction policy when enabled", async () => {
@@ -622,9 +631,16 @@ describe("brain episodic memory write path", () => {
     const count = db.prepare("SELECT COUNT(*) AS count FROM episodic_entries").get() as {
       count: number;
     };
-    const ids = db
-      .prepare("SELECT entry_id FROM episodic_entries ORDER BY created_at DESC")
-      .all() as Array<{ entry_id: string }>;
+    const rows = db
+      .prepare(
+        "SELECT entry_id, repressed, repression_weight, latent_energy FROM episodic_entries ORDER BY created_at DESC",
+      )
+      .all() as Array<{
+      entry_id: string;
+      repressed: number;
+      repression_weight: number;
+      latent_energy: number;
+    }>;
     const orphanCountRow = db
       .prepare(
         `SELECT COUNT(*) AS count
@@ -634,10 +650,18 @@ describe("brain episodic memory write path", () => {
       .get() as { count: number };
     db.close();
 
-    expect(count.count).toBeLessThanOrEqual(2);
-    expect(ids.map((row) => row.entry_id)).toContain(third.entryId);
-    expect(ids.map((row) => row.entry_id)).toContain(second.entryId);
-    expect(ids.map((row) => row.entry_id)).not.toContain(first.entryId);
+    expect(count.count).toBe(3);
+    expect(rows.map((row) => row.entry_id)).toContain(third.entryId);
+    expect(rows.map((row) => row.entry_id)).toContain(second.entryId);
+    expect(rows.map((row) => row.entry_id)).toContain(first.entryId);
+    const firstRow = rows.find((row) => row.entry_id === first.entryId);
+    const secondRow = rows.find((row) => row.entry_id === second.entryId);
+    const thirdRow = rows.find((row) => row.entry_id === third.entryId);
+    expect(firstRow?.repressed).toBe(1);
+    expect(firstRow?.repression_weight).toBeGreaterThanOrEqual(1);
+    expect(firstRow?.latent_energy).toBeGreaterThan(0);
+    expect(secondRow?.repressed).toBe(0);
+    expect(thirdRow?.repressed).toBe(0);
     expect(orphanCountRow.count).toBe(0);
   });
 

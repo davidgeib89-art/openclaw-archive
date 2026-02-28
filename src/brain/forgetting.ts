@@ -41,20 +41,24 @@ export type ForgettingScoreBreakdown = {
 export type ActiveForgettingCandidate = {
   entryId: string;
   forgettingScore: number;
+  latentEnergy: number;
 };
 
-export type ActiveForgettingDryRunSummary = {
+export type ActiveForgettingSummary = {
   enabled: boolean;
-  dryRun: true;
+  dryRun: boolean;
   observationWindowHours: number;
   forgettingThreshold: number;
   evaluatedCount: number;
   matureCount: number;
   candidatesCount: number;
+  repressedCount: number;
   protectedCount: number;
   sampleCandidateEntryIds: string[];
   reason: string;
 };
+
+export type ActiveForgettingDryRunSummary = ActiveForgettingSummary;
 
 type ActiveForgettingPolicy = {
   enabled: boolean;
@@ -63,12 +67,14 @@ type ActiveForgettingPolicy = {
   maxScanRows: number;
 };
 
-export type RunActiveForgettingDryRunInput = {
+export type RunActiveForgettingInput = {
   metadataDbPath: string;
   runId: string;
   sessionKey?: string;
   now?: Date;
 };
+
+export type RunActiveForgettingDryRunInput = RunActiveForgettingInput;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -145,6 +151,17 @@ function parseSignals(raw: string): Set<string> {
   );
 }
 
+function hasColumn(db: DatabaseSync, columnName: string): boolean {
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    return tableInfo.some((column) => column.name === columnName);
+  } catch {
+    return false;
+  }
+}
+
 function resolveEmotionValue(row: Pick<EpisodicForgettingRow, "signals" | "score">): number {
   const signals = parseSignals(row.signals);
   if (signals.has("emotion")) {
@@ -195,14 +212,15 @@ export function evaluateForgettingScore(input: {
 }
 
 function summarizeAndLog(params: {
-  input: RunActiveForgettingDryRunInput;
+  input: RunActiveForgettingInput;
   policy: ActiveForgettingPolicy;
-  summary: ActiveForgettingDryRunSummary;
-}): ActiveForgettingDryRunSummary {
+  summary: ActiveForgettingSummary;
+}): ActiveForgettingSummary {
   const sample = params.summary.sampleCandidateEntryIds.join(",");
+  const mode = params.summary.dryRun ? "DRY_RUN" : "ACTIVE";
   omLog(
     "BRAIN-FORGETTING",
-    "DRY_RUN",
+    mode,
     [
       `runId=${params.input.runId}`,
       `sessionKey=${params.input.sessionKey ?? "n/a"}`,
@@ -211,28 +229,28 @@ function summarizeAndLog(params: {
       `evaluated=${params.summary.evaluatedCount}`,
       `mature=${params.summary.matureCount}`,
       `candidates=${params.summary.candidatesCount}`,
+      `repressed=${params.summary.repressedCount}`,
       `protected=${params.summary.protectedCount}`,
       `threshold=${params.policy.forgettingThreshold.toFixed(2)}`,
       `windowHours=${params.policy.observationWindowHours}`,
       `sample=${sample || "none"}`,
-      "no_delete=yes",
+      `no_delete=${params.summary.dryRun ? "yes" : "no"}`,
     ].join(" "),
   );
   return params.summary;
 }
 
-export function runActiveForgettingDryRun(
-  input: RunActiveForgettingDryRunInput,
-): ActiveForgettingDryRunSummary {
+export function runActiveForgetting(input: RunActiveForgettingInput): ActiveForgettingSummary {
   const policy = resolveActiveForgettingPolicy();
   const baseSummary = {
     enabled: policy.enabled,
-    dryRun: true as const,
+    dryRun: false,
     observationWindowHours: policy.observationWindowHours,
     forgettingThreshold: policy.forgettingThreshold,
     evaluatedCount: 0,
     matureCount: 0,
     candidatesCount: 0,
+    repressedCount: 0,
     protectedCount: 0,
     sampleCandidateEntryIds: [],
   };
@@ -263,15 +281,25 @@ export function runActiveForgettingDryRun(
   const minAgeHours = policy.observationWindowHours;
 
   try {
-    const db = new DatabaseSync(input.metadataDbPath, { readOnly: true });
+    const db = new DatabaseSync(input.metadataDbPath);
     try {
+      const hasRepressed = hasColumn(db, "repressed");
+      const hasRepressionWeight = hasColumn(db, "repression_weight");
+      const hasLatentEnergy = hasColumn(db, "latent_energy");
+      const canRepress = hasRepressed && hasRepressionWeight && hasLatentEnergy;
+
+      const selectSql = hasRepressed
+        ? `SELECT entry_id, created_at, score, signals, primary_kind
+             FROM episodic_entries
+             WHERE COALESCE(repressed, 0) = 0
+             ORDER BY created_at DESC
+             LIMIT ?`
+        : `SELECT entry_id, created_at, score, signals, primary_kind
+             FROM episodic_entries
+             ORDER BY created_at DESC
+             LIMIT ?`;
       const rows = db
-        .prepare(
-          `SELECT entry_id, created_at, score, signals, primary_kind
-           FROM episodic_entries
-           ORDER BY created_at DESC
-           LIMIT ?`,
-        )
+        .prepare(selectSql)
         .all(policy.maxScanRows) as EpisodicForgettingRow[];
 
       if (rows.length === 0) {
@@ -312,12 +340,66 @@ export function runActiveForgettingDryRun(
           candidates.push({
             entryId: row.entry_id,
             forgettingScore: score.forgettingScore,
+            latentEnergy: score.emotionValue,
           });
         }
       }
 
       candidates.sort((a, b) => b.forgettingScore - a.forgettingScore);
       const sample = candidates.slice(0, 5).map((entry) => entry.entryId);
+      const protectedCount = Math.max(0, rows.length - candidates.length);
+
+      if (!canRepress) {
+        return summarizeAndLog({
+          input,
+          policy,
+          summary: {
+            ...baseSummary,
+            evaluatedCount: rows.length,
+            matureCount,
+            candidatesCount: candidates.length,
+            protectedCount,
+            sampleCandidateEntryIds: sample,
+            reason: "schema-missing",
+          },
+        });
+      }
+
+      const update = db.prepare(
+        `UPDATE episodic_entries
+            SET repressed = 1,
+                repression_weight = ?,
+                latent_energy = ?
+          WHERE entry_id = ?
+            AND COALESCE(repressed, 0) = 0`,
+      );
+
+      let repressedCount = 0;
+      if (candidates.length > 0) {
+        db.exec("BEGIN IMMEDIATE TRANSACTION");
+        try {
+          for (const candidate of candidates) {
+            const updateResult = update.run(
+              Number(candidate.forgettingScore.toFixed(4)),
+              Number(candidate.latentEnergy.toFixed(4)),
+              candidate.entryId,
+            ) as { changes?: number | bigint };
+            if (typeof updateResult.changes === "number") {
+              repressedCount += updateResult.changes;
+            } else if (typeof updateResult.changes === "bigint") {
+              repressedCount += Number(updateResult.changes);
+            }
+          }
+          db.exec("COMMIT");
+        } catch (transactionErr) {
+          try {
+            db.exec("ROLLBACK");
+          } catch {
+            // Fail-open: rollback failure should not mask root cause.
+          }
+          throw transactionErr;
+        }
+      }
 
       return summarizeAndLog({
         input,
@@ -327,7 +409,8 @@ export function runActiveForgettingDryRun(
           evaluatedCount: rows.length,
           matureCount,
           candidatesCount: candidates.length,
-          protectedCount: rows.length - candidates.length,
+          repressedCount,
+          protectedCount,
           sampleCandidateEntryIds: sample,
           reason: "evaluated",
         },
@@ -345,4 +428,11 @@ export function runActiveForgettingDryRun(
       },
     });
   }
+}
+
+// Backward-compatible export name; now runs active repression instead of dry-run.
+export function runActiveForgettingDryRun(
+  input: RunActiveForgettingDryRunInput,
+): ActiveForgettingDryRunSummary {
+  return runActiveForgetting(input);
 }

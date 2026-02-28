@@ -6,7 +6,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { BrainHomeostasisTelemetry } from "./types.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { updateEpisodicIndex, type EpisodicIndexSnapshot } from "./episodic-index.js";
-import { runActiveForgettingDryRun, type ActiveForgettingDryRunSummary } from "./forgetting.js";
+import { runActiveForgetting, type ActiveForgettingSummary } from "./forgetting.js";
 import { evaluateSalience } from "./salience.js";
 
 const DEFAULT_EPISODIC_JOURNAL_RELATIVE_PATH = "memory/EPISODIC_JOURNAL.md";
@@ -120,7 +120,7 @@ export type BrainEpisodicWriteResult = {
   graphConflictsResolved?: number;
   memoryIndexPath?: string;
   memoryIndexUpdated?: boolean;
-  forgetting?: ActiveForgettingDryRunSummary;
+  forgetting?: ActiveForgettingSummary;
   episodicIndex?: EpisodicIndexSnapshot;
   reason: string;
 };
@@ -728,6 +728,42 @@ function ensureEpisodicSnapshotTelemetryColumn(db: DatabaseSync): void {
   }
 }
 
+function ensureEpisodicShadowColumns(db: DatabaseSync): void {
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    const hasColumn = (name: string) => tableInfo.some((column) => column.name === name);
+    if (!hasColumn("repressed")) {
+      db.exec(
+        `ALTER TABLE episodic_entries
+           ADD COLUMN repressed INTEGER NOT NULL
+           DEFAULT 0`,
+      );
+    }
+    if (!hasColumn("repression_weight")) {
+      db.exec(
+        `ALTER TABLE episodic_entries
+           ADD COLUMN repression_weight REAL NOT NULL
+           DEFAULT 0.0`,
+      );
+    }
+    if (!hasColumn("latent_energy")) {
+      db.exec(
+        `ALTER TABLE episodic_entries
+           ADD COLUMN latent_energy REAL NOT NULL
+           DEFAULT 0.0`,
+      );
+    }
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_episodic_entries_repressed
+         ON episodic_entries(repressed, created_at DESC)`,
+    );
+  } catch {
+    // Fail-open: schema migration must not block runtime.
+  }
+}
+
 function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -748,7 +784,10 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
       assistant_hash TEXT NOT NULL,
       markdown_path TEXT NOT NULL,
       structured_path TEXT NOT NULL,
-      snapshot_telemetry TEXT NOT NULL
+      snapshot_telemetry TEXT NOT NULL,
+      repressed INTEGER NOT NULL DEFAULT 0,
+      repression_weight REAL NOT NULL DEFAULT 0.0,
+      latent_energy REAL NOT NULL DEFAULT 0.0
     );
     CREATE INDEX IF NOT EXISTS idx_episodic_entries_created_at
       ON episodic_entries(created_at DESC);
@@ -756,6 +795,8 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
       ON episodic_entries(primary_kind);
     CREATE INDEX IF NOT EXISTS idx_episodic_entries_session_key
       ON episodic_entries(session_key);
+    CREATE INDEX IF NOT EXISTS idx_episodic_entries_repressed
+      ON episodic_entries(repressed, created_at DESC);
     CREATE TABLE IF NOT EXISTS semantic_relationships (
       id TEXT PRIMARY KEY,
       entry_id TEXT NOT NULL,
@@ -779,6 +820,7 @@ function ensureEpisodicMetadataSchema(db: DatabaseSync): void {
       ON semantic_relationships(entry_id, source_entity, predicate, target_entity);
   `);
   ensureEpisodicSnapshotTelemetryColumn(db);
+  ensureEpisodicShadowColumns(db);
 }
 
 function runDelete(db: DatabaseSync, sql: string, ...params: SqlValue[]): number {
@@ -800,39 +842,69 @@ function applyEpisodicMetadataCompaction(params: {
   if (!params.policy.enabled) {
     return 0;
   }
-  let deletedRows = 0;
+  let repressedRows = 0;
   const nowMs = params.now.getTime();
   const lowScoreCutoffMs = nowMs - params.policy.lowScoreRetentionDays * MILLIS_PER_DAY;
   const retentionCutoffMs = nowMs - params.policy.retentionDays * MILLIS_PER_DAY;
 
-  deletedRows += runDelete(
+  repressedRows += runDelete(
     params.db,
-    `DELETE FROM episodic_entries
-      WHERE created_at < ?
-        AND score <= ?`,
+    `UPDATE episodic_entries
+        SET repressed = 1,
+            repression_weight = CASE
+              WHEN repression_weight > 0 THEN repression_weight
+              ELSE 1.0
+            END,
+            latent_energy = CASE
+              WHEN latent_energy > 0 THEN latent_energy
+              ELSE 0.35
+            END
+       WHERE created_at < ?
+         AND score <= ?
+         AND COALESCE(repressed, 0) = 0`,
     lowScoreCutoffMs,
     params.policy.lowScoreThreshold,
   );
 
-  deletedRows += runDelete(
+  repressedRows += runDelete(
     params.db,
-    `DELETE FROM episodic_entries
-      WHERE created_at < ?`,
+    `UPDATE episodic_entries
+        SET repressed = 1,
+            repression_weight = CASE
+              WHEN repression_weight > 0 THEN repression_weight
+              ELSE 1.0
+            END,
+            latent_energy = CASE
+              WHEN latent_energy > 0 THEN latent_energy
+              ELSE 0.35
+            END
+      WHERE created_at < ?
+        AND COALESCE(repressed, 0) = 0`,
     retentionCutoffMs,
   );
 
-  deletedRows += runDelete(
+  repressedRows += runDelete(
     params.db,
-    `DELETE FROM episodic_entries
-      WHERE entry_id IN (
-        SELECT entry_id FROM episodic_entries
-        ORDER BY created_at DESC
-        LIMIT -1 OFFSET ?
-      )`,
+    `UPDATE episodic_entries
+        SET repressed = 1,
+            repression_weight = CASE
+              WHEN repression_weight > 0 THEN repression_weight
+              ELSE 1.0
+            END,
+            latent_energy = CASE
+              WHEN latent_energy > 0 THEN latent_energy
+              ELSE 0.35
+            END
+       WHERE entry_id IN (
+         SELECT entry_id FROM episodic_entries
+         WHERE COALESCE(repressed, 0) = 0
+         ORDER BY created_at DESC
+         LIMIT -1 OFFSET ?
+       )`,
     params.policy.maxRows,
   );
 
-  return deletedRows;
+  return repressedRows;
 }
 
 function cleanupOrphanedSemanticRelationships(db: DatabaseSync): number {
@@ -1273,7 +1345,7 @@ export async function appendBrainEpisodicJournal(
       relationships: relationshipsForIndex,
     }),
   });
-  const forgetting = runActiveForgettingDryRun({
+  const forgetting = runActiveForgetting({
     metadataDbPath,
     runId: input.runId,
     sessionKey: input.sessionKey,

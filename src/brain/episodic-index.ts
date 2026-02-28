@@ -132,6 +132,17 @@ function resolveEpisodicIndexPath(workspaceDir: string): string {
   return path.resolve(workspaceDir, rel);
 }
 
+function hasRepressedColumn(db: DatabaseSync): boolean {
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    return tableInfo.some((column) => column.name === "repressed");
+  } catch {
+    return false;
+  }
+}
+
 function parseSignals(raw: string): string[] {
   return raw
     .split(",")
@@ -256,13 +267,18 @@ export async function updateEpisodicIndex(
   try {
     const db = new DatabaseSync(input.metadataDbPath, { readOnly: true });
     try {
+      const selectSql = hasRepressedColumn(db)
+        ? `SELECT entry_id, created_at, ts, score, primary_kind, signals
+             FROM episodic_entries
+             WHERE COALESCE(repressed, 0) = 0
+             ORDER BY created_at DESC
+             LIMIT ?`
+        : `SELECT entry_id, created_at, ts, score, primary_kind, signals
+             FROM episodic_entries
+             ORDER BY created_at DESC
+             LIMIT ?`;
       const rows = db
-        .prepare(
-          `SELECT entry_id, created_at, ts, score, primary_kind, signals
-           FROM episodic_entries
-           ORDER BY created_at DESC
-           LIMIT ?`,
-        )
+        .prepare(selectSql)
         .all(policy.maxScanRows) as EpisodicIndexRow[];
 
       if (rows.length === 0) {
