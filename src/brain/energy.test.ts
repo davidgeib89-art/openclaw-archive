@@ -265,4 +265,77 @@ describe("updateEnergy", () => {
     expect(hint).not.toBeNull();
     expect(hint?.stagnationLevel).toBe(30);
   });
+
+  it("does not increase stagnation while chrono sleep is active", async () => {
+    const workspace = await createWorkspace();
+    const energyPath = path.join(workspace, "knowledge", "sacred", "ENERGY.md");
+    await fs.writeFile(
+      energyPath,
+      [
+        "# ENERGY",
+        "",
+        "- updated_at: 2026-02-22T12:00:00.000Z",
+        "- run_id: run-prev",
+        "- session_key: agent:main:test",
+        "- level: 55",
+        "- mode: balanced",
+        "- dream_mode: no",
+        "- suggest_own_tasks: no",
+        "- stagnation_level: 70",
+        "- heartbeat_count: 3",
+        "- breath_phase: hold",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-sleep",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 0, successful: 0, failed: 0 },
+      subconsciousCharge: 0,
+      isSleeping: true,
+      now: new Date("2026-02-22T12:10:00.000Z"),
+    });
+
+    expect(result.snapshot.stagnationLevel).toBe(65);
+  });
+
+  it("does not increase stagnation while dream mode is active", async () => {
+    const workspace = await createWorkspace();
+    const energyPath = path.join(workspace, "knowledge", "sacred", "ENERGY.md");
+    await fs.writeFile(
+      energyPath,
+      [
+        "# ENERGY",
+        "",
+        "- updated_at: 2026-02-22T12:00:00.000Z",
+        "- run_id: run-prev",
+        "- session_key: agent:main:test",
+        "- level: 5",
+        "- mode: dream",
+        "- dream_mode: yes",
+        "- suggest_own_tasks: no",
+        "- stagnation_level: 40",
+        "- heartbeat_count: 8",
+        "- breath_phase: exhale",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await updateEnergy({
+      workspaceDir: workspace,
+      runId: "run-energy-dream",
+      sessionKey: "agent:main:test",
+      toolStats: { total: 6, successful: 0, failed: 6 },
+      subconsciousCharge: 0,
+      isSleeping: false,
+      now: new Date("2026-02-22T12:10:00.000Z"),
+    });
+
+    expect(result.snapshot.dreamMode).toBe(true);
+    expect(result.snapshot.stagnationLevel).toBe(35);
+  });
 });

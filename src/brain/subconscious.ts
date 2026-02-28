@@ -20,7 +20,7 @@ import { isTruthyEnvValue } from "../infra/env.js";
 import { getDefaultBrainObserverDir } from "./decision.js";
 import { evaluateSurge } from "./salience.js";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 30_000;
 const DEFAULT_SUBCONSCIOUS_MODEL_REF = "openrouter/anthropic/claude-3.5-sonnet";
@@ -60,7 +60,7 @@ const MAX_DAEMON_MAX_ENTRIES = 160;
 const DEFAULT_DAEMON_TAIL_BYTES = 64_000;
 const MIN_DAEMON_TAIL_BYTES = 16_000;
 const MAX_DAEMON_TAIL_BYTES = 1_048_576;
-const DEFAULT_DAEMON_TIMEOUT_MS = 7_000;
+const DEFAULT_DAEMON_TIMEOUT_MS = 20_000;
 const DEFAULT_DAEMON_BASE_TEMPERATURE = 0.45;
 const DEFAULT_DYNAMIC_CFG = 5.0;
 const DYNAMIC_CFG_STRESS_MULTIPLIER = 0.6;

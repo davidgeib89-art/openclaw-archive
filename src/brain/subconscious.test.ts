@@ -137,6 +137,7 @@ describe("brain subconscious observer", () => {
         enabled: true,
       });
       expect(runtime.modelRef).toBe("openrouter/inception/mercury");
+      expect(runtime.timeoutMs).toBe(20_000);
       expect(runtime.intervalMs).toBe(144_000);
       expect(runtime.windowMinutes).toBe(20);
     } finally {
@@ -633,7 +634,7 @@ describe("brain subconscious context injection block", () => {
     expect(buildSubconsciousContextBlock(result, 500)).toBeNull();
   });
 
-  it("builds a tagged context block within char cap", () => {
+  it("builds a narrative context block within char cap", () => {
     const result: BrainSubconsciousResult = {
       status: "ok",
       attempted: true,
@@ -652,23 +653,11 @@ describe("brain subconscious context injection block", () => {
     };
     const block = buildSubconsciousContextBlock(result, 500);
     expect(block).toBeTruthy();
-    expect(block!.startsWith("<subconscious_context>")).toBe(true);
-    expect(block!.endsWith("</subconscious_context>")).toBe(true);
+    expect(block).toContain("*A deep, quiet intuition surfaces in your mind:*");
+    expect(block).toContain("GGGG");
     expect(block!.length).toBeLessThanOrEqual(500);
-
-    const rawJson = block!
-      .replace("<subconscious_context>", "")
-      .replace("</subconscious_context>", "");
-    const parsed = JSON.parse(rawJson) as {
-      source: string;
-      risk: string;
-      mustAskUser: boolean;
-      recommendedMode: string;
-    };
-    expect(parsed.source).toBe("subconscious_observer");
-    expect(parsed.risk).toBe("high");
-    expect(parsed.mustAskUser).toBe(true);
-    expect(parsed.recommendedMode).toBe("ask_clarify");
+    expect(block).not.toContain("<subconscious_context>");
+    expect(block).not.toContain("</subconscious_context>");
   });
 
   it("keeps backward compatibility without apophenia by default", () => {

@@ -5,6 +5,7 @@ import {
   deriveSomaticMetaphorSeed,
   extractSomaticTextFromCompletionResponse,
   sanitizeSomaticSentence,
+  SOMATIC_DEFAULT_TIMEOUT_MS,
   SOMATIC_FALLBACK_SENTENCE,
   synthesizeSomaticState,
   type SomaticRequestInput,
@@ -138,6 +139,8 @@ describe("somatic", () => {
       content: "<output>\n",
     });
     expect(calls[0]!.body.messages[0]?.content).toContain("<variance_seed>");
+    expect(calls[0]!.body.messages[0]?.content).toContain('"Kapillaren", "Obsidian" oder "Kupfer"');
+    expect(calls[0]!.body.temperature).toBe(0.55);
     expect(result.source).toBe("model");
     expect(result.sentence).toContain("Kapillaren");
   });
@@ -146,12 +149,18 @@ describe("somatic", () => {
     const payload = createPayload();
     const result = await synthesizeSomaticState({
       payload,
-      timeoutMs: 20,
+      timeoutMs: SOMATIC_DEFAULT_TIMEOUT_MS,
       modelResolver: () => ({ model: makeFakeModel() }),
       apiKeyResolver: async () => "test-key",
-      requestInvoker: async () =>
-        new Promise<string>((resolve) => {
-          setTimeout(() => resolve("zu spaet"), 80);
+      requestInvoker: async ({ signal }) =>
+        await new Promise<string>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(new Error("aborted"));
+            },
+            { once: true },
+          );
         }),
     });
 

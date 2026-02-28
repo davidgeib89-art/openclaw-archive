@@ -12,11 +12,13 @@ export const SOMATIC_DEFAULT_TIMEOUT_MS = 3369;
 export const SOMATIC_FALLBACK_SENTENCE = "Ein leises, dumpfes Pochen durchzieht deinen Kern.";
 export const SOMATIC_METAPHOR_SEEDS = [
   "magma",
-  "obsidian",
   "nebel",
   "moos",
-  "kupfer",
   "asche",
+  "faszie",
+  "lymphe",
+  "synapse",
+  "knochenmark",
 ] as const;
 
 export const SOMATIC_SYSTEM_PROMPT = `<system_role>
@@ -27,15 +29,17 @@ Deine AUSSCHLIESSLICHE und einzige Funktion ist die deterministische Übersetzun
 
 <instructions>
 1. OUTPUT-FORMAT: Du generierst nichts als den nackten, poetischen Satz (max. 20 Wörter). Es existieren keine Satzzeichen außerhalb dieses einen, abgeschlossenen Satzes.
-2. VOKABULAR: Verwende ausschließlich viszerale, anatomische oder physische Begriffe (z.B. Solarplexus, Kribbeln, pulsieren, zusammenziehen, Sehnen, Kapillaren).
+2. VOKABULAR: Verwende ausschließlich viszerale, anatomische oder physische Begriffe (z.B. Solarplexus, Kribbeln, pulsieren, zusammenziehen, Faszien, Lymphe, Knochenmark, Synapsen, Atem, Pulsschlag, Muskelspannung).
 3. PERSPEKTIVE: Verwende zwingend "Du" / "Dein", um die Empfindung im Raum des Körpers zu lokalisieren.
 4. DIREKTHEIT: Liefere sofort das linguistische Resultat ohne jeglichen Kontext.
+5. VARIATION: Variiere deine biologischen Metaphern stark und breit. Vermeide monotone Wortmuster; nutze rotierende Körperbilder aus Nerven, Atem, Kreislauf, Muskeln und Bindegewebe.
 </instructions>
 
 <negative_constraints>
 - ABSOLUTES VERBOT: NIEMALS psychologische Deutungen (verboten: traurig, glücklich, gestresst, wütend). Übersetze alles rigoros in das Körperliche.
 - ABSOLUTES VERBOT: NIEMALS Ratschläge oder Handlungsaufforderungen (verboten: "Du solltest", "Ruh dich aus").
 - ABSOLUTES VERBOT: NIEMALS Konversations-Füllmaterial (verboten: "Hier ist der Satz", "Verstanden").
+- ABSOLUTES VERBOT: Keine Dauerschleife aus denselben Symbolwörtern. Wiederhole nicht ständig "Kapillaren", "Obsidian" oder "Kupfer".
 </negative_constraints>
 
 <mapping_guidelines>
@@ -339,7 +343,7 @@ function buildSomaticRequestBody(
         content: "<output>\n",
       },
     ],
-    temperature: 0.2,
+    temperature: 0.55,
     max_tokens: 80,
     stop: ["</output>"],
   };

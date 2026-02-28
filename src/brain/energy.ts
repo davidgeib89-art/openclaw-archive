@@ -9,6 +9,7 @@ const MAX_TOOL_LOAD_FOR_DRAIN = 6;
 const MIN_ENERGY = 0;
 const MAX_ENERGY = 100;
 const BREATH_CYCLE_LENGTH = 18;
+const SLEEP_STAGNATION_RECOVERY_PER_HEARTBEAT = 5;
 
 export type EnergyMode = "dream" | "balanced" | "initiative";
 export type BreathPhase = "inhale" | "hold" | "exhale";
@@ -387,6 +388,24 @@ export async function updateEnergy(params: UpdateEnergyParams): Promise<{
   // - mode is forced to sleepEnergyMode (typically "dream")
   // - level is pulled toward sleepEnergyFloor (typically 25)
   // This ensures Om's energy system reflects his biological sleep state.
+  // Sleep entropy pause: while sleeping (chrono) or in dream mode, stagnation must not rise.
+  // A resting system does not "get bored"; it gently recovers pressure instead.
+  if (params.isSleeping === true || snapshot.dreamMode === true) {
+    const previousStagnationBase = clamp(
+      Math.round(params.previousStagnationLevel ?? previousStagnationLevel ?? 0),
+      MIN_ENERGY,
+      MAX_ENERGY,
+    );
+    snapshot = {
+      ...snapshot,
+      stagnationLevel: clamp(
+        previousStagnationBase - SLEEP_STAGNATION_RECOVERY_PER_HEARTBEAT,
+        MIN_ENERGY,
+        MAX_ENERGY,
+      ),
+    };
+  }
+
   if (params.isSleeping === true) {
     let body: BodyProfile;
     try {
