@@ -853,7 +853,7 @@ function applyEpisodicMetadataCompaction(params: {
         SET repressed = 1,
             repression_weight = CASE
               WHEN repression_weight > 0 THEN repression_weight
-              ELSE 1.0
+              ELSE 0.5
             END,
             latent_energy = CASE
               WHEN latent_energy > 0 THEN latent_energy
@@ -872,7 +872,7 @@ function applyEpisodicMetadataCompaction(params: {
         SET repressed = 1,
             repression_weight = CASE
               WHEN repression_weight > 0 THEN repression_weight
-              ELSE 1.0
+              ELSE 0.5
             END,
             latent_energy = CASE
               WHEN latent_energy > 0 THEN latent_energy
@@ -889,7 +889,7 @@ function applyEpisodicMetadataCompaction(params: {
         SET repressed = 1,
             repression_weight = CASE
               WHEN repression_weight > 0 THEN repression_weight
-              ELSE 1.0
+              ELSE 0.5
             END,
             latent_energy = CASE
               WHEN latent_energy > 0 THEN latent_energy

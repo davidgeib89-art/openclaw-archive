@@ -658,7 +658,8 @@ describe("brain episodic memory write path", () => {
     const secondRow = rows.find((row) => row.entry_id === second.entryId);
     const thirdRow = rows.find((row) => row.entry_id === third.entryId);
     expect(firstRow?.repressed).toBe(1);
-    expect(firstRow?.repression_weight).toBeGreaterThanOrEqual(1);
+    expect(firstRow?.repression_weight).toBeGreaterThanOrEqual(0.5);
+    expect(firstRow?.repression_weight).toBeLessThanOrEqual(1);
     expect(firstRow?.latent_energy).toBeGreaterThan(0);
     expect(secondRow?.repressed).toBe(0);
     expect(thirdRow?.repressed).toBe(0);

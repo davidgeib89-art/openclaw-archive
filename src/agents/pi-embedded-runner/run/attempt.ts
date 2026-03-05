@@ -37,7 +37,11 @@ import {
   buildNeedsFileContent,
   buildNeedsSnapshot,
 } from "../../../brain/needs.js";
-import { maybeSleepConsolidate } from "../../../brain/sleep-consolidation.js";
+import {
+  maybeInjectCoreBeliefFromDreams,
+  maybeSleepConsolidate,
+  readLatestCoreBelief,
+} from "../../../brain/sleep-consolidation.js";
 import {
   buildSomaticPromptBlock,
   buildSomaticTelemetryPayload,
@@ -247,6 +251,22 @@ function summarizeSessionContext(messages: AgentMessage[]): {
     totalTextChars,
     totalImageBlocks,
     maxMessageTextChars,
+  };
+}
+
+function chainToolsetRestore(
+  currentRestore: (() => void) | undefined,
+  restoreFn: () => void,
+): () => void {
+  if (!currentRestore) {
+    return restoreFn;
+  }
+  return () => {
+    try {
+      restoreFn();
+    } finally {
+      currentRestore();
+    }
   };
 }
 
@@ -540,6 +560,79 @@ const OM_PATH_TAG_PATTERN =
 const OM_BLOCKER_TAG_PATTERN = /<om_blocker>([\s\S]*?)<\/om_blocker>/i;
 const OM_RETRY_TRIGGER_TAG_PATTERN = /<om_retry_trigger>([\s\S]*?)<\/om_retry_trigger>/i;
 const HEARTBEAT_ACK_PATTERN = /\bHEARTBEAT_OK\b/gi;
+const INSTINCT_BLOCK_PATTERN = /<instinct>[\s\S]*?<\/instinct>/i;
+const INSTINCT_VALENCE_PATTERN = /<valence>\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*<\/valence>/i;
+const INSTINCT_AROUSAL_PATTERN = /<arousal>\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*<\/arousal>/i;
+const INSTINCT_IMPULSE_PATTERN =
+  /<heuristic_impulse>\s*(PROCEED|HALT|ABORT)\s*<\/heuristic_impulse>/i;
+const SPINAL_REFLEX_VALENCE_HALT_THRESHOLD = -0.85;
+
+type InstinctHeuristicImpulse = "PROCEED" | "HALT";
+
+export type InstinctSignal = {
+  xml: string;
+  valence?: number;
+  arousal?: number;
+  heuristicImpulse?: InstinctHeuristicImpulse;
+};
+
+function clampInstinctNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseInstinctNumericTag(text: string, pattern: RegExp): number | undefined {
+  const match = pattern.exec(text);
+  const raw = match?.[1];
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+export function parseInstinctSignalFromText(text: string): InstinctSignal | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const instinctMatch = INSTINCT_BLOCK_PATTERN.exec(trimmed);
+  const xml = instinctMatch?.[0]?.trim();
+  if (!xml) {
+    return null;
+  }
+
+  const valenceRaw = parseInstinctNumericTag(xml, INSTINCT_VALENCE_PATTERN);
+  const arousalRaw = parseInstinctNumericTag(xml, INSTINCT_AROUSAL_PATTERN);
+  const impulseRaw = INSTINCT_IMPULSE_PATTERN.exec(xml)?.[1]?.toUpperCase();
+  const heuristicImpulse: InstinctHeuristicImpulse | undefined =
+    impulseRaw === "HALT" || impulseRaw === "ABORT"
+      ? "HALT"
+      : impulseRaw === "PROCEED"
+        ? "PROCEED"
+        : undefined;
+
+  const valence =
+    typeof valenceRaw === "number" ? clampInstinctNumber(valenceRaw, -1, 1) : undefined;
+  const arousal =
+    typeof arousalRaw === "number" ? clampInstinctNumber(arousalRaw, 0, 1) : undefined;
+
+  if (!heuristicImpulse && typeof valence !== "number" && typeof arousal !== "number") {
+    return null;
+  }
+
+  return {
+    xml,
+    valence,
+    arousal,
+    heuristicImpulse,
+  };
+}
 
 /** Normalizes poetic leitwörter and legacy aliases to internal AutonomyPath names */
 function normalizeAutonomyPathAlias(raw: string): AutonomyPath {
@@ -2939,6 +3032,9 @@ export async function runEmbeddedAttempt(
       let aborted = Boolean(params.abortSignal?.aborted);
       let timedOut = false;
       let timeoutStage: "startup" | "full" | undefined;
+      let spinalReflexTriggered = false;
+      let spinalReflexReason: "halt_signal" | "negative_valence" | null = null;
+      let spinalReflexSignal: InstinctSignal | null = null;
       const getAbortReason = (signal: AbortSignal): unknown =>
         "reason" in signal ? (signal as { reason?: unknown }).reason : undefined;
       const makeTimeoutAbortReason = (): Error => {
@@ -3118,6 +3214,8 @@ export async function runEmbeddedAttempt(
 
       let promptError: unknown = null;
       let preRunEnergyHint: EnergyStateHint | undefined;
+      let preRunChronoSleepingHint = false;
+      let sleepParalysisActive = false;
       let latestMoodSummary = "n/a";
       let subconsciousChargeForRun: number | undefined;
       let latestDecisionRiskLevel: BrainRiskLevel | undefined;
@@ -3183,6 +3281,14 @@ export async function runEmbeddedAttempt(
             summary: `fail-open: ${String(energyReadErr)}`,
             source: "proto33-r060.energy-preinject",
           });
+        }
+
+        if (params.isHeartbeat === true) {
+          try {
+            preRunChronoSleepingHint = await readChronoSleepingHint(effectiveWorkspace);
+          } catch {
+            preRunChronoSleepingHint = false;
+          }
         }
 
         if (params.isHeartbeat === true) {
@@ -3591,6 +3697,68 @@ export async function runEmbeddedAttempt(
               });
             }
           }
+          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+            try {
+              const coreBelief = await readLatestCoreBelief(effectiveWorkspace);
+              if (coreBelief?.belief) {
+                effectivePrompt = [
+                  "<core_belief>",
+                  coreBelief.belief,
+                  "</core_belief>",
+                  "",
+                  effectivePrompt,
+                ].join("\n");
+                emitBrainReasoningEvent(params, {
+                  phase: "autonomy",
+                  label: "BELIEF_PRE",
+                  summary: `core belief injected (${coreBelief.belief.length} chars)`,
+                  detail: coreBelief.belief,
+                  source: "proto33-g12b.core-belief",
+                });
+              }
+            } catch (beliefReadErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "BELIEF_PRE",
+                summary: `fail-open: ${String(beliefReadErr)}`,
+                source: "proto33-g12b.core-belief",
+              });
+            }
+          }
+          const preRunSleepState =
+            params.isHeartbeat === true &&
+            (preRunEnergyHint?.dreamMode === true || preRunChronoSleepingHint === true);
+          if (preRunSleepState) {
+            try {
+              const originalToolNames = activeSession.getActiveToolNames();
+              activeSession.setActiveToolsByName([]);
+              sleepParalysisActive = true;
+              restoreHighRiskToolset = chainToolsetRestore(restoreHighRiskToolset, () => {
+                activeSession.setActiveToolsByName(originalToolNames);
+              });
+              emitBrainReasoningEvent(params, {
+                phase: "sleep",
+                label: "PARALYSIS",
+                summary: `sleep paralysis tool clamp active (${originalToolNames.length} -> 0)`,
+                source: "proto33-g12b.sleep-paralysis",
+              });
+              omLog("BRAIN-SLEEP", "PARALYSIS", {
+                runId: params.runId,
+                sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                toolsBefore: originalToolNames.length,
+                toolsAfter: 0,
+                dreamMode: preRunEnergyHint?.dreamMode === true,
+                chronoSleeping: preRunChronoSleepingHint,
+              });
+            } catch (sleepClampErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "sleep",
+                label: "PARALYSIS",
+                summary: `tool clamp failed (fail-open): ${String(sleepClampErr)}`,
+                source: "proto33-g12b.sleep-paralysis",
+              });
+            }
+          }
           const highRiskGuard = maybeBuildHighRiskGuardContext(brainDecision.riskLevel);
           if (highRiskGuard) {
             effectivePrompt = `${highRiskGuard}\n\n${effectivePrompt}`;
@@ -3605,9 +3773,9 @@ export async function runEmbeddedAttempt(
             try {
               const originalToolNames = activeSession.getActiveToolNames();
               activeSession.setActiveToolsByName([]);
-              restoreHighRiskToolset = () => {
+              restoreHighRiskToolset = chainToolsetRestore(restoreHighRiskToolset, () => {
                 activeSession.setActiveToolsByName(originalToolNames);
-              };
+              });
               emitBrainReasoningEvent(params, {
                 phase: "guard",
                 label: "TOOLS",
@@ -3775,16 +3943,63 @@ export async function runEmbeddedAttempt(
               const deepIntuition = await BrainState.consumeIntuition();
               const whisperRaw = deepIntuition?.content.replace(/\s+/g, " ").trim();
               if (whisperRaw && whisperRaw.length > 0) {
-                const whisperText =
-                  whisperRaw.length > 420 ? `${whisperRaw.slice(0, 417).trimEnd()}...` : whisperRaw;
-                const whisperBlock = `*Ein Fluestern aus der Tiefe deines Geistes:* "${whisperText}"`;
-                effectivePrompt = `${whisperBlock}\n\n${effectivePrompt}`;
-                emitBrainReasoningEvent(params, {
-                  phase: "inject",
-                  label: "INTUITION_PRE",
-                  summary: `system_1 intuition injected (${whisperText.length} chars)`,
-                  source: "proto33-g11e.intuition-preinject",
-                });
+                const instinctSignal = parseInstinctSignalFromText(whisperRaw);
+                if (instinctSignal) {
+                  const vetoByImpulse = instinctSignal.heuristicImpulse === "HALT";
+                  const vetoByValence =
+                    typeof instinctSignal.valence === "number" &&
+                    instinctSignal.valence <= SPINAL_REFLEX_VALENCE_HALT_THRESHOLD;
+
+                  if (vetoByImpulse || vetoByValence) {
+                    spinalReflexTriggered = true;
+                    spinalReflexReason = vetoByImpulse ? "halt_signal" : "negative_valence";
+                    spinalReflexSignal = instinctSignal;
+                    latchedPathFromRunFlow = "NO_OP";
+                    emitBrainReasoningEvent(params, {
+                      phase: "autonomy",
+                      label: "SPINAL_REFLEX",
+                      summary: "Spinal Reflex triggered: Action aborted by System 1.",
+                      detail:
+                        `reason=${spinalReflexReason}; ` +
+                        `impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
+                        `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"}; ` +
+                        `arousal=${typeof instinctSignal.arousal === "number" ? instinctSignal.arousal.toFixed(2) : "n/a"}`,
+                      source: "proto33-g12a.spinal-reflex",
+                    });
+                    omLog("BRAIN-REFLEX", "SPINAL_ABORT", {
+                      runId: params.runId,
+                      sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                      summary: "Spinal Reflex triggered: Action aborted by System 1.",
+                      reason: spinalReflexReason,
+                      heuristicImpulse: instinctSignal.heuristicImpulse ?? null,
+                      valence:
+                        typeof instinctSignal.valence === "number" ? instinctSignal.valence : null,
+                      arousal:
+                        typeof instinctSignal.arousal === "number" ? instinctSignal.arousal : null,
+                      toolCalls: 0,
+                    });
+                  } else {
+                    emitBrainReasoningEvent(params, {
+                      phase: "inject",
+                      label: "INTUITION_PRE",
+                      summary:
+                        `system_1 instinct parsed (impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
+                        `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"})`,
+                      source: "proto33-g12a.spinal-reflex",
+                    });
+                  }
+                } else {
+                  const whisperText =
+                    whisperRaw.length > 420 ? `${whisperRaw.slice(0, 417).trimEnd()}...` : whisperRaw;
+                  const whisperBlock = `*Ein Fluestern aus der Tiefe deines Geistes:* "${whisperText}"`;
+                  effectivePrompt = `${whisperBlock}\n\n${effectivePrompt}`;
+                  emitBrainReasoningEvent(params, {
+                    phase: "inject",
+                    label: "INTUITION_PRE",
+                    summary: `system_1 intuition injected (${whisperText.length} chars)`,
+                    source: "proto33-g11e.intuition-preinject",
+                  });
+                }
               }
             } catch (intuitionErr) {
               emitBrainReasoningEvent(params, {
@@ -3926,7 +4141,11 @@ export async function runEmbeddedAttempt(
 
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
-          if (imageResult.images.length > 0) {
+          if (spinalReflexTriggered) {
+            log.debug(
+              `embedded run spinal reflex short-circuit: runId=${params.runId} sessionId=${params.sessionId} reason=${spinalReflexReason ?? "unknown"} impulse=${spinalReflexSignal?.heuristicImpulse ?? "n/a"}`,
+            );
+          } else if (imageResult.images.length > 0) {
             await abortable(activeSession.prompt(effectivePrompt, { images: imageResult.images }));
           } else {
             await abortable(activeSession.prompt(effectivePrompt));
@@ -3957,7 +4176,14 @@ export async function runEmbeddedAttempt(
             `embedded run compaction wait skipped: runId=${params.runId} aborted=${aborted ? "yes" : "no"} timedOut=${timedOut ? "yes" : "no"}`,
           );
         }
-        if (!aborted && !timedOut && !promptError && params.isHeartbeat === true) {
+        if (
+          !aborted &&
+          !timedOut &&
+          !promptError &&
+          params.isHeartbeat === true &&
+          !spinalReflexTriggered &&
+          !sleepParalysisActive
+        ) {
           const resolveLatestAssistantText = (): string => {
             const latestAssistantMessage = activeSession.messages
               .slice()
@@ -4364,6 +4590,48 @@ export async function runEmbeddedAttempt(
               processC: Number(chronoResult.processC.toFixed(2)),
               threshold: Number(chronoResult.dynamicThreshold.toFixed(2)),
             });
+            const isWakeTransition = chronoResult.transitionType?.startsWith("woke_up") === true;
+            if (params.isHeartbeat === true && isWakeTransition) {
+              try {
+                const beliefResult = await maybeInjectCoreBeliefFromDreams({
+                  workspaceDir: effectiveWorkspace,
+                  runId: params.runId,
+                  sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                  cfg: params.config,
+                  now: new Date(runStartedAt),
+                });
+                if (beliefResult.injected) {
+                  omLog("BRAIN-BELIEF", "INJECTED", {
+                    runId: params.runId,
+                    sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                    path: beliefResult.beliefPath ?? "n/a",
+                    source: beliefResult.source ?? "fallback",
+                    belief: beliefResult.coreBelief ?? "n/a",
+                  });
+                  emitBrainReasoningEvent(params, {
+                    phase: "sleep",
+                    label: "BELIEF",
+                    summary: `core belief injected (${beliefResult.source ?? "fallback"})`,
+                    detail: beliefResult.coreBelief,
+                    source: "proto33-g12b.core-belief",
+                  });
+                } else {
+                  emitBrainReasoningEvent(params, {
+                    phase: "sleep",
+                    label: "BELIEF",
+                    summary: `belief injection skipped (${beliefResult.reason})`,
+                    source: "proto33-g12b.core-belief",
+                  });
+                }
+              } catch (beliefErr) {
+                emitBrainReasoningEvent(params, {
+                  phase: "sleep",
+                  label: "BELIEF",
+                  summary: `fail-open: ${String(beliefErr)}`,
+                  source: "proto33-g12b.core-belief",
+                });
+              }
+            }
           }
         } catch (chronoErr) {
           emitBrainReasoningEvent(params, {

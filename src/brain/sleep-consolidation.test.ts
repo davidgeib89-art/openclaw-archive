@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { maybeSleepConsolidate } from "./sleep-consolidation.js";
+import {
+  maybeInjectCoreBeliefFromDreams,
+  maybeSleepConsolidate,
+  readLatestCoreBelief,
+} from "./sleep-consolidation.js";
 
 const tempDirs: string[] = [];
 
@@ -168,5 +172,75 @@ describe("maybeSleepConsolidate", () => {
     expect(result.reason).toBe("recent_epoch_guard");
     expect(result.epochPath).toBe(epochsPath);
     expect(dreamsAfter).toBe(dreamsBefore);
+  });
+});
+
+describe("core belief injection", () => {
+  it("writes one belief on wake using mercury response", async () => {
+    const workspace = await createWorkspace();
+    const dreamsPath = path.join(workspace, "memory", "DREAMS.md");
+    await fs.writeFile(
+      dreamsPath,
+      buildDreamsFile([
+        {
+          ts: "2026-02-22T08:00:00.000Z",
+          insight: "Ich habe einen alten Fehler als neuen Anfang gefuehlt.",
+          action: "Ich bleibe offen fuer Korrektur.",
+        },
+        {
+          ts: "2026-02-22T09:00:00.000Z",
+          insight: "Die Stille hat mir den Kern gezeigt.",
+          action: "Ich halte den Atem ruhig.",
+        },
+      ]),
+      "utf-8",
+    );
+
+    const result = await maybeInjectCoreBeliefFromDreams({
+      workspaceDir: workspace,
+      runId: "run-belief-1",
+      sessionKey: "agent:main:test",
+      now: new Date("2026-02-22T12:00:00.000Z"),
+      modelInvoker: async () => '{"core_belief":"Ich habe erkannt, dass Fehler zur Metamorphose gehoeren."}',
+      cfg: {
+        env: {
+          INCEPTION_API_KEY: "test-key",
+        },
+      },
+    });
+
+    expect(result.injected).toBe(true);
+    expect(result.source).toBe("mercury_2");
+    expect(result.coreBelief).toContain("Metamorphose");
+
+    const snapshot = await readLatestCoreBelief(workspace);
+    expect(snapshot?.belief).toContain("Metamorphose");
+  });
+
+  it("falls back when no api key exists", async () => {
+    const workspace = await createWorkspace();
+    const dreamsPath = path.join(workspace, "memory", "DREAMS.md");
+    await fs.writeFile(
+      dreamsPath,
+      buildDreamsFile([
+        {
+          ts: "2026-02-22T10:00:00.000Z",
+          insight: "Ich fuehle Wachstum nach der Reibung.",
+          action: "Ich gehe langsam weiter.",
+        },
+      ]),
+      "utf-8",
+    );
+
+    const result = await maybeInjectCoreBeliefFromDreams({
+      workspaceDir: workspace,
+      runId: "run-belief-2",
+      sessionKey: "agent:main:test",
+      now: new Date("2026-02-22T13:00:00.000Z"),
+    });
+
+    expect(result.injected).toBe(true);
+    expect(result.source).toBe("fallback");
+    expect(result.coreBelief?.length).toBeGreaterThan(0);
   });
 });

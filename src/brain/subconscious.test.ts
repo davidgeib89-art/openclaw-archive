@@ -750,4 +750,35 @@ describe("brain subconscious daemon", () => {
     expect(consumed?.content).toContain("Subconscious noise");
     fs.rmSync(workspaceDir, { recursive: true, force: true });
   });
+
+  it("uses instinct xml prompt shape while awake", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-daemon-instinct-"));
+    let capturedPrompt = "";
+    const result = await runBrainSubconsciousDaemonIteration({
+      enabled: true,
+      modelRef: "openrouter/inception/mercury",
+      timeoutMs: 2_000,
+      intervalMs: 20_000,
+      modelResolver: () => ({ model: makeFakeModel() }),
+      modelInvoker: async ({ prompt }) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          content:
+            "<instinct><valence>-0.41</valence><arousal>0.77</arousal><heuristic_impulse>HALT</heuristic_impulse></instinct>",
+          confidence: 0.7,
+          urgency: 0.9,
+          timestamp: 1_700_000_123_000,
+        });
+      },
+      workspaceDir,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(capturedPrompt).toContain("waking spinal reflex");
+    expect(capturedPrompt).toContain("<instinct>");
+    expect(capturedPrompt).toContain("<heuristic_impulse>PROCEED or HALT</heuristic_impulse>");
+    const consumed = await BrainState.consumeIntuition();
+    expect(consumed?.content).toContain("<instinct>");
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
+  });
 });

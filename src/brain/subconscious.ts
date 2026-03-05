@@ -18,7 +18,9 @@ import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.
 import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { readChronoSleepingHint } from "./chrono.js";
 import { getDefaultBrainObserverDir } from "./decision.js";
+import { readEnergyStateHint } from "./energy.js";
 import { evaluateSurge } from "./salience.js";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -1643,6 +1645,57 @@ function buildDaemonPrompt(params: {
   ].join("\n");
 }
 
+function buildWakingInstinctPrompt(params: {
+  dynamicCfg: number;
+  auraStressLevel: number;
+  noiseLines: readonly string[];
+  effectiveNoise: number;
+  shadowFragments: readonly ShadowFragment[];
+  shadowBridge: Pick<ShadowBridgeSnapshot, "totalLatentEnergy" | "repressedCount" | "pressure">;
+}): string {
+  const noiseBlock =
+    params.noiseLines.length > 0
+      ? params.noiseLines.join("\n")
+      : "[no recent telemetry found in sliding window]";
+  const shadowFragmentBlock =
+    params.shadowFragments.length > 0
+      ? JSON.stringify(params.shadowFragments)
+      : "[none]";
+
+  return [
+    "You are Om's waking spinal reflex (System 1).",
+    "You are not a poet in waking mode. You are a fast survival heuristic.",
+    "",
+    "Respond with ONE JSON object only.",
+    "Schema:",
+    '{"content":"<instinct>...</instinct>", "confidence":0.0, "urgency":0.0, "timestamp":1700000000000}',
+    "No markdown. No prose outside JSON.",
+    "",
+    "Inside `content`, output ONLY this XML and nothing else:",
+    "<instinct>",
+    "<valence>NUMBER -1.0 to 1.0</valence>",
+    "<arousal>NUMBER 0.0 to 1.0</arousal>",
+    "<heuristic_impulse>PROCEED or HALT</heuristic_impulse>",
+    "</instinct>",
+    "",
+    "STRICT RULES:",
+    "1. No poetic metaphors.",
+    "2. No advice, no explanations, no narrative.",
+    "3. heuristic_impulse must be exactly PROCEED or HALT.",
+    "",
+    `Dynamic CFG (strictness): ${params.dynamicCfg.toFixed(2)} (2.00=wild, 5.00=strict).`,
+    `Aura stress level: ${params.auraStressLevel.toFixed(2)} (0.00=zen, 1.00=panic).`,
+    `Effective noise index: ${params.effectiveNoise} (activity_window + shadow_pressure).`,
+    `Shadow pressure: ${params.shadowBridge.pressure.toFixed(2)} (latent_energy_sum=${params.shadowBridge.totalLatentEnergy.toFixed(2)}; repressed_count=${params.shadowBridge.repressedCount}).`,
+    "",
+    "Recent noise window:",
+    noiseBlock,
+    "",
+    "Verdraengte Schattenfragmente, die an die Oberflaeche draengen:",
+    shadowFragmentBlock,
+  ].join("\n");
+}
+
 function buildFallbackNoiseIntuition(params: {
   nowMs: number;
   dynamicCfg?: number;
@@ -2318,6 +2371,11 @@ export async function runBrainSubconsciousDaemonIteration(
   const startedAt = Date.now();
   const nowMs = startedAt;
   const auraStressLevel = await readAuraStressLevel(workspaceDir);
+  const [chronoSleeping, energyHint] = await Promise.all([
+    readChronoSleepingHint(workspaceDir),
+    readEnergyStateHint(workspaceDir).catch(() => undefined),
+  ]);
+  const isSleeping = chronoSleeping === true || energyHint?.dreamMode === true;
   const dynamicCfg = calculateDynamicCFG(auraStressLevel);
   const shadowBridge = await readShadowBridgeSnapshot({
     workspaceDir,
@@ -2338,14 +2396,24 @@ export async function runBrainSubconsciousDaemonIteration(
   });
   const shadowNoiseBoost = Math.round(shadowBridge.pressure * 20);
   const effectiveNoise = noiseLines.length + shadowNoiseBoost;
-  const prompt = buildDaemonPrompt({
-    dynamicCfg,
-    auraStressLevel,
-    noiseLines,
-    effectiveNoise,
-    shadowFragments: shadowBridge.fragments,
-    shadowBridge,
-  });
+  const daemonMode = isSleeping ? "sleep" : "waking";
+  const prompt = isSleeping
+    ? buildDaemonPrompt({
+        dynamicCfg,
+        auraStressLevel,
+        noiseLines,
+        effectiveNoise,
+        shadowFragments: shadowBridge.fragments,
+        shadowBridge,
+      })
+    : buildWakingInstinctPrompt({
+        dynamicCfg,
+        auraStressLevel,
+        noiseLines,
+        effectiveNoise,
+        shadowFragments: shadowBridge.fragments,
+        shadowBridge,
+      });
   try {
     const invokeViaResolvedModel = async (modelRef: string): Promise<string> => {
       const parsedRef = parseModelRef(modelRef);
@@ -2436,6 +2504,7 @@ export async function runBrainSubconsciousDaemonIteration(
         `intuition=${truncateDaemonText(parsed.payload.content, 180)}`,
         `durationMs=${Date.now() - startedAt}`,
         `noise=${effectiveNoise}`,
+        `mode=${daemonMode}`,
         `shadowPressure=${shadowBridge.pressure.toFixed(2)}`,
         `shadowFragments=${shadowBridge.fragments.length}`,
         `parse=${parsed.mode}`,

@@ -3,6 +3,7 @@ import {
   classifyLoopCause,
   extractLatchedAutonomyPathFromAssistantTexts,
   extractLatchedMoodFromAssistantTexts,
+  parseInstinctSignalFromText,
   selectFibonacciDreamEntries,
   shouldInjectActionBindingRetry,
   type DreamEntry,
@@ -195,5 +196,22 @@ describe("loop cause classification", () => {
     });
 
     expect(result.cause).toBe("model_habit");
+  });
+});
+
+describe("spinal reflex instinct parsing", () => {
+  it("parses instinct xml and normalizes ABORT to HALT", () => {
+    const parsed = parseInstinctSignalFromText(
+      "<instinct><valence>-1.2</valence><arousal>1.7</arousal><heuristic_impulse>ABORT</heuristic_impulse></instinct>",
+    );
+
+    expect(parsed).toBeTruthy();
+    expect(parsed?.heuristicImpulse).toBe("HALT");
+    expect(parsed?.valence).toBe(-1);
+    expect(parsed?.arousal).toBe(1);
+  });
+
+  it("returns null when no instinct xml exists", () => {
+    expect(parseInstinctSignalFromText("plain whisper without xml")).toBeNull();
   });
 });
