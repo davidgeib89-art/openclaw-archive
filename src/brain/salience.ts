@@ -89,7 +89,7 @@ const SALIENCE_WEIGHTS = {
   emotion: 0.3,
 } as const;
 
-const SALIENCE_LAMBDA = 0.08;
+const SALIENCE_LAMBDA = 0.618;
 const MAX_FREQUENCY_FOR_NORMALIZATION = 8;
 const MAX_SCORE = 6;
 const SUBCONSCIOUS_SURGE_THRESHOLD = 0.85;

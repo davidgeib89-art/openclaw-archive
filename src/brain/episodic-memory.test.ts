@@ -4,7 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
-import { appendBrainEpisodicJournal } from "./episodic-memory.js";
+import { appendBrainEpisodicJournal, readFibonacciEpisodicEntries } from "./episodic-memory.js";
 
 async function makeTmpDir(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -676,6 +676,44 @@ describe("brain episodic memory write path", () => {
       expect(keptRow.repressed).toBe(0);
     }
     expect(orphanCountRow.count).toBe(0);
+  });
+
+  it("returns fibonacci offsets from newest while skipping repressed entries", async () => {
+    tmpDir = await makeTmpDir("episodic-fib-");
+    process.env.OM_EPISODIC_WRITE_ENABLED = "true";
+    process.env.OM_EPISODIC_METADATA_DB_PATH = path.join(tmpDir, "episodic-fib.sqlite");
+
+    const base = new Date("2026-02-20T00:00:00.000Z");
+    const entries = [];
+    for (let i = 0; i < 10; i += 1) {
+      const result = await appendBrainEpisodicJournal({
+        cfg: makeCfg(),
+        workspaceDir: tmpDir,
+        runId: `run-ep-fib-${i}`,
+        sessionKey: "agent:main:main",
+        userMessage: `I prefer step ${i} today.`,
+        assistantMessage: `I choose step ${i} and keep it grounded.`,
+        now: () => new Date(base.getTime() + i * 60_000),
+      });
+      entries.push(result);
+      expect(result.persisted).toBe(true);
+    }
+
+    const db = new DatabaseSync(process.env.OM_EPISODIC_METADATA_DB_PATH!);
+    db.prepare("UPDATE episodic_entries SET repressed = 1 WHERE entry_id = ?").run(
+      entries[9]!.entryId,
+    );
+    db.close();
+
+    const recall = await readFibonacciEpisodicEntries({ workspaceDir: tmpDir, limit: 5 });
+    const ids = recall.map((entry) => entry.entryId);
+    expect(recall).toHaveLength(5);
+    expect(ids).not.toContain(entries[9]!.entryId);
+    expect(ids[0]).toBe(entries[8]!.entryId);
+    expect(ids[1]).toBe(entries[7]!.entryId);
+    expect(ids[2]).toBe(entries[6]!.entryId);
+    expect(ids[3]).toBe(entries[4]!.entryId);
+    expect(ids[4]).toBe(entries[1]!.entryId);
   });
 
   it("rotates structured episodic journal when size threshold is exceeded", async () => {

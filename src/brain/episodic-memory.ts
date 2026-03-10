@@ -45,6 +45,7 @@ const SIGNIFICANCE_THRESHOLD = 2;
 const MEMORY_INDEX_SIGNIFICANCE_THRESHOLD = 3;
 const HEARTBEAT_ACK = "HEARTBEAT_OK";
 const EPISODIC_METADATA_SCHEMA_VERSION = 3;
+const DEFAULT_FIBONACCI_RECALL_LIMIT = 8;
 const EPISODIC_HEADER = [
   "# EPISODIC JOURNAL",
   "",
@@ -123,6 +124,16 @@ export type BrainEpisodicWriteResult = {
   forgetting?: ActiveForgettingSummary;
   episodicIndex?: EpisodicIndexSnapshot;
   reason: string;
+};
+
+export type FibonacciEpisodicRecallEntry = {
+  entryId: string;
+  createdAt: number;
+  score: number;
+  primaryKind: EpisodicKind;
+  signals: string[];
+  userText: string;
+  assistantText: string;
 };
 
 type BrainEpisodicStructuredEntry = {
@@ -251,6 +262,30 @@ function resolveMemoryIndexPath(workspaceDir: string): string {
   const fromEnv = process.env.OM_MEMORY_INDEX_PATH?.trim();
   const rel = fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_MEMORY_INDEX_RELATIVE_PATH;
   return path.resolve(workspaceDir, rel);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function buildFibonacciOffsets(maxOffset: number, limit: number): number[] {
+  const offsets: number[] = [];
+  const seen = new Set<number>();
+  let a = 1;
+  let b = 1;
+  while (offsets.length < limit && a <= maxOffset) {
+    if (!seen.has(a)) {
+      offsets.push(a);
+      seen.add(a);
+    }
+    const next = a + b;
+    a = b;
+    b = next;
+  }
+  return offsets;
 }
 
 function readEnvBoolean(name: string, fallback: boolean): boolean {
@@ -1388,4 +1423,80 @@ export async function appendBrainEpisodicJournal(
     episodicIndex,
     reason: "persisted",
   };
+}
+
+type FibonacciRecallRow = {
+  entry_id: string;
+  created_at: number;
+  score: number;
+  signals: string | null;
+  primary_kind: EpisodicKind;
+  user_text: string | null;
+  assistant_text: string | null;
+};
+
+export async function readFibonacciEpisodicEntries(params: {
+  workspaceDir: string;
+  limit?: number;
+}): Promise<FibonacciEpisodicRecallEntry[]> {
+  const limit = Math.max(1, Math.floor(params.limit ?? DEFAULT_FIBONACCI_RECALL_LIMIT));
+  const dbPath = resolveMetadataDbPath(params.workspaceDir);
+  try {
+    await fs.stat(dbPath);
+  } catch {
+    return [];
+  }
+
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    const hasRepressed = tableInfo.some((column) => column.name === "repressed");
+    const filterClause = hasRepressed ? "WHERE COALESCE(repressed, 0) = 0" : "";
+    const countRow = db
+      .prepare(`SELECT COUNT(*) AS count FROM episodic_entries ${filterClause}`)
+      .get() as { count?: number };
+    const total = Math.max(0, Number(countRow?.count ?? 0));
+    if (total === 0) {
+      return [];
+    }
+
+    const offsets = buildFibonacciOffsets(total, limit);
+    const selectStatement = db.prepare(
+      `SELECT entry_id, created_at, score, signals, primary_kind, user_text, assistant_text
+         FROM episodic_entries
+         ${filterClause}
+        ORDER BY created_at DESC
+        LIMIT 1 OFFSET ?`,
+    );
+    const results: FibonacciEpisodicRecallEntry[] = [];
+    for (const offset of offsets) {
+      if (offset <= 0 || offset > total) {
+        continue;
+      }
+      const row = selectStatement.get(offset - 1) as FibonacciRecallRow | undefined;
+      if (!row) {
+        continue;
+      }
+      results.push({
+        entryId: row.entry_id,
+        createdAt: row.created_at,
+        score: row.score,
+        primaryKind: row.primary_kind,
+        signals: String(row.signals ?? "")
+          .split(",")
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0),
+        userText: row.user_text ?? "",
+        assistantText: row.assistant_text ?? "",
+      });
+    }
+    return results;
+  } catch {
+    return [];
+  } finally {
+    db?.close();
+  }
 }

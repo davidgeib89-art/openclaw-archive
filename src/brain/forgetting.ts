@@ -17,7 +17,7 @@ const SALIENCE_WEIGHTS = {
   frequency: 0.25,
   emotion: 0.3,
 } as const;
-const SALIENCE_LAMBDA = 0.08;
+const SALIENCE_LAMBDA = 0.618;
 
 type EpisodicForgettingRow = {
   entry_id: string;
