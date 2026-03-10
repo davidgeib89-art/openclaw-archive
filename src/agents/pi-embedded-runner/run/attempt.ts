@@ -1319,11 +1319,66 @@ const DEFAULT_DREAM_CYCLE_STATE: DreamCycleState = {
   lastUpdatedAt: new Date(0).toISOString(),
 };
 
+const NEURO_COHERENCE_BASE_TEMPERATURE = 0.9;
+const NEURO_COHERENCE_MIN_TEMPERATURE = 0.1;
+const NEURO_COHERENCE_MAX_TEMPERATURE = 1.0;
+const NEURO_COHERENCE_AROUSAL_WEIGHT = 0.8;
+
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
     return min;
   }
   return Math.max(min, Math.min(max, value));
+}
+
+function deriveNeuroCoherenceArousal(params: {
+  auraSnapshot?: AuraSnapshot;
+  energyHint?: EnergyStateHint;
+}): number {
+  const auraArousal =
+    params.auraSnapshot && Number.isFinite(params.auraSnapshot.overall)
+      ? clampNumber(1 - params.auraSnapshot.overall / 100, 0, 1)
+      : undefined;
+  const energyArousal =
+    typeof params.energyHint?.stagnationLevel === "number"
+      ? clampNumber(params.energyHint.stagnationLevel / 100, 0, 1)
+      : undefined;
+
+  if (typeof auraArousal === "number" && typeof energyArousal === "number") {
+    return Number(clampNumber(auraArousal * 0.7 + energyArousal * 0.3, 0, 1).toFixed(3));
+  }
+  if (typeof auraArousal === "number") {
+    return Number(auraArousal.toFixed(3));
+  }
+  if (typeof energyArousal === "number") {
+    return Number(energyArousal.toFixed(3));
+  }
+  return 0.5;
+}
+
+function mapArousalToDynamicTemperature(arousal: number): number {
+  const normalizedArousal = clampNumber(arousal, 0, 1);
+  const dynamicTemperature = Math.max(
+    NEURO_COHERENCE_MIN_TEMPERATURE,
+    NEURO_COHERENCE_BASE_TEMPERATURE - normalizedArousal * NEURO_COHERENCE_AROUSAL_WEIGHT,
+  );
+  return Number(
+    clampNumber(
+      dynamicTemperature,
+      NEURO_COHERENCE_MIN_TEMPERATURE,
+      NEURO_COHERENCE_MAX_TEMPERATURE,
+    ).toFixed(3),
+  );
+}
+
+function describeNeuroCoherenceMode(arousal: number): "Tunnel Vision" | "Focused Drive" | "Open Flow" {
+  if (arousal >= 0.75) {
+    return "Tunnel Vision";
+  }
+  if (arousal >= 0.4) {
+    return "Focused Drive";
+  }
+  return "Open Flow";
 }
 
 function normalizeSomaticTextForGate(text: string): string {
@@ -3214,6 +3269,7 @@ export async function runEmbeddedAttempt(
 
       let promptError: unknown = null;
       let preRunEnergyHint: EnergyStateHint | undefined;
+      let preRunAuraSnapshot: AuraSnapshot | undefined;
       let preRunChronoSleepingHint = false;
       let sleepParalysisActive = false;
       let latestMoodSummary = "n/a";
@@ -3596,7 +3652,7 @@ export async function runEmbeddedAttempt(
                 path: path.join(effectiveWorkspace, "knowledge", "sacred", "ENERGY.md"),
               };
               const somaticEnergyHint = preRunEnergyHint ?? fallbackEnergyHint;
-              const preRunAuraSnapshot = calculateAura({
+              preRunAuraSnapshot = calculateAura({
                 energyLevel: somaticEnergyHint.level,
                 energyMode: somaticEnergyHint.mode,
                 recentEnergyLevels:
@@ -4018,6 +4074,52 @@ export async function runEmbeddedAttempt(
             source: "proto33-r031.fail-open",
           });
           log.warn(`brain observer setup failed: ${String(brainErr)}`);
+        }
+
+        if (params.isHeartbeat === true) {
+          try {
+            const arousal = deriveNeuroCoherenceArousal({
+              auraSnapshot: preRunAuraSnapshot,
+              energyHint: preRunEnergyHint,
+            });
+            const dynamicTemperature = mapArousalToDynamicTemperature(arousal);
+            const coherenceMode = describeNeuroCoherenceMode(arousal);
+            applyExtraParamsToAgent(
+              activeSession.agent,
+              params.config,
+              params.provider,
+              params.modelId,
+              {
+                ...(params.streamParams ?? {}),
+                temperature: dynamicTemperature,
+              },
+            );
+            const coherenceSummary =
+              `Arousal: ${arousal.toFixed(2)} -> Temperature throttled to: ` +
+              `${dynamicTemperature.toFixed(2)} (${coherenceMode})`;
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "NEURO_COHERENCE",
+              summary: coherenceSummary,
+              source: "proto33-h2a.neuro-coherence",
+            });
+            omLog("NEURO-COHERENCE", "STATE", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              arousal: Number(arousal.toFixed(3)),
+              temperature: Number(dynamicTemperature.toFixed(3)),
+              mode: coherenceMode,
+              provider: params.provider,
+              modelId: params.modelId,
+            });
+          } catch (neuroErr) {
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "NEURO_COHERENCE",
+              summary: `fail-open: ${String(neuroErr)}`,
+              source: "proto33-h2a.neuro-coherence",
+            });
+          }
         }
 
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);

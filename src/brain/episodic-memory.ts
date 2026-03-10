@@ -885,7 +885,14 @@ function applyEpisodicMetadataCompaction(params: {
 
   repressedRows += runDelete(
     params.db,
-    `UPDATE episodic_entries
+    `WITH prune_candidates AS (
+       SELECT entry_id
+         FROM episodic_entries
+        WHERE COALESCE(repressed, 0) = 0
+        ORDER BY score DESC, created_at DESC
+        LIMIT -1 OFFSET ?
+     )
+     UPDATE episodic_entries
         SET repressed = 1,
             repression_weight = CASE
               WHEN repression_weight > 0 THEN repression_weight
@@ -895,12 +902,7 @@ function applyEpisodicMetadataCompaction(params: {
               WHEN latent_energy > 0 THEN latent_energy
               ELSE 0.35
             END
-       WHERE entry_id IN (
-         SELECT entry_id FROM episodic_entries
-         WHERE COALESCE(repressed, 0) = 0
-         ORDER BY created_at DESC
-         LIMIT -1 OFFSET ?
-       )`,
+      WHERE entry_id IN (SELECT entry_id FROM prune_candidates)`,
     params.policy.maxRows,
   );
 

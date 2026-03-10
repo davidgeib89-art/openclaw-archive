@@ -633,10 +633,12 @@ describe("brain episodic memory write path", () => {
     };
     const rows = db
       .prepare(
-        "SELECT entry_id, repressed, repression_weight, latent_energy FROM episodic_entries ORDER BY created_at DESC",
+        "SELECT entry_id, created_at, score, repressed, repression_weight, latent_energy FROM episodic_entries ORDER BY created_at DESC",
       )
       .all() as Array<{
       entry_id: string;
+      created_at: number;
+      score: number;
       repressed: number;
       repression_weight: number;
       latent_energy: number;
@@ -654,15 +656,25 @@ describe("brain episodic memory write path", () => {
     expect(rows.map((row) => row.entry_id)).toContain(third.entryId);
     expect(rows.map((row) => row.entry_id)).toContain(second.entryId);
     expect(rows.map((row) => row.entry_id)).toContain(first.entryId);
-    const firstRow = rows.find((row) => row.entry_id === first.entryId);
-    const secondRow = rows.find((row) => row.entry_id === second.entryId);
-    const thirdRow = rows.find((row) => row.entry_id === third.entryId);
-    expect(firstRow?.repressed).toBe(1);
-    expect(firstRow?.repression_weight).toBeGreaterThanOrEqual(0.5);
-    expect(firstRow?.repression_weight).toBeLessThanOrEqual(1);
-    expect(firstRow?.latent_energy).toBeGreaterThan(0);
-    expect(secondRow?.repressed).toBe(0);
-    expect(thirdRow?.repressed).toBe(0);
+    const activeRows = rows
+      .slice()
+      .sort((a, b) => {
+        const scoreDelta = b.score - a.score;
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
+        return b.created_at - a.created_at;
+      });
+    const keptIds = new Set(activeRows.slice(0, 2).map((row) => row.entry_id));
+    const prunedRows = rows.filter((row) => !keptIds.has(row.entry_id));
+    expect(prunedRows).toHaveLength(1);
+    expect(prunedRows[0]?.repressed).toBe(1);
+    expect(prunedRows[0]?.repression_weight).toBeGreaterThanOrEqual(0.5);
+    expect(prunedRows[0]?.repression_weight).toBeLessThanOrEqual(1);
+    expect(prunedRows[0]?.latent_energy).toBeGreaterThan(0);
+    for (const keptRow of rows.filter((row) => keptIds.has(row.entry_id))) {
+      expect(keptRow.repressed).toBe(0);
+    }
     expect(orphanCountRow.count).toBe(0);
   });
 
