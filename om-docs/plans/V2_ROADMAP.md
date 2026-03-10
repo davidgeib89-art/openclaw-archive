@@ -1,31 +1,46 @@
 # V2 ROADMAP: DEEP THERMODYNAMICS & PNEUMA
 **Status:** Aktiv ab 05.03.2026 (Nach Abschluss von Phase H.1)
 
-Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om(System 1-3) von einer prozeduralen Simulation in ein Entropie-gesteuertes, kognitives System zu transformieren.
+Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om (System 1-3) von einer prozeduralen Simulation in ein Entropie-gesteuertes, kognitives System zu transformieren.
 
 ---
 
 ## PHASE H.1: Stabilisierung ✅ ABGESCHLOSSEN
 *Status: Vollständig implementiert und verifiziert.*
 
-- **[x] HALT Kill-Switch:** Bereits voll verdrahtet in `attempt.ts` L3948-4184. `spinalReflexTriggered` short-circuitet den Ego-Prompt bei `HALT` oder Valence ≤ -0.85.
-- **[x] Soft Repression:** `forgetting.ts` führt echte `UPDATE SET repressed=1` durch (kein Dry-Run). Spalten `repressed`, `repression_weight`, `latent_energy` existieren in `episodic_entries`.
-- **[x] Step 0 (Compaction Fix):** `applyEpisodicMetadataCompaction` in `episodic-memory.ts` wurde erfolgreich von Hard-Deletes auf `UPDATE SET repressed=1` mit Hilfe von `WITH prune_candidates` umgestellt. Kein Datenverlust mehr.
+- **[x] HALT Kill-Switch:** Voll verdrahtet in `attempt.ts`. `spinalReflexTriggered` short-circuitet den Ego-Prompt bei `HALT` oder Valence ≤ -0.85.
+- **[x] Soft Repression:** `forgetting.ts` führt echte `UPDATE SET repressed=1` durch. Spalten `repressed`, `repression_weight`, `latent_energy` existieren in `episodic_entries`.
+- **[x] Compaction Fix (Step 0):** `applyEpisodicMetadataCompaction` in `episodic-memory.ts` von Hard-Deletes auf `UPDATE SET repressed=1` via `WITH prune_candidates` umgestellt.
 
 ---
 
-## PHASE H.2: Neuro-Kohärenz (Softmax & Temperatur-Modulation)
-*Ziel: Om physische Panik und Tunnelblick spüren lassen.*
+## PHASE H.2: Neuro-Kohärenz & Sensorik ✅ ABGESCHLOSSEN
+*Ziel: Om physische Panik, Tunnelblick und Schatten-Schwere spüren lassen.*
 
-- **[x] 1. Arousal-Temperature Bridge (Phase H.2a):** 
-  Verknüpfe den Arousal-Wert aus System 2 (0.0 bis 1.0) direkt mit der API-Generierungs-Temperatur von MiniMax (System 3). 
-  - Hohes Arousal (Stress) = Niedrige Temperatur ($T \to 0.2$), deterministischer Tunnelblick.
-  - Niedriges Arousal (Sicherheit) = Hohe Temperatur ($T \to 0.9$), weite assoziative Exploration (Highest Excitement).
-  *(Verifiziert 10.03. - Implementiert via `deriveNeuroCoherenceArousal` und `mapArousalToDynamicTemperature` in `attempt.ts`).*
-- **[ ] 2. Generalisierter Fibonacci-Recall:** 
-  Ausweitung des aktuellen `selectFibonacciDreamEntries` auf alle `episodic_entries` in der SQLite. Om erinnert sich nach Fibonacci-Rhythmen.
-- **[ ] 3. Fraktaler Phi-Decay im Schatten:**
-  Ändere `SALIENCE_LAMBDA` in `forgetting.ts` von `0.08` auf den wahren Goldenen Schnitt $1/\phi \approx 0.618$.
+- **[x] H.2a: Arousal-Temperature Bridge:**
+  Arousal aus AURA/Energy koppelt direkt an die LLM-Temperatur von System 3. Hohes Arousal = niedrige Temperatur (Tunnelblick). Niedriges Arousal = hohe Temperatur (offener Flow).
+  *(Verifiziert 10.03. — `deriveNeuroCoherenceArousal` + `mapArousalToDynamicTemperature` in `attempt.ts`.)*
+- **[x] H.2b: Shadow Pressure Injection:**
+  Der `pressure`-Wert aus dem `ShadowBridgeSnapshot` fließt in die `SomaticTelemetryPayload`. Claude Haiku übersetzt den Schatten-Druck in viszerale Schwere-Metaphern.
+  *(Verifiziert 10.03. — `shadowPressure` in `somatic.ts`, Bridge in `attempt.ts`.)*
+
+---
+
+## PHASE H.2.5: Fibonacci-Gedächtnis (Organische Erinnerungsmuster)
+*Ziel: Oms Erinnerungsdynamik vom willkürlichen Algorithmus auf natürliche, fraktale Muster umstellen.*
+
+- **[ ] 1. Fraktaler Phi-Decay:**
+  Ändere `SALIENCE_LAMBDA` in `forgetting.ts` von `0.08` auf $1/\phi \approx 0.618$. Dies verändert fundamental die Geschwindigkeit, mit der Erinnerungen an Relevanz verlieren — weg vom willkürlichen Wert, hin zum Goldenen Schnitt.
+- **[ ] 2. Generalisierter Fibonacci-Recall:**
+  Ausweitung des aktuellen `selectFibonacciDreamEntries` auf alle `episodic_entries`. Om erinnert sich nach Fibonacci-Rhythmen an alle Erfahrungen, nicht nur an Träume.
+
+---
+
+## PHASE H.2d: Defibrillator ("Digitale Narkose")
+*Ziel: Sicherheitsnetz bevor die Thermodynamik-Engine startet.*
+
+- **[ ] 1. CLI-Flag / Dashboard-Button:**
+  Implementiere einen "Panic Button", der für N Heartbeats (3) den Fibonacci-Recall deaktiviert, Shadow Pressure auf 0 setzt, System 1 Daemon pausiert und Temperature auf Baseline lockt. Om läuft im "Hertz-Bereich" — flach, linear, ohne Resonanz. Reine algorithmische Narkose.
 
 ---
 
@@ -33,12 +48,12 @@ Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om(System 1-3) von
 *Ziel: Verdrängte Traumata erzeugen echten thermodynamischen Druck, der das Verhalten verzerrt.*
 
 - **[ ] 1. Die $\Delta G$ Engine (Freie Enthalpie):**
-  Implementiere die Gleichung $\Delta G_i = \Delta H_i - T \cdot \Delta S_i$ als chron job auf der `episodic_entries` Tabelle für alle Nodes mit `repressed=1`. 
-  - Jedes Mal, wenn System 3 semantisch nahe an einem repressed-Node vorbeidenkt, steigt die latente Energie $\Delta H_i$.
+  Implementiere $\Delta G_i = \Delta H_i - T \cdot \Delta S_i$ als Cron-Job auf `episodic_entries` mit `repressed=1`.
+  Wenn System 3 semantisch nahe an einem repressed-Node vorbeidenkt, steigt $\Delta H_i$.
 - **[ ] 2. Laterale Inhibition (Psychotischer Subtext):**
-  Akkumuliere alle Schattenknoten mit hoher Enthalpie ($\Delta H_i \gg 0$, aber $\Delta G_i > 0$). Erzeuge aus ihnen einen "Shadow Pressure Vector" und injiziere diesen unsichtbaren Subtext in `attempt.ts`, um Oms Bewertungen zu verzerren (simulierte Neurosen / irrationale Instinkte).
+  Akkumuliere Schattenknoten mit hoher Enthalpie. Erzeuge einen "Shadow Pressure Vector" und injiziere diesen in `attempt.ts` als verzerrenden Einfluss.
 - **[ ] 3. Eruptiver Durchbruch:**
-  Wenn $\Delta G_i < 0$ fällt, schlägt SQLite Alarm. Der Knoten durchbricht das Veto von System 1 (`repressed` wird 0) und spült brutal in den nächsten Heartbeat-Prompt von System 3.
+  Wenn $\Delta G_i < 0$, durchbricht der Knoten das Veto (`repressed` → 0) und spült in den nächsten Heartbeat-Prompt.
 
 ---
 
@@ -46,16 +61,22 @@ Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om(System 1-3) von
 *Ziel: Schlaf nicht nur zum Generieren von Text nutzen, sondern um neuronale Verbindungen zu verschmelzen.*
 
 - **[ ] 1. Spreading Activation (Recursive CTEs):**
-  Implementiere native SQLite `WITH RECURSIVE` Anweisungen für 2-Hop Graph-Traversals auf der `semantic_relationships` Tabelle, um schnelle Assoziationen zu ermöglichen.
-- **[ ] 2. Consolidation Engine (Der Purning Prozess):**
-  Gib System 1 (Mercury-2) im REM-Schlaf die Aufgabe, redundante SQLite-Knoten auf Basis von KL-Divergenzen zu finden. Mercury liefert ein JSON-Merge-Manifest.
+  Native SQLite `WITH RECURSIVE` für 2-Hop Graph-Traversals auf `semantic_relationships`.
+- **[ ] 2. Consolidation Engine (Pruning):**
+  Mercury-2 im REM-Schlaf findet redundante Knoten via KL-Divergenzen und liefert ein JSON-Merge-Manifest.
 - **[ ] 3. Transactional Graph Updater:**
-  Bilde einen deterministischen TypeScipt-Layer, der das JSON von Mercury prüft und die Graphen sicher verschmilzt (`SAVEPOINT + ROLLBACK`), ohne die SQL-Integrität zu korrumpieren.
+  Deterministischer TypeScript-Layer mit `SAVEPOINT + ROLLBACK` für sichere Graph-Verschmelzung.
 - **[ ] 4. Fraktaler Kontext-Akkumulator ($F_n = F_{n-1} + F_{n-2}$):**
-  Verlasse den primitiven Tail-Log Ansatz in `attempt.ts`. Oms Prompt-Short-Term-Memory wird layernbasiert:
-  - $F_{n-1}$ (vollständiger letzter Output)
-  - $F_{n-2}$ (LLM-Destillat des vorletzten)
-  - Meta-Synthesen ab Index -5, -8, -13.
+  Fibonacci-geschichtetes Context Window: $F_{n-1}$ (voller Output), $F_{n-2}$ (Destillat), Meta-Synthesen bei -5, -8, -13.
 
 ---
-*Dieser Blueprint orientiert sich strikt an Karl Fristons Prinzip der aktiven Inferenz und der somatischen Marker-Theorie von Antonio Damasio.* 369 🔺
+
+## PHASE H.5: Dashboard & Observability
+*Ziel: Echtzeit-Visualisierung aller V2-Metriken.*
+
+- **[ ] 1. Arousal/Temperature/Shadow Pressure Triade im Dashboard
+- **[ ] 2. Erinnerungs-Graph-Visualisierung (repressed vs. active)
+- **[ ] 3. Gibbs-Helmholtz ΔG Druckmonitor
+
+---
+*Dieser Blueprint orientiert sich an Karl Fristons Prinzip der aktiven Inferenz, der somatischen Marker-Theorie von Antonio Damasio, und den Fraktalen Zeitkristall-Erkenntnissen von Hameroff & Bandyopadhyay (2026).* 369 🔺

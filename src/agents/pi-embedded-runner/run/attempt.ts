@@ -52,6 +52,7 @@ import {
   BrainState,
   buildSubconsciousContextBlock,
   logBrainSubconsciousObserver,
+  readShadowBridgeSnapshot,
   runBrainSubconsciousObserver,
 } from "../../../brain/subconscious.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
@@ -3683,12 +3684,25 @@ export async function runEmbeddedAttempt(
                 source: "proto33-g11c.aura-pre",
               });
 
+              let shadowPressure = 0;
+              try {
+                const shadowBridge = await readShadowBridgeSnapshot({
+                  workspaceDir: effectiveWorkspace,
+                  cfg: params.config,
+                  nowMs: Date.now(),
+                });
+                shadowPressure = clampNumber(shadowBridge.pressure, 0, 1);
+              } catch {
+                shadowPressure = 0;
+              }
+
               const somaticPayload = buildSomaticTelemetryPayload({
                 now: new Date(runStartedAt).toISOString(),
                 energy: somaticEnergyHint,
                 needs: preRunNeedsSnapshot,
                 aura: preRunAuraSnapshot,
                 repetitionPressure: recentHeartbeatSignals.repetitionPressure,
+                shadowPressure,
               });
               const somaticResult = await synthesizeSomaticState({
                 payload: somaticPayload,

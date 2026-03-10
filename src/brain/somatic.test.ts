@@ -86,6 +86,7 @@ describe("somatic", () => {
     expect(payload.energy.level).toBe(82);
     expect(payload.aura.overall).toBe(71.4);
     expect(payload.aura.stressLevel).toBeCloseTo(0.286, 3);
+    expect(payload.shadowPressure).toBe(0);
   });
 
   it("sanitizes output envelope and caps to 20 words", () => {

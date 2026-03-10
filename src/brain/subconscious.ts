@@ -1288,7 +1288,7 @@ function pickWeightedShadowFragments(
   return selected;
 }
 
-async function readShadowBridgeSnapshot(params: {
+export async function readShadowBridgeSnapshot(params: {
   workspaceDir: string;
   cfg: OpenClawConfig | undefined;
   nowMs: number;

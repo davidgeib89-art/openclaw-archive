@@ -47,12 +47,14 @@ Deine AUSSCHLIESSLICHE und einzige Funktion ist die deterministische Übersetzun
 - Stress: Harte Kontraktion, Druck, Spannung, Enge, Eis, Erstarren.
 - Curiosity: Expansion, Weitung (z.B. der Pupillen), Flimmern.
 - Hunger: Hohler Sog, Nagen, innere Leere, Magenkontraktion.
+- Shadow Pressure: Schwere, Gravitation, toxische Dichte, unsichtbare Last (hohe Werte = bleierne Schwere, stockender Atem).
 </mapping_guidelines>`;
 
 type NeedValueMap = Record<NeedName, number>;
 
 export interface SomaticTelemetryPayload {
   timestamp: string;
+  shadowPressure: number;
   energy: {
     level: number;
     mode: string;
@@ -80,6 +82,7 @@ export interface BuildSomaticTelemetryInput {
   needs: NeedsSnapshot;
   aura: AuraSnapshot;
   repetitionPressure?: number;
+  shadowPressure?: number;
 }
 
 export interface SomaticSynthesisInput {
@@ -254,6 +257,7 @@ export function buildSomaticTelemetryPayload(input: BuildSomaticTelemetryInput):
 
   return {
     timestamp: toIsoTimestamp(input.now),
+    shadowPressure: Number(clamp(toFinite(input.shadowPressure, 0), 0, 1).toFixed(3)),
     energy: {
       level: Math.round(clamp(input.energy.level, 0, 100)),
       mode: input.energy.mode,
