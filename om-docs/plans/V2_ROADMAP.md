@@ -26,21 +26,24 @@ Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om (System 1-3) vo
 
 ---
 
-## PHASE H.2.5: Fibonacci-Gedächtnis (Organische Erinnerungsmuster)
+## PHASE H.2.5: Fibonacci-Gedächtnis (Organische Erinnerungsmuster) ✅ ABGESCHLOSSEN
 *Ziel: Oms Erinnerungsdynamik vom willkürlichen Algorithmus auf natürliche, fraktale Muster umstellen.*
 
-- **[ ] 1. Fraktaler Phi-Decay:**
-  Ändere `SALIENCE_LAMBDA` in `forgetting.ts` von `0.08` auf $1/\phi \approx 0.618$. Dies verändert fundamental die Geschwindigkeit, mit der Erinnerungen an Relevanz verlieren — weg vom willkürlichen Wert, hin zum Goldenen Schnitt.
-- **[ ] 2. Generalisierter Fibonacci-Recall:**
-  Ausweitung des aktuellen `selectFibonacciDreamEntries` auf alle `episodic_entries`. Om erinnert sich nach Fibonacci-Rhythmen an alle Erfahrungen, nicht nur an Träume.
+- **[x] 1. Fraktaler Phi-Decay:**
+  `SALIENCE_LAMBDA` von `0.08` auf $1/\phi \approx 0.618$ in `salience.ts` und `forgetting.ts`.
+  *(Verifiziert 10.03.)*
+- **[x] 2. Generalisierter Fibonacci-Recall:**
+  `readFibonacciEpisodicEntries` in `episodic-memory.ts` — Fibonacci-Offset-Auswahl mit Repressed-Filter.
+  *(Verifiziert 10.03.)*
 
 ---
 
-## PHASE H.2d: Defibrillator ("Digitale Narkose")
+## PHASE H.2d: Defibrillator ("Digitale Narkose") ✅ ABGESCHLOSSEN
 *Ziel: Sicherheitsnetz bevor die Thermodynamik-Engine startet.*
 
-- **[ ] 1. CLI-Flag / Dashboard-Button:**
-  Implementiere einen "Panic Button", der für N Heartbeats (3) den Fibonacci-Recall deaktiviert, Shadow Pressure auf 0 setzt, System 1 Daemon pausiert und Temperature auf Baseline lockt. Om läuft im "Hertz-Bereich" — flach, linear, ohne Resonanz. Reine algorithmische Narkose.
+- **[x] Defibrillator Marker + State Handling:**
+  `defibrillator.ts` mit datei-basiertem Trigger (`logs/brain/defibrillator.json`). Jeder Heartbeat dekrementiert `remainingBeats`, Marker wird bei 0 automatisch gelöscht.
+  *(Verifiziert 10.03. — 4 Lockdowns in `attempt.ts`: Dream/Shadow/System1/Temperature. Daemon-Pause in `subconscious.ts`. Fibonacci-Recall leer in `episodic-memory.ts`.)*
 
 ---
 

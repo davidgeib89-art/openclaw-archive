@@ -716,6 +716,16 @@ describe("brain episodic memory write path", () => {
     expect(ids[4]).toBe(entries[1]!.entryId);
   });
 
+  it("returns no fibonacci recall while defibrillator is active", async () => {
+    tmpDir = await makeTmpDir("episodic-fib-defib-");
+    const markerPath = path.join(tmpDir, "logs", "brain", "defibrillator.json");
+    await fs.mkdir(path.dirname(markerPath), { recursive: true });
+    await fs.writeFile(markerPath, JSON.stringify({ remainingBeats: 2 }), "utf-8");
+
+    const recall = await readFibonacciEpisodicEntries({ workspaceDir: tmpDir, limit: 5 });
+    expect(recall).toHaveLength(0);
+  });
+
   it("rotates structured episodic journal when size threshold is exceeded", async () => {
     tmpDir = await makeTmpDir("episodic-journal-");
     process.env.OM_EPISODIC_STRUCTURED_ROTATE_ENABLED = "true";

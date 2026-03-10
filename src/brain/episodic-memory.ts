@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { OpenClawConfig } from "../config/config.js";
 import type { BrainHomeostasisTelemetry } from "./types.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import { isDefibrillatorActive } from "./defibrillator.js";
 import { updateEpisodicIndex, type EpisodicIndexSnapshot } from "./episodic-index.js";
 import { runActiveForgetting, type ActiveForgettingSummary } from "./forgetting.js";
 import { evaluateSalience } from "./salience.js";
@@ -1440,6 +1441,10 @@ export async function readFibonacciEpisodicEntries(params: {
   limit?: number;
 }): Promise<FibonacciEpisodicRecallEntry[]> {
   const limit = Math.max(1, Math.floor(params.limit ?? DEFAULT_FIBONACCI_RECALL_LIMIT));
+  const defibrillatorActive = await isDefibrillatorActive({ workspaceDir: params.workspaceDir });
+  if (defibrillatorActive) {
+    return [];
+  }
   const dbPath = resolveMetadataDbPath(params.workspaceDir);
   try {
     await fs.stat(dbPath);

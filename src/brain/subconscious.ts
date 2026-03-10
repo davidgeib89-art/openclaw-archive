@@ -19,6 +19,7 @@ import { getLocalIsoString } from "../agents/om-scaffolding.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { readChronoSleepingHint } from "./chrono.js";
+import { isDefibrillatorActive } from "./defibrillator.js";
 import { getDefaultBrainObserverDir } from "./decision.js";
 import { readEnergyStateHint } from "./energy.js";
 import { evaluateSurge } from "./salience.js";
@@ -2370,6 +2371,11 @@ export async function runBrainSubconsciousDaemonIteration(
 
   const startedAt = Date.now();
   const nowMs = startedAt;
+  const defibrillatorActive = await isDefibrillatorActive({ workspaceDir });
+  if (defibrillatorActive) {
+    logger("SKIP", "reason=defibrillator_active");
+    return { status: "skipped", reason: "defibrillator_active" };
+  }
   const auraStressLevel = await readAuraStressLevel(workspaceDir);
   const [chronoSleeping, energyHint] = await Promise.all([
     readChronoSleepingHint(workspaceDir),

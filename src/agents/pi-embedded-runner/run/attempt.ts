@@ -30,6 +30,10 @@ import {
   logBrainDecisionObserver,
   writeMoodEntryForCycle,
 } from "../../../brain/decision.js";
+import {
+  consumeDefibrillatorBeat,
+  DEFIBRILLATOR_BASE_TEMPERATURE,
+} from "../../../brain/defibrillator.js";
 import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
 import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
 import { buildEnergyForecast } from "../../../brain/forecast.js";
@@ -2630,6 +2634,8 @@ export async function runEmbeddedAttempt(
   const resolvedWorkspace = resolveUserPath(params.workspaceDir);
   const prevCwd = process.cwd();
   const runAbortController = new AbortController();
+  let defibrillatorState: Awaited<ReturnType<typeof consumeDefibrillatorBeat>> | null = null;
+  let defibrillatorActive = false;
 
   log.debug(
     `embedded run start: runId=${params.runId} sessionId=${params.sessionId} provider=${params.provider} model=${params.modelId} thinking=${params.thinkLevel} messageChannel=${params.messageChannel ?? params.messageProvider ?? "unknown"}`,
@@ -2653,6 +2659,28 @@ export async function runEmbeddedAttempt(
   let restoreSkillEnv: (() => void) | undefined;
   process.chdir(effectiveWorkspace);
   try {
+    if (params.isHeartbeat === true) {
+      defibrillatorState = await consumeDefibrillatorBeat({ workspaceDir: effectiveWorkspace });
+      defibrillatorActive = defibrillatorState.active === true;
+      if (defibrillatorActive) {
+        const remainingBeats = defibrillatorState.remainingBeats;
+        const totalBeats = defibrillatorState.totalBeats ?? remainingBeats;
+        emitBrainReasoningEvent(params, {
+          phase: "autonomy",
+          label: "DEFIBRILLATOR",
+          summary: `defibrillator active (remaining=${remainingBeats}/${totalBeats})`,
+          source: "proto33-h2d.defibrillator",
+        });
+        omLog("DEFIBRILLATOR", "STATE", {
+          runId: params.runId,
+          sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+          remainingBeats,
+          totalBeats,
+          deactivated: defibrillatorState.deactivated ?? false,
+          temperature: DEFIBRILLATOR_BASE_TEMPERATURE,
+        });
+      }
+    }
     const shouldLoadSkillEntries = !params.skillsSnapshot || !params.skillsSnapshot.resolvedSkills;
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
@@ -3471,37 +3499,46 @@ export async function runEmbeddedAttempt(
             }
           }
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
-            try {
-              const dreamContext = await loadLatestDreamContext(effectiveWorkspace);
-              if (dreamContext?.summary) {
-                effectivePrompt = [
-                  "<dream_context>",
-                  dreamContext.summary,
-                  "</dream_context>",
-                  "",
-                  effectivePrompt,
-                ].join("\n");
-                emitBrainReasoningEvent(params, {
-                  phase: "dream",
-                  label: "DREAM",
-                  summary: `injected prior dream context (${dreamContext.sourcePath})`,
-                  source: "proto33-t2.dream",
-                });
-              } else {
-                emitBrainReasoningEvent(params, {
-                  phase: "dream",
-                  label: "DREAM",
-                  summary: "no prior dream capsule found",
-                  source: "proto33-t2.dream",
-                });
-              }
-            } catch (dreamErr) {
+            if (defibrillatorActive) {
               emitBrainReasoningEvent(params, {
                 phase: "dream",
                 label: "DREAM",
-                summary: `fail-open: ${String(dreamErr)}`,
+                summary: "skipped (defibrillator active)",
                 source: "proto33-t2.dream",
               });
+            } else {
+              try {
+                const dreamContext = await loadLatestDreamContext(effectiveWorkspace);
+                if (dreamContext?.summary) {
+                  effectivePrompt = [
+                    "<dream_context>",
+                    dreamContext.summary,
+                    "</dream_context>",
+                    "",
+                    effectivePrompt,
+                  ].join("\n");
+                  emitBrainReasoningEvent(params, {
+                    phase: "dream",
+                    label: "DREAM",
+                    summary: `injected prior dream context (${dreamContext.sourcePath})`,
+                    source: "proto33-t2.dream",
+                  });
+                } else {
+                  emitBrainReasoningEvent(params, {
+                    phase: "dream",
+                    label: "DREAM",
+                    summary: "no prior dream capsule found",
+                    source: "proto33-t2.dream",
+                  });
+                }
+              } catch (dreamErr) {
+                emitBrainReasoningEvent(params, {
+                  phase: "dream",
+                  label: "DREAM",
+                  summary: `fail-open: ${String(dreamErr)}`,
+                  source: "proto33-t2.dream",
+                });
+              }
             }
           }
           if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
@@ -3685,15 +3722,17 @@ export async function runEmbeddedAttempt(
               });
 
               let shadowPressure = 0;
-              try {
-                const shadowBridge = await readShadowBridgeSnapshot({
-                  workspaceDir: effectiveWorkspace,
-                  cfg: params.config,
-                  nowMs: Date.now(),
-                });
-                shadowPressure = clampNumber(shadowBridge.pressure, 0, 1);
-              } catch {
-                shadowPressure = 0;
+              if (!defibrillatorActive) {
+                try {
+                  const shadowBridge = await readShadowBridgeSnapshot({
+                    workspaceDir: effectiveWorkspace,
+                    cfg: params.config,
+                    nowMs: Date.now(),
+                  });
+                  shadowPressure = clampNumber(shadowBridge.pressure, 0, 1);
+                } catch {
+                  shadowPressure = 0;
+                }
               }
 
               const somaticPayload = buildSomaticTelemetryPayload({
@@ -3927,157 +3966,173 @@ export async function runEmbeddedAttempt(
 
           // Prototype 33 R027-B subconscious advisory injection:
           // inject compact local context only when result is valid and parse-safe.
-          const subconsciousHomeostasis =
-            params.isHeartbeat === true
-              ? buildHomeostasisTelemetry({
-                  startedAtMs: promptStartedAt,
-                  messages: activeSession.messages,
-                  promptText: effectivePrompt,
-                  contextWindowTokens: params.model.contextWindow,
-                })
-              : undefined;
-          const subconsciousCuriosity = buildSubconsciousCuriositySignals({
-            recallHits: sacredRecall.items.length,
-            homeostasis: subconsciousHomeostasis,
-            energyHint: preRunEnergyHint,
-            isHeartbeat: params.isHeartbeat === true,
-          });
-          const subconsciousResult = await runBrainSubconsciousObserver({
-            cfg: params.config,
-            userMessage: params.prompt,
-            sessionKey: params.sessionKey ?? params.sessionId,
-            agentId: sessionAgentId,
-            agentDir,
-            homeostasis: subconsciousHomeostasis,
-            curiosity: subconsciousCuriosity,
-          });
-          subconsciousChargeForRun = subconsciousResult.brief?.charge;
-          emitBrainReasoningEvent(params, {
-            phase: "subconscious",
-            label: "SUBCONSCIOUS",
-            summary: `status=${subconsciousResult.status}; parseOk=${subconsciousResult.parseOk ? "yes" : "no"}; mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}; note=${subconsciousResult.brief?.goal ?? subconsciousResult.error ?? "none"}`,
-            risk: subconsciousResult.brief?.risk,
-            source: "proto33-r031.subconscious",
-          });
-          omLog("BRAIN-CHARGE", "STATE", {
-            runId: params.runId,
-            sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
-            charge: subconsciousResult.brief?.charge ?? 0,
-            status: subconsciousResult.status,
-            parseOk: subconsciousResult.parseOk,
-            recommendedMode: subconsciousResult.brief?.recommendedMode ?? "n/a",
-            risk: subconsciousResult.brief?.risk ?? "n/a",
-          });
-          const subconsciousContextBlock = buildSubconsciousContextBlock(
-            subconsciousResult,
-            500,
-            params.isHeartbeat === true,
-          );
-          if (subconsciousContextBlock) {
-            effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
+          if (defibrillatorActive) {
+            subconsciousChargeForRun = 0;
             emitBrainReasoningEvent(params, {
-              phase: "inject",
-              label: "INJECT",
-              summary: `subconscious_context injected (${subconsciousContextBlock.length} chars)`,
-              detail: buildSubconsciousContextPreview(subconsciousContextBlock),
-              source: "proto33-r031.inject",
+              phase: "subconscious",
+              label: "SUBCONSCIOUS",
+              summary: "skipped (defibrillator active)",
+              source: "proto33-h2d.defibrillator",
             });
-            log.debug(
-              `brain subconscious context injected: chars=${subconsciousContextBlock.length} mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}`,
-            );
-          }
-          if (subconsciousResult.attempted) {
-            const subconsciousLogPath = logBrainSubconsciousObserver(
-              {
-                userMessage: params.prompt,
-                sessionKey: params.sessionKey ?? params.sessionId,
-                modelRef: subconsciousResult.modelRef,
-                timeoutMs: subconsciousResult.timeoutMs,
-                homeostasis: subconsciousHomeostasis,
-                curiosity: subconsciousCuriosity,
-              },
+          } else {
+            const subconsciousHomeostasis =
+              params.isHeartbeat === true
+                ? buildHomeostasisTelemetry({
+                    startedAtMs: promptStartedAt,
+                    messages: activeSession.messages,
+                    promptText: effectivePrompt,
+                    contextWindowTokens: params.model.contextWindow,
+                  })
+                : undefined;
+            const subconsciousCuriosity = buildSubconsciousCuriositySignals({
+              recallHits: sacredRecall.items.length,
+              homeostasis: subconsciousHomeostasis,
+              energyHint: preRunEnergyHint,
+              isHeartbeat: params.isHeartbeat === true,
+            });
+            const subconsciousResult = await runBrainSubconsciousObserver({
+              cfg: params.config,
+              userMessage: params.prompt,
+              sessionKey: params.sessionKey ?? params.sessionId,
+              agentId: sessionAgentId,
+              agentDir,
+              homeostasis: subconsciousHomeostasis,
+              curiosity: subconsciousCuriosity,
+            });
+            subconsciousChargeForRun = subconsciousResult.brief?.charge;
+            emitBrainReasoningEvent(params, {
+              phase: "subconscious",
+              label: "SUBCONSCIOUS",
+              summary: `status=${subconsciousResult.status}; parseOk=${subconsciousResult.parseOk ? "yes" : "no"}; mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}; note=${subconsciousResult.brief?.goal ?? subconsciousResult.error ?? "none"}`,
+              risk: subconsciousResult.brief?.risk,
+              source: "proto33-r031.subconscious",
+            });
+            omLog("BRAIN-CHARGE", "STATE", {
+              runId: params.runId,
+              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+              charge: subconsciousResult.brief?.charge ?? 0,
+              status: subconsciousResult.status,
+              parseOk: subconsciousResult.parseOk,
+              recommendedMode: subconsciousResult.brief?.recommendedMode ?? "n/a",
+              risk: subconsciousResult.brief?.risk ?? "n/a",
+            });
+            const subconsciousContextBlock = buildSubconsciousContextBlock(
               subconsciousResult,
-              {
-                source: "proto33-r027.dry-run",
-                sessionKey: params.sessionKey ?? params.sessionId,
-              },
+              500,
+              params.isHeartbeat === true,
             );
-            if (subconsciousLogPath) {
+            if (subconsciousContextBlock) {
+              effectivePrompt = `${subconsciousContextBlock}\n\n${effectivePrompt}`;
+              emitBrainReasoningEvent(params, {
+                phase: "inject",
+                label: "INJECT",
+                summary: `subconscious_context injected (${subconsciousContextBlock.length} chars)`,
+                detail: buildSubconsciousContextPreview(subconsciousContextBlock),
+                source: "proto33-r031.inject",
+              });
               log.debug(
-                `brain subconscious dry-run logged: status=${subconsciousResult.status} path=${subconsciousLogPath}`,
+                `brain subconscious context injected: chars=${subconsciousContextBlock.length} mode=${subconsciousResult.brief?.recommendedMode ?? "n/a"}`,
               );
             }
-          }
-          if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
-            try {
-              const deepIntuition = await BrainState.consumeIntuition();
-              const whisperRaw = deepIntuition?.content.replace(/\s+/g, " ").trim();
-              if (whisperRaw && whisperRaw.length > 0) {
-                const instinctSignal = parseInstinctSignalFromText(whisperRaw);
-                if (instinctSignal) {
-                  const vetoByImpulse = instinctSignal.heuristicImpulse === "HALT";
-                  const vetoByValence =
-                    typeof instinctSignal.valence === "number" &&
-                    instinctSignal.valence <= SPINAL_REFLEX_VALENCE_HALT_THRESHOLD;
+            if (subconsciousResult.attempted) {
+              const subconsciousLogPath = logBrainSubconsciousObserver(
+                {
+                  userMessage: params.prompt,
+                  sessionKey: params.sessionKey ?? params.sessionId,
+                  modelRef: subconsciousResult.modelRef,
+                  timeoutMs: subconsciousResult.timeoutMs,
+                  homeostasis: subconsciousHomeostasis,
+                  curiosity: subconsciousCuriosity,
+                },
+                subconsciousResult,
+                {
+                  source: "proto33-r027.dry-run",
+                  sessionKey: params.sessionKey ?? params.sessionId,
+                },
+              );
+              if (subconsciousLogPath) {
+                log.debug(
+                  `brain subconscious dry-run logged: status=${subconsciousResult.status} path=${subconsciousLogPath}`,
+                );
+              }
+            }
+            if (brainDecision.intent === "autonomous" && params.isHeartbeat) {
+              try {
+                const deepIntuition = await BrainState.consumeIntuition();
+                const whisperRaw = deepIntuition?.content.replace(/\s+/g, " ").trim();
+                if (whisperRaw && whisperRaw.length > 0) {
+                  const instinctSignal = parseInstinctSignalFromText(whisperRaw);
+                  if (instinctSignal) {
+                    const vetoByImpulse = instinctSignal.heuristicImpulse === "HALT";
+                    const vetoByValence =
+                      typeof instinctSignal.valence === "number" &&
+                      instinctSignal.valence <= SPINAL_REFLEX_VALENCE_HALT_THRESHOLD;
 
-                  if (vetoByImpulse || vetoByValence) {
-                    spinalReflexTriggered = true;
-                    spinalReflexReason = vetoByImpulse ? "halt_signal" : "negative_valence";
-                    spinalReflexSignal = instinctSignal;
-                    latchedPathFromRunFlow = "NO_OP";
-                    emitBrainReasoningEvent(params, {
-                      phase: "autonomy",
-                      label: "SPINAL_REFLEX",
-                      summary: "Spinal Reflex triggered: Action aborted by System 1.",
-                      detail:
-                        `reason=${spinalReflexReason}; ` +
-                        `impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
-                        `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"}; ` +
-                        `arousal=${typeof instinctSignal.arousal === "number" ? instinctSignal.arousal.toFixed(2) : "n/a"}`,
-                      source: "proto33-g12a.spinal-reflex",
-                    });
-                    omLog("BRAIN-REFLEX", "SPINAL_ABORT", {
-                      runId: params.runId,
-                      sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
-                      summary: "Spinal Reflex triggered: Action aborted by System 1.",
-                      reason: spinalReflexReason,
-                      heuristicImpulse: instinctSignal.heuristicImpulse ?? null,
-                      valence:
-                        typeof instinctSignal.valence === "number" ? instinctSignal.valence : null,
-                      arousal:
-                        typeof instinctSignal.arousal === "number" ? instinctSignal.arousal : null,
-                      toolCalls: 0,
-                    });
+                    if (vetoByImpulse || vetoByValence) {
+                      spinalReflexTriggered = true;
+                      spinalReflexReason = vetoByImpulse ? "halt_signal" : "negative_valence";
+                      spinalReflexSignal = instinctSignal;
+                      latchedPathFromRunFlow = "NO_OP";
+                      emitBrainReasoningEvent(params, {
+                        phase: "autonomy",
+                        label: "SPINAL_REFLEX",
+                        summary: "Spinal Reflex triggered: Action aborted by System 1.",
+                        detail:
+                          `reason=${spinalReflexReason}; ` +
+                          `impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
+                          `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"}; ` +
+                          `arousal=${typeof instinctSignal.arousal === "number" ? instinctSignal.arousal.toFixed(2) : "n/a"}`,
+                        source: "proto33-g12a.spinal-reflex",
+                      });
+                      omLog("BRAIN-REFLEX", "SPINAL_ABORT", {
+                        runId: params.runId,
+                        sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                        summary: "Spinal Reflex triggered: Action aborted by System 1.",
+                        reason: spinalReflexReason,
+                        heuristicImpulse: instinctSignal.heuristicImpulse ?? null,
+                        valence:
+                          typeof instinctSignal.valence === "number"
+                            ? instinctSignal.valence
+                            : null,
+                        arousal:
+                          typeof instinctSignal.arousal === "number"
+                            ? instinctSignal.arousal
+                            : null,
+                        toolCalls: 0,
+                      });
+                    } else {
+                      emitBrainReasoningEvent(params, {
+                        phase: "inject",
+                        label: "INTUITION_PRE",
+                        summary:
+                          `system_1 instinct parsed (impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
+                          `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"})`,
+                        source: "proto33-g12a.spinal-reflex",
+                      });
+                    }
                   } else {
+                    const whisperText =
+                      whisperRaw.length > 420
+                        ? `${whisperRaw.slice(0, 417).trimEnd()}...`
+                        : whisperRaw;
+                    const whisperBlock = `*Ein Fluestern aus der Tiefe deines Geistes:* "${whisperText}"`;
+                    effectivePrompt = `${whisperBlock}\n\n${effectivePrompt}`;
                     emitBrainReasoningEvent(params, {
                       phase: "inject",
                       label: "INTUITION_PRE",
-                      summary:
-                        `system_1 instinct parsed (impulse=${instinctSignal.heuristicImpulse ?? "n/a"}; ` +
-                        `valence=${typeof instinctSignal.valence === "number" ? instinctSignal.valence.toFixed(2) : "n/a"})`,
-                      source: "proto33-g12a.spinal-reflex",
+                      summary: `system_1 intuition injected (${whisperText.length} chars)`,
+                      source: "proto33-g11e.intuition-preinject",
                     });
                   }
-                } else {
-                  const whisperText =
-                    whisperRaw.length > 420 ? `${whisperRaw.slice(0, 417).trimEnd()}...` : whisperRaw;
-                  const whisperBlock = `*Ein Fluestern aus der Tiefe deines Geistes:* "${whisperText}"`;
-                  effectivePrompt = `${whisperBlock}\n\n${effectivePrompt}`;
-                  emitBrainReasoningEvent(params, {
-                    phase: "inject",
-                    label: "INTUITION_PRE",
-                    summary: `system_1 intuition injected (${whisperText.length} chars)`,
-                    source: "proto33-g11e.intuition-preinject",
-                  });
                 }
+              } catch (intuitionErr) {
+                emitBrainReasoningEvent(params, {
+                  phase: "inject",
+                  label: "INTUITION_PRE",
+                  summary: `fail-open: ${String(intuitionErr)}`,
+                  source: "proto33-g11e.intuition-preinject",
+                });
               }
-            } catch (intuitionErr) {
-              emitBrainReasoningEvent(params, {
-                phase: "inject",
-                label: "INTUITION_PRE",
-                summary: `fail-open: ${String(intuitionErr)}`,
-                source: "proto33-g11e.intuition-preinject",
-              });
             }
           }
         } catch (brainErr) {
@@ -4091,48 +4146,77 @@ export async function runEmbeddedAttempt(
         }
 
         if (params.isHeartbeat === true) {
-          try {
-            const arousal = deriveNeuroCoherenceArousal({
-              auraSnapshot: preRunAuraSnapshot,
-              energyHint: preRunEnergyHint,
-            });
-            const dynamicTemperature = mapArousalToDynamicTemperature(arousal);
-            const coherenceMode = describeNeuroCoherenceMode(arousal);
-            applyExtraParamsToAgent(
-              activeSession.agent,
-              params.config,
-              params.provider,
-              params.modelId,
-              {
-                ...(params.streamParams ?? {}),
-                temperature: dynamicTemperature,
-              },
-            );
-            const coherenceSummary =
-              `Arousal: ${arousal.toFixed(2)} -> Temperature throttled to: ` +
-              `${dynamicTemperature.toFixed(2)} (${coherenceMode})`;
-            emitBrainReasoningEvent(params, {
-              phase: "autonomy",
-              label: "NEURO_COHERENCE",
-              summary: coherenceSummary,
-              source: "proto33-h2a.neuro-coherence",
-            });
-            omLog("NEURO-COHERENCE", "STATE", {
-              runId: params.runId,
-              sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
-              arousal: Number(arousal.toFixed(3)),
-              temperature: Number(dynamicTemperature.toFixed(3)),
-              mode: coherenceMode,
-              provider: params.provider,
-              modelId: params.modelId,
-            });
-          } catch (neuroErr) {
-            emitBrainReasoningEvent(params, {
-              phase: "autonomy",
-              label: "NEURO_COHERENCE",
-              summary: `fail-open: ${String(neuroErr)}`,
-              source: "proto33-h2a.neuro-coherence",
-            });
+          if (defibrillatorActive) {
+            try {
+              const lockedTemperature = DEFIBRILLATOR_BASE_TEMPERATURE;
+              applyExtraParamsToAgent(
+                activeSession.agent,
+                params.config,
+                params.provider,
+                params.modelId,
+                {
+                  ...(params.streamParams ?? {}),
+                  temperature: lockedTemperature,
+                },
+              );
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEURO_COHERENCE",
+                summary: `defibrillator override: temperature locked to ${lockedTemperature.toFixed(2)}`,
+                source: "proto33-h2d.defibrillator",
+              });
+            } catch (neuroErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEURO_COHERENCE",
+                summary: `fail-open: ${String(neuroErr)}`,
+                source: "proto33-h2d.defibrillator",
+              });
+            }
+          } else {
+            try {
+              const arousal = deriveNeuroCoherenceArousal({
+                auraSnapshot: preRunAuraSnapshot,
+                energyHint: preRunEnergyHint,
+              });
+              const dynamicTemperature = mapArousalToDynamicTemperature(arousal);
+              const coherenceMode = describeNeuroCoherenceMode(arousal);
+              applyExtraParamsToAgent(
+                activeSession.agent,
+                params.config,
+                params.provider,
+                params.modelId,
+                {
+                  ...(params.streamParams ?? {}),
+                  temperature: dynamicTemperature,
+                },
+              );
+              const coherenceSummary =
+                `Arousal: ${arousal.toFixed(2)} -> Temperature throttled to: ` +
+                `${dynamicTemperature.toFixed(2)} (${coherenceMode})`;
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEURO_COHERENCE",
+                summary: coherenceSummary,
+                source: "proto33-h2a.neuro-coherence",
+              });
+              omLog("NEURO-COHERENCE", "STATE", {
+                runId: params.runId,
+                sessionKey: params.sessionKey ?? params.sessionId ?? "n/a",
+                arousal: Number(arousal.toFixed(3)),
+                temperature: Number(dynamicTemperature.toFixed(3)),
+                mode: coherenceMode,
+                provider: params.provider,
+                modelId: params.modelId,
+              });
+            } catch (neuroErr) {
+              emitBrainReasoningEvent(params, {
+                phase: "autonomy",
+                label: "NEURO_COHERENCE",
+                summary: `fail-open: ${String(neuroErr)}`,
+                source: "proto33-h2a.neuro-coherence",
+              });
+            }
           }
         }
 

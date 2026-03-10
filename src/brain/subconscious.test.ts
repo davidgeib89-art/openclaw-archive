@@ -781,4 +781,20 @@ describe("brain subconscious daemon", () => {
     expect(consumed?.content).toContain("<instinct>");
     fs.rmSync(workspaceDir, { recursive: true, force: true });
   });
+
+  it("skips daemon iteration when defibrillator is active", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-daemon-defib-"));
+    const markerPath = path.join(workspaceDir, "logs", "brain", "defibrillator.json");
+    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, JSON.stringify({ remainingBeats: 2 }), "utf-8");
+
+    const result = await runBrainSubconsciousDaemonIteration({
+      enabled: true,
+      workspaceDir,
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.reason).toBe("defibrillator_active");
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
+  });
 });
