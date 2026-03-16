@@ -53,7 +53,7 @@ const FLASHBACK_QUEUE_DIR = "logs/brain";
 
 // ΔG zone thresholds (both ΔH_norm and ΔS are normalized to [0, 1]).
 // Open calibration: lower these if Om never enters distortion in a live run.
-export const GIBBS_DISTORTION_THRESHOLD = 0.25;
+export const GIBBS_DISTORTION_THRESHOLD = 0.30;
 export const GIBBS_ERUPTION_THRESHOLD = 0.55;
 
 // Hysteresis: a node only drops to a lower zone when ΔG falls this far below
@@ -111,6 +111,8 @@ export type GibbsEvalResult = {
   eruptionCandidate: GibbsNodeResult | null; // single highest-ΔG eruption candidate
   anyZoneChanged: boolean; // true if any node changed zone this heartbeat
   transitions: GibbsZoneTransitionStats; // transition counts for this heartbeat
+  dominantPrimaryKind: string | null;
+  maxDwellMs: number;
 };
 
 export type FlashbackQueueEntry = {
@@ -182,6 +184,9 @@ type GibbsRow = {
 
 /**
  * Adds gibbs_zone and gibbs_zone_since columns if they don't exist yet.
+ * Also ensures 'repressed' and 'latent_energy' exist (managed by episodic-memory,
+ * but required for Gibbs evaluation).
+ *
  * Fail-open: schema migration must never block the engine.
  */
 function ensureGibbsColumns(db: DatabaseSync): void {
@@ -190,6 +195,17 @@ function ensureGibbsColumns(db: DatabaseSync): void {
       name?: unknown;
     }>;
     const has = (name: string) => tableInfo.some((c) => c.name === name);
+
+    if (!has("repressed")) {
+      db.exec(
+        `ALTER TABLE episodic_entries ADD COLUMN repressed INTEGER NOT NULL DEFAULT 0`,
+      );
+    }
+    if (!has("latent_energy")) {
+      db.exec(
+        `ALTER TABLE episodic_entries ADD COLUMN latent_energy REAL NOT NULL DEFAULT 0.0`,
+      );
+    }
     if (!has("gibbs_zone")) {
       db.exec(
         `ALTER TABLE episodic_entries ADD COLUMN gibbs_zone TEXT NOT NULL DEFAULT 'stable'`,
@@ -198,6 +214,9 @@ function ensureGibbsColumns(db: DatabaseSync): void {
     if (!has("gibbs_zone_since")) {
       db.exec(`ALTER TABLE episodic_entries ADD COLUMN gibbs_zone_since INTEGER NOT NULL DEFAULT 0`);
     }
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_episodic_entries_repressed ON episodic_entries(repressed, created_at DESC)`,
+    );
   } catch {
     // Fail-open: engine continues without hysteresis persistence if migration fails
   }
@@ -299,14 +318,7 @@ export async function evaluateGibbsEnergy(params: {
   try {
     db = new DatabaseSync(dbPath);
 
-    // Guard against stale schema (missing columns from older installs)
-    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
-      name?: unknown;
-    }>;
-    const cols = new Set(tableInfo.map((c) => String(c.name ?? "")));
-    if (!cols.has("repressed") || !cols.has("latent_energy")) return null;
-
-    // Migrate gibbs_zone columns if needed (idempotent, fail-open)
+    // Migrate all required columns if needed (idempotent, fail-open)
     ensureGibbsColumns(db);
 
     // Query highest-energy repressed nodes first so we find the eruption candidate
@@ -331,6 +343,7 @@ export async function evaluateGibbsEnergy(params: {
     let eruptionCandidate: GibbsNodeResult | null = null;
     let anyZoneChanged = false;
     let distortionCount = 0;
+    const kindCounts: Record<string, number> = {};
     const transitions: GibbsZoneTransitionStats = {
       stableToDistortion: 0,
       distortionToEruption: 0,
@@ -378,6 +391,9 @@ export async function evaluateGibbsEnergy(params: {
 
       if (zone === "stable") continue;
 
+      const kind = row.primary_kind ?? "general";
+      kindCounts[kind] = (kindCounts[kind] || 0) + 1;
+
       const node: GibbsNodeResult = {
         entryId: row.entry_id,
         latentEnergy,
@@ -388,7 +404,7 @@ export async function evaluateGibbsEnergy(params: {
         previousZone,
         zoneSinceMs,
         zoneChanged,
-        primaryKind: row.primary_kind ?? "general",
+        primaryKind: kind,
         signals,
         userText,
         assistantText,
@@ -407,6 +423,24 @@ export async function evaluateGibbsEnergy(params: {
 
     distortionNodes.sort((a, b) => b.deltaG - a.deltaG);
 
+    let dominantPrimaryKind: string | null = null;
+    let maxKindCount = 0;
+    let maxDwellMs = 0;
+    for (const [kind, count] of Object.entries(kindCounts)) {
+      if (count > maxKindCount) {
+        maxKindCount = count;
+        dominantPrimaryKind = kind;
+      }
+    }
+
+    const allNonStable = [...distortionNodes, ...(eruptionCandidate ? [eruptionCandidate] : [])];
+    for (const node of allNonStable) {
+      const dwell = nowMs - node.zoneSinceMs;
+      if (dwell > maxDwellMs) {
+        maxDwellMs = dwell;
+      }
+    }
+
     return {
       evaluatedCount: rows.length,
       distortionCount,
@@ -415,6 +449,8 @@ export async function evaluateGibbsEnergy(params: {
       eruptionCandidate,
       anyZoneChanged,
       transitions,
+      dominantPrimaryKind,
+      maxDwellMs,
     };
   } catch {
     return null;

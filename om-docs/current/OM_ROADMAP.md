@@ -36,15 +36,21 @@ Goals:
 
 Deliverables:
 
-- 30-50 beat analysis report
-- recommended threshold deltas
-- explicit keep/change decision for cooldown and dwell logic
+- 30-50 beat analysis report (COMPLETED 2026-03-16)
+- recommended threshold deltas (IN PROGRESS)
+- explicit keep/change decision for cooldown and dwell logic (IN PROGRESS)
 
-## Phase R2: Regulation hardening
+## Phase R2: Regulation hardening (active)
+
+Goals:
+
+- address "LEAK" verdict from R1 analysis
+- implement recommended threshold adjustments
+- observe effect on transition diversity
 
 Candidate actions (data-dependent):
 
-- increase distortion threshold if baseline leakage persists
+- [DONE] increase distortion threshold (from 0.25 to 0.30)
 - increase eruption threshold if breakthrough is too frequent
 - add post-flashback cooldown if pressure does not decay
 - tune hysteresis band if zone lock-in appears

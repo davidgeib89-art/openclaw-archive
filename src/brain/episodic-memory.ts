@@ -1377,6 +1377,18 @@ export async function appendBrainEpisodicJournal(
   const memoryIndexPath = resolveMemoryIndexPath(input.workspaceDir);
   const now = (input.now ?? (() => new Date()))();
 
+  // Ensure schema is up to date before any maintenance (forgetting, indexing)
+  try {
+    const db = new DatabaseSync(metadataDbPath);
+    try {
+      ensureEpisodicMetadataSchema(db);
+    } finally {
+      db.close();
+    }
+  } catch {
+    // Fail-open: schema migration should not block memory operations
+  }
+
   if (!isEpisodicWriteEnabled(input.cfg, input.agentId)) {
     return {
       persisted: false,
@@ -1423,6 +1435,21 @@ export async function appendBrainEpisodicJournal(
     };
   }
   if (isHeartbeatTurn(userMessage, assistantMessage)) {
+    // Background maintenance still runs during heartbeats to evolve shadow pressure
+    const forgetting = runActiveForgetting({
+      metadataDbPath,
+      runId: input.runId,
+      sessionKey: input.sessionKey,
+      now,
+    });
+    const episodicIndex = await updateEpisodicIndex({
+      workspaceDir: input.workspaceDir,
+      metadataDbPath,
+      runId: input.runId,
+      sessionKey: input.sessionKey,
+      now,
+    });
+
     return {
       persisted: false,
       path: journalPath,
@@ -1440,12 +1467,29 @@ export async function appendBrainEpisodicJournal(
       compactionDeletedRows: 0,
       memoryIndexPath,
       memoryIndexUpdated: false,
+      forgetting,
+      episodicIndex,
       reason: "heartbeat-turn",
     };
   }
 
   const scored = scoreTurnSignificance(userMessage, assistantMessage);
   if (scored.score < SIGNIFICANCE_THRESHOLD) {
+    // Background maintenance runs even for low-signal turns
+    const forgetting = runActiveForgetting({
+      metadataDbPath,
+      runId: input.runId,
+      sessionKey: input.sessionKey,
+      now,
+    });
+    const episodicIndex = await updateEpisodicIndex({
+      workspaceDir: input.workspaceDir,
+      metadataDbPath,
+      runId: input.runId,
+      sessionKey: input.sessionKey,
+      now,
+    });
+
     return {
       persisted: false,
       path: journalPath,
@@ -1463,6 +1507,8 @@ export async function appendBrainEpisodicJournal(
       compactionDeletedRows: 0,
       memoryIndexPath,
       memoryIndexUpdated: false,
+      forgetting,
+      episodicIndex,
       reason: "below-threshold",
     };
   }

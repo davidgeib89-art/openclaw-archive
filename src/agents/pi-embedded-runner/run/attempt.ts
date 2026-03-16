@@ -1549,8 +1549,8 @@ function emitGibbsEvalEvent(
     phase: "autonomy",
     label: "GIBBS_EVAL",
     summary:
-      `evaluated=${result.evaluatedCount}; stable=${result.evaluatedCount - result.distortionCount - (result.eruptionCandidate ? 1 : 0)}; ` +
-      `distortion=${result.distortionCount}; eruption=${result.eruptionCandidate ? 1 : 0}; ` +
+      `evaluated=${result.evaluatedCount}; distortion=${result.distortionCount}; eruption=${result.eruptionCandidate ? 1 : 0}; ` +
+      `dominantKind=${result.dominantPrimaryKind ?? "none"}; maxDwell=${Math.round(result.maxDwellMs / 1000)}s; ` +
       `T=${result.temperature.toFixed(2)}; anyChanged=${result.anyZoneChanged}; ` +
       `transitions=[${transitionSummary}]`,
     detail: nodeLines.join(" | ") || undefined,
@@ -1566,6 +1566,8 @@ function emitGibbsEvalEvent(
     eruptionCandidate: result.eruptionCandidate?.entryId ?? null,
     temperature: result.temperature,
     anyZoneChanged: result.anyZoneChanged,
+    dominantKind: result.dominantPrimaryKind,
+    maxDwellMs: result.maxDwellMs,
     transitions: result.transitions,
     topNode: topDistortion
       ? {
@@ -3829,6 +3831,7 @@ export async function runEmbeddedAttempt(
             intent: brainDecision.intent,
             riskLevel: brainDecision.riskLevel,
             plannedTools: [...brainDecision.allowedTools],
+            mustAskUser: brainDecision.mustAskUser,
           };
           emitBrainReasoningEvent(params, {
             phase: "intent",

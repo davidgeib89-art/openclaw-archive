@@ -15,6 +15,7 @@ export type TrinityCoherenceThought = {
   intent: BrainIntent;
   riskLevel: BrainRiskLevel;
   plannedTools: string[];
+  mustAskUser: boolean;
 };
 
 export type TrinityCoherenceFeeling = {
@@ -65,7 +66,7 @@ export function computeTrinityCoherence(params: {
       mismatchType: "none",
       reasoning: ["insufficient data for coherence check"],
       metadata: {
-        thought: thought ?? { intent: "qa", riskLevel: "low", plannedTools: [] },
+        thought: thought ?? { intent: "qa", riskLevel: "low", plannedTools: [], mustAskUser: false },
         feeling: feeling ?? { arousal: 0.5, shadowPressure: 0, energyMode: "balanced" },
         action: action ?? { toolCalls: [], wordCount: 0, hasGerman: true },
       },
@@ -83,6 +84,10 @@ export function computeTrinityCoherence(params: {
   if (thought.intent === "qa" && mutationTools.length > 0) {
     penalty += 0.3;
     reasoning.push(`intent=qa mismatch with mutation_tools=[${mutationTools.join(",")}]`);
+  }
+  if (thought.mustAskUser && mutationTools.length > 0) {
+    penalty += 0.25;
+    reasoning.push(`must_ask_user=true mismatch with mutation_tools=[${mutationTools.join(",")}] (acting without permission)`);
   }
 
   // 2. Feeling vs Action Alignment
