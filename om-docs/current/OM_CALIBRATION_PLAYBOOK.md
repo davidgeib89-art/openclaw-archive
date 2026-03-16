@@ -33,11 +33,13 @@ Per heartbeat window:
 ## Decision gates
 
 1. Stable baseline
+
 - distortion present but not constant
 - eruptions occasional, not every beat
 - transition graph shows both escalation and recovery
 
 2. Leak baseline
+
 - distortion or flashback appears nearly every beat
 - low transition diversity
 - low decay after flashback
@@ -45,6 +47,7 @@ Per heartbeat window:
 Action: raise thresholds and/or add cooldown.
 
 3. Rigid baseline
+
 - almost no distortion over full window
 - low responsiveness to meaningful pressure
 

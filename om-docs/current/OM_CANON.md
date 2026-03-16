@@ -45,7 +45,7 @@ Key frames used in implementation and analysis:
 Key formal mechanisms in active architecture:
 
 - dynamic pressure from latent memory load
-- thermodynamic scoring with Gibbs-Helmholtz form: Delta G = Delta H_norm - T * Delta S
+- thermodynamic scoring with Gibbs-Helmholtz form: Delta G = Delta H_norm - T \* Delta S
 - hysteresis and dwell constraints to prevent oscillatory instability
 - bounded single-node breakthrough dynamics for controlled shadow release
 
