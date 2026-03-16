@@ -41,9 +41,15 @@ import {
   writeMoodEntryForCycle,
 } from "../../../brain/decision.js";
 import {
+  activateDefibrillator,
   consumeDefibrillatorBeat,
   DEFIBRILLATOR_BASE_TEMPERATURE,
 } from "../../../brain/defibrillator.js";
+import {
+  AUTO_REFRACTORY_BEATS,
+  AUTO_REFRACTORY_THRESHOLD,
+  tickRefractoryCounter,
+} from "../../../brain/refractory.js";
 import {
   computeTrinityCoherence,
   type TrinityCoherenceResult,
@@ -4618,6 +4624,37 @@ export async function runEmbeddedAttempt(
               const dynamicTemperature =
                 mapArousalToDynamicTemperature(arousal);
               heartbeatTemperature = dynamicTemperature; // H.3: capture for ΔG engine
+              // H.3 Auto-Refractory: if temperature has been locked at minimum for
+              // AUTO_REFRACTORY_THRESHOLD consecutive beats, fire a single-beat
+              // defibrillator reset to break the positive feedback loop.
+              try {
+                const refractoryResult = await tickRefractoryCounter({
+                  workspaceDir: effectiveWorkspace,
+                  currentTemperature: dynamicTemperature,
+                });
+                if (refractoryResult.shouldFire) {
+                  await activateDefibrillator({
+                    workspaceDir: effectiveWorkspace,
+                    beats: AUTO_REFRACTORY_BEATS,
+                  });
+                  emitBrainReasoningEvent(params, {
+                    phase: "autonomy",
+                    label: "AUTO_REFRACTORY",
+                    summary:
+                      `auto-refractory triggered after ${AUTO_REFRACTORY_THRESHOLD} ` +
+                      "consecutive min-temperature beats — defibrillator injected " +
+                      `for ${AUTO_REFRACTORY_BEATS} beat`,
+                    source: "proto33-h3r.auto-refractory",
+                  });
+                }
+              } catch (refractoryErr) {
+                emitBrainReasoningEvent(params, {
+                  phase: "autonomy",
+                  label: "AUTO_REFRACTORY",
+                  summary: `fail-open: ${String(refractoryErr)}`,
+                  source: "proto33-h3r.auto-refractory",
+                });
+              }
               const coherenceMode = describeNeuroCoherenceMode(arousal);
               applyExtraParamsToAgent(
                 activeSession.agent,

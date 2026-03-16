@@ -110,6 +110,35 @@ export async function readDefibrillatorState(params: {
   }
 }
 
+export async function activateDefibrillator(params: {
+  workspaceDir: string;
+  beats: number;
+}): Promise<void> {
+  try {
+    const beats = Number.isFinite(params.beats)
+      ? Math.max(0, Math.floor(params.beats))
+      : 0;
+    if (beats <= 0) {
+      return;
+    }
+
+    const state = await readDefibrillatorState({
+      workspaceDir: params.workspaceDir,
+    });
+    if (state.active && state.remainingBeats >= beats) {
+      return;
+    }
+
+    const markerPath = resolveDefibrillatorPath(params.workspaceDir);
+    await writeDefibrillatorPayload(markerPath, {
+      remainingBeats: beats,
+      totalBeats: beats,
+    });
+  } catch {
+    // fail-open
+  }
+}
+
 export async function consumeDefibrillatorBeat(params: {
   workspaceDir: string;
   defaultBeats?: number;
