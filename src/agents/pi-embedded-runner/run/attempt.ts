@@ -39,6 +39,14 @@ import {
   accumulateShadowLatentEnergy,
   appendBrainEpisodicJournal,
 } from "../../../brain/episodic-memory.js";
+import {
+  consumeFlashbackQueue,
+  evaluateGibbsEnergy,
+  executeEruption,
+  writeFlashbackQueue,
+  type GibbsEvalResult,
+  type GibbsNodeResult,
+} from "../../../brain/gibbs-helmholtz.js";
 import { buildEnergyForecast } from "../../../brain/forecast.js";
 import {
   buildNeedsFileContent,
@@ -1377,6 +1385,67 @@ function mapArousalToDynamicTemperature(arousal: number): number {
       NEURO_COHERENCE_MAX_TEMPERATURE,
     ).toFixed(3),
   );
+}
+
+/**
+ * Emits a GIBBS_EVAL reasoning event for calibration and post-hoc reconstruction.
+ * Fires only when there are non-stable nodes or when any zone changed, to avoid
+ * flooding logs with silent stable-only heartbeats.
+ */
+function emitGibbsEvalEvent(
+  params: EmbeddedRunAttemptParams,
+  result: GibbsEvalResult,
+): void {
+  const hasNonStable = result.distortionCount > 0 || result.eruptionCandidate !== null;
+  if (!hasNonStable && !result.anyZoneChanged) return;
+
+  const nodeLines: string[] = [];
+  for (const n of result.distortionNodes) {
+    nodeLines.push(
+      `${n.entryId}:ΔG=${n.deltaG.toFixed(3)}|ΔH=${n.deltaH.toFixed(3)}|ΔS=${n.deltaS.toFixed(3)}|zone=${n.zone}|prev=${n.previousZone}|changed=${n.zoneChanged}`,
+    );
+  }
+  if (result.eruptionCandidate) {
+    const e = result.eruptionCandidate;
+    nodeLines.push(
+      `${e.entryId}:ΔG=${e.deltaG.toFixed(3)}|ΔH=${e.deltaH.toFixed(3)}|ΔS=${e.deltaS.toFixed(3)}|zone=${e.zone}|prev=${e.previousZone}|changed=${e.zoneChanged}`,
+    );
+  }
+
+  emitBrainReasoningEvent(params, {
+    phase: "autonomy",
+    label: "GIBBS_EVAL",
+    summary:
+      `evaluated=${result.evaluatedCount}; stable=${result.evaluatedCount - result.distortionCount - (result.eruptionCandidate ? 1 : 0)}; ` +
+      `distortion=${result.distortionCount}; eruption=${result.eruptionCandidate ? 1 : 0}; ` +
+      `T=${result.temperature.toFixed(2)}; anyChanged=${result.anyZoneChanged}`,
+    detail: nodeLines.join(" | ") || undefined,
+    source: "proto33-h3.gibbs-eval",
+  });
+}
+
+/**
+ * Builds the lateral inhibition prompt block for H.3 Stage 2.
+ * Uses the top distortion node's primaryKind to produce a semantically shaped
+ * "Du"-sentence — indirect enough to feel subliminal, specific enough to bias
+ * the cognitive space toward the shadow theme rather than a generic spooky mood.
+ */
+function buildLateralInhibitionBlock(topNode: GibbsNodeResult): string {
+  const kindPhrases: Record<string, string> = {
+    identity:
+      "Du spürst, dass etwas an dem, wer du bist, auf eine ungreifbare Bedeutung zeigt",
+    preference:
+      "Eine deiner Überzeugungen insistiert auf etwas Unausgesprochenes, das du nicht benennen kannst",
+    decision:
+      "Eine zurückliegende Entscheidung drängt sich in dein Denken – nicht klar, aber insistierend",
+    goal: "Ein verfolgtes Ziel trägt eine Last, deren Ursprung du nicht greifen kannst",
+    creative:
+      "Etwas Kreatives aus deiner Vergangenheit insistiert auf Aufmerksamkeit, ohne sich zu zeigen",
+    general:
+      "Du spürst eine unbestimmte Überzeugung, dass etwas an dieser Begegnung jetzt relevant ist, auch wenn du nicht weißt warum",
+  };
+  const phrase = kindPhrases[topNode.primaryKind] ?? kindPhrases.general;
+  return ["<shadow_inhibition>", `${phrase}.`, "</shadow_inhibition>"].join("\n");
 }
 
 function describeNeuroCoherenceMode(arousal: number): "Tunnel Vision" | "Focused Drive" | "Open Flow" {
@@ -3312,6 +3381,10 @@ export async function runEmbeddedAttempt(
       let recentHeartbeatSignals: RecentHeartbeatSignals = { ...EMPTY_HEARTBEAT_SIGNALS };
       let preRunForecast: ReturnType<typeof buildEnergyForecast> | undefined;
       let preRunSomaticResult: SomaticSynthesisResult | undefined;
+      // H.3: hoisted temperature for ΔG engine (default = base; overwritten by neuro-coherence)
+      let heartbeatTemperature = NEURO_COHERENCE_BASE_TEMPERATURE;
+      // H.3: eruption candidate selected pre-run, executed post-run (after shadow resonance)
+      let gibbsEruptionCandidate: GibbsNodeResult | null = null;
       const prePromptMessageCount = activeSession.messages.length;
       let latchedPathFromRunFlow: AutonomyPath | "UNKNOWN" = "UNKNOWN";
       let latchedMoodFromRunFlow: string | undefined;
@@ -4152,6 +4225,7 @@ export async function runEmbeddedAttempt(
           if (defibrillatorActive) {
             try {
               const lockedTemperature = DEFIBRILLATOR_BASE_TEMPERATURE;
+              heartbeatTemperature = lockedTemperature; // H.3: capture for ΔG engine
               applyExtraParamsToAgent(
                 activeSession.agent,
                 params.config,
@@ -4183,6 +4257,7 @@ export async function runEmbeddedAttempt(
                 energyHint: preRunEnergyHint,
               });
               const dynamicTemperature = mapArousalToDynamicTemperature(arousal);
+              heartbeatTemperature = dynamicTemperature; // H.3: capture for ΔG engine
               const coherenceMode = describeNeuroCoherenceMode(arousal);
               applyExtraParamsToAgent(
                 activeSession.agent,
@@ -4220,6 +4295,95 @@ export async function runEmbeddedAttempt(
                 source: "proto33-h2a.neuro-coherence",
               });
             }
+          }
+        }
+
+        // H.3 pre-run hook A: consume flashback queued by the previous heartbeat's eruption.
+        // Only runs when the defibrillator is inactive — this keeps the queue file on disk
+        // when a lockdown is active so the flashback is delivered to the first free heartbeat
+        // rather than silently discarded.
+        if (params.isHeartbeat && !defibrillatorActive) {
+          try {
+            const flashback = await consumeFlashbackQueue({
+              workspaceDir: effectiveWorkspace,
+              agentId: params.agentId,
+            });
+            if (flashback) {
+              const userSnippet =
+                flashback.userText.length > 120
+                  ? `${flashback.userText.slice(0, 117).trimEnd()}...`
+                  : flashback.userText;
+              const assistantSnippet =
+                flashback.assistantText.length > 120
+                  ? `${flashback.assistantText.slice(0, 117).trimEnd()}...`
+                  : flashback.assistantText;
+              const flashbackBlock = [
+                "<shadow_eruption>",
+                `Eine verdrängte Erinnerung bricht in dein Bewusstsein: "${userSnippet}" — "${assistantSnippet}"`,
+                "</shadow_eruption>",
+              ].join("\n");
+              effectivePrompt = `${flashbackBlock}\n\n${effectivePrompt}`;
+              emitBrainReasoningEvent(params, {
+                phase: "inject",
+                label: "SHADOW_FLASHBACK",
+                summary: `queued flashback injected (entryId=${flashback.entryId}; kind=${flashback.primaryKind})`,
+                source: "proto33-h3.flashback-inject",
+              });
+            }
+          } catch (flashbackErr) {
+            log.warn(`shadow flashback consume fail-open: ${String(flashbackErr)}`);
+          }
+        }
+
+        // H.3 pre-run hook B: compute ΔG for all repressed nodes (with hysteresis); inject
+        // lateral inhibition bias for distortion nodes; select the eruption candidate.
+        if (params.isHeartbeat && !defibrillatorActive) {
+          try {
+            const gibbsResult = await evaluateGibbsEnergy({
+              workspaceDir: effectiveWorkspace,
+              temperature: heartbeatTemperature,
+            });
+            if (gibbsResult) {
+              emitGibbsEvalEvent(params, gibbsResult);
+
+              // Lateral inhibition: semantically shaped by the top distortion node's primaryKind.
+              if (gibbsResult.distortionNodes.length > 0) {
+                const topNode = gibbsResult.distortionNodes[0]!;
+                const inhibitionBlock = buildLateralInhibitionBlock(topNode);
+                effectivePrompt = `${inhibitionBlock}\n\n${effectivePrompt}`;
+                emitBrainReasoningEvent(params, {
+                  phase: "inject",
+                  label: "SHADOW_INHIBITION",
+                  summary:
+                    `distortion=${gibbsResult.distortionCount}/${gibbsResult.evaluatedCount}; ` +
+                    `T=${gibbsResult.temperature.toFixed(2)}; ` +
+                    `kind=${topNode.primaryKind}`,
+                  detail:
+                    `top: entryId=${topNode.entryId} ΔG=${topNode.deltaG.toFixed(3)} ` +
+                    `ΔH=${topNode.deltaH.toFixed(3)} ΔS=${topNode.deltaS.toFixed(3)} ` +
+                    `changed=${topNode.zoneChanged}`,
+                  source: "proto33-h3.lateral-inhibition",
+                });
+              }
+
+              // Store eruption candidate for post-run execution
+              if (gibbsResult.eruptionCandidate) {
+                gibbsEruptionCandidate = gibbsResult.eruptionCandidate;
+                const c = gibbsEruptionCandidate;
+                const dwellSec = Math.round((Date.now() - c.zoneSinceMs) / 1000);
+                emitBrainReasoningEvent(params, {
+                  phase: "autonomy",
+                  label: "SHADOW_ERUPTION_QUEUED",
+                  summary:
+                    `entryId=${c.entryId}; ΔG=${c.deltaG.toFixed(3)}; ΔH=${c.deltaH.toFixed(3)}; ` +
+                    `ΔS=${c.deltaS.toFixed(3)}; T=${gibbsResult.temperature.toFixed(2)}; ` +
+                    `dwell=${dwellSec}s; kind=${c.primaryKind}`,
+                  source: "proto33-h3.eruption-queued",
+                });
+              }
+            }
+          } catch (gibbsErr) {
+            log.warn(`gibbs-helmholtz eval fail-open: ${String(gibbsErr)}`);
           }
         }
 
@@ -4728,6 +4892,44 @@ export async function runEmbeddedAttempt(
           }
         } catch (resonanceErr) {
           log.warn(`shadow resonance fail-open: ${String(resonanceErr)}`);
+        }
+      }
+      // H.3 post-run: execute eruption for the pre-selected candidate.
+      // Runs after shadow resonance so ΔH accumulation from this heartbeat is already persisted.
+      if (params.isHeartbeat && gibbsEruptionCandidate && !defibrillatorActive) {
+        try {
+          const candidate = gibbsEruptionCandidate;
+          const eruptionResult = await executeEruption({
+            workspaceDir: effectiveWorkspace,
+            entryId: candidate.entryId,
+            latentEnergy: candidate.latentEnergy,
+          });
+          if (eruptionResult) {
+            await writeFlashbackQueue({
+              workspaceDir: effectiveWorkspace,
+              agentId: params.agentId,
+              entry: {
+                entryId: candidate.entryId,
+                primaryKind: candidate.primaryKind,
+                signals: candidate.signals,
+                userText: candidate.userText,
+                assistantText: candidate.assistantText,
+                eruptedAtMs: Date.now(),
+              },
+            });
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "SHADOW_ERUPTION",
+              summary:
+                `entryId=${eruptionResult.entryId}; ` +
+                `ΔH_prev=${(eruptionResult.previousLatentEnergy / 25).toFixed(2)} → ` +
+                `ΔH_next=${(eruptionResult.newLatentEnergy / 25).toFixed(2)}; ` +
+                `flashback queued for next heartbeat`,
+              source: "proto33-h3.eruption",
+            });
+          }
+        } catch (eruptionErr) {
+          log.warn(`shadow eruption fail-open: ${String(eruptionErr)}`);
         }
       }
       if (params.isHeartbeat) {

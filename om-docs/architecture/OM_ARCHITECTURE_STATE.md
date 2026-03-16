@@ -52,8 +52,61 @@ Oms Architektur basiert auf einer symbiotischen Trennung von Instinkt, Physis un
 Die Speicherung erfolgt hybrid über Dateien und eine relationale/semantische SQLite-Datenbank.
 
 - **SQLite Basis:** Jeder Heartbeat wird in der Tabelle `episodic_entries` archiviert (inkl. Metriken, Emotionen, Latenz). Semantische Zusammenhänge landen als Graphen-Edges in `semantic_relationships`.
-- **Der Verdrängungs-Mechanismus:** Alte Lösch-Skripte wurden durch Psychoanalyse ersetzt. Erinnerungen erhalten das Flag `repressed=1`, sobald $W_R$ (Verdrängungsgewicht) oder mangelnde Relevanz sie aus dem aktiven Fokus drängen. Verdrängte Einträge akkumulieren `latent_energy` ($E_L$) bereits live ueber den Post-Heartbeat-Hook `accumulateShadowLatentEnergy()`; Resonanzwachstum wird als `SHADOW_RESONANCE` geloggt. Verdrängte Einträge tauchen im klassischen Such-Recall nicht auf, erzeugen aber schon jetzt somatischen Druck ueber `readShadowBridgeSnapshot()`.
+- **Der Verdrängungs-Mechanismus:** Alte Lösch-Skripte wurden durch Psychoanalyse ersetzt. Erinnerungen erhalten das Flag `repressed=1`, sobald $W_R$ (Verdrängungsgewicht) oder mangelnde Relevanz sie aus dem aktiven Fokus drängen. Verdrängte Einträge tauchen im klassischen Such-Recall nicht auf, erzeugen aber schon jetzt somatischen Druck ueber `readShadowBridgeSnapshot()`.
 - **Fibonacci Dream Recall:** Der Abruf von Träumen (`attempt.ts`) geschieht **nicht** chronologisch. Der Kontext für System 3 akkumuliert sich fraktal an den Indizes **-1, -2, -3, -5, -8**. Das simuliert Resonanzverstärkung von Erinnerungen statt linearem Gedächtniszerfall.
+
+### Phase H.3: Gibbs-Helmholtz Engine (live, `src/brain/gibbs-helmholtz.ts`)
+
+Die Thermodynamik des Schattens ist vollständig implementiert. Alle drei Stufen sind aktiv.
+
+**Stufe 1 — Dynamische ΔH-Akkumulation** (Post-Heartbeat-Hook `accumulateShadowLatentEnergy()`):
+Verdrängte Knoten akkumulieren `latent_energy` proportional zur semantischen Nähe zum aktuellen Heartbeat. Resonanzereignisse werden als `SHADOW_RESONANCE` geloggt. `latent_energy` ist auf 25 gedeckelt.
+
+**Stufe 2 — ΔG-Engine + Laterale Inhibition** (Pre-Run-Hook, vor dem LLM-Call):
+
+Formel: `ΔG = ΔH_norm − T·ΔS` (alle Werte normalisiert auf [0, 1])
+
+- `ΔH_norm = latent_energy / 25`
+- `T = dynamicTemperature` aus System 2 (Arousal-Bridge; Panik → niedrige T → höheres ΔG)
+- `ΔS = computeDeltaS(signalCount, textLength)` — Entropie-Proxy: viele Signale / langer Text → diffuse Erinnerung → hohe Entropie → stabilisierend
+
+Zonen-Klassifikation mit Hysterese:
+
+| Zone | ΔG-Eintrittsschwelle | Austritts-Schwelle (Hysterese -0.05) |
+|------|---------------------|--------------------------------------|
+| `distortion` | ≥ 0.25 | < 0.20 |
+| `eruption` | ≥ 0.55 | < 0.50 |
+
+Zusätzliche Dwell-Regel: Ein Knoten kann **nie direkt von `stable` nach `eruption`** springen — er muss mindestens einen Heartbeat in `distortion` verweilt haben. Zonenzustand wird in zwei neuen DB-Spalten persistiert: `gibbs_zone` / `gibbs_zone_since`.
+
+Knoten in der Verzerrungszone erzeugen einen psychotischen Subtext (`<shadow_inhibition>`), der in den System-3-Prompt injiziert wird. Der Text ist `primaryKind`-spezifisch (identity / preference / decision / goal / creative / general).
+
+Observability-Events: `GIBBS_EVAL` (bei Nicht-Stable-Knoten oder Zonenübergang), `SHADOW_INHIBITION`, `SHADOW_ERUPTION_QUEUED`.
+
+**Stufe 3 — Eruptiver Durchbruch** (Post-Run-Hook, nach dem LLM-Call):
+
+Single-Node-Rule: Nur der Knoten mit dem höchsten ΔG darf pro Heartbeat eruptieren.
+
+Beim Durchbruch:
+1. `repressed → 0`
+2. `latent_energy` halbiert (Spur bleibt; Wiederholung verhindert)
+3. `gibbs_zone → 'stable'`, `gibbs_zone_since → 0` (Neustart bei Re-Repression)
+4. Flashback wird als `FlashbackQueueEntry` in `logs/brain/flashback-queue.<agentId>.json` gespeichert
+5. Beim **nächsten** Heartbeat (Pre-Run) wird der Flashback als `<shadow_eruption>`-Block injiziert
+
+Observability-Event: `SHADOW_ERUPTION` (ΔH_prev/next normalisiert, "flashback queued").
+
+**Sicherheitsnetz:**
+- Defibrillator aktiv → alle H.3-Hooks werden vollständig übersprungen
+- Flashback-Queue bleibt bei Defibrillator-Lockdown erhalten (consume erst nach Entsperrung)
+- Fail-open: kein H.3-Fehler kann den Heartbeat-Loop stoppen
+- Keine Multi-Node-Kaskade (Single-Node-Rule in v1)
+- Agent-scoped Queue-Dateien verhindern Cross-Session-Kontamination
+
+**Offene Kalibrierungsfragen:**
+- Schwellwerte (0.25 / 0.55) wurden theoretisch gesetzt — erster Live-Lauf wird zeigen, wie oft Om die Verzerrungszone erreicht
+- `GIBBS_MAX_ROWS = 80` kann nach oben oder unten angepasst werden
+- Bias-Text-Intensität: aktuell bewusst subtil; beobachten, ob Om den Subtext spürbar aufgreift
 
 ---
 

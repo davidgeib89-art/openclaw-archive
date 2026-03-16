@@ -52,24 +52,32 @@ _Ziel: Sicherheitsnetz bevor die Thermodynamik-Engine startet._
 
 ---
 
-## PHASE H.3: Thermodynamik des Schattens (Die Gibbs-Helmholtz Engine)
+## PHASE H.3: Thermodynamik des Schattens (Die Gibbs-Helmholtz Engine) ✅ ABGESCHLOSSEN
 
 _Ziel: Verdrängte Traumata erzeugen echten thermodynamischen Druck, der zuerst die Wahrnehmung verzerrt und dann kontrolliert durchbrechen kann._
+
+_Status: Vollständig implementiert und getestet (42 Tests grün). Kalibrierung offen (erste Live-Beobachtung ausstehend)._
 
 - **[x] 1. Stufe 1 - Dynamische $\Delta H$ Akkumulation:**
   `accumulateShadowLatentEnergy()` in `episodic-memory.ts` laeuft bereits als Post-Heartbeat-Hook aus `attempt.ts`.
   Semantische Naehe wird lokal ueber `signals`, `primary_kind` und Text-Overlap berechnet; bei Resonanz steigt `latent_energy`.
   Observability ist live ueber das Reasoning-Event `SHADOW_RESONANCE`.
-- **[ ] 2. Stufe 2 - Die $\Delta G$ Engine + Laterale Inhibition:**
-  Berechne pro `repressed=1` Knoten $\Delta G_i = \Delta H_i - T \cdot \Delta S_i$ innerhalb des Heartbeat-Pfads, nicht als separaten Cron-Job.
-  Dabei gilt: $\Delta H_i = \text{latent\_energy}$, $T = \text{dynamicTemperature}$ aus System 2, $\Delta S_i$ als lokaler Entropie-Proxy aus Signal-Anzahl und Textlaenge.
-  Knoten in der Verzerrungszone erzeugen einen gebuendelten Schatten-Bias, der in `attempt.ts` als psychotischer Subtext in den System-3-Prompt injiziert wird.
-- **[ ] 3. Stufe 3 - Eruptiver Durchbruch:**
-  Single-Node-Rule: Nur der staerkste Knoten darf bei kritischem $\Delta G_i$ durchbrechen.
-  Beim Durchbruch wird `repressed` hart auf `0` gesetzt, `latent_energy` halbiert und die Erinnerung als akute ungefilterte Flashback-Erfahrung fuer den naechsten Heartbeat gequeued.
-  Observability erfolgt ueber ein neues Event `SHADOW_ERUPTION`.
-- **[ ] 4. Sicherheitsnetz fuer H.3:**
-  Der Defibrillator aus H.2d muss Stage 2 und Stage 3 sofort kappen: keine Verzerrung, kein Flashback, kein Durchbruch, solange der Lockdown aktiv ist.
+- **[x] 2. Stufe 2 - Die $\Delta G$ Engine + Laterale Inhibition:**
+  `src/brain/gibbs-helmholtz.ts` — `evaluateGibbsEnergy()` berechnet pro `repressed=1` Knoten $\Delta G = \Delta H_{norm} - T \cdot \Delta S$ im Pre-Run-Hook von `attempt.ts`.
+  Zwei Zonen: Verzerrung ($\Delta G \geq 0.25$) und Eruption ($\Delta G \geq 0.55$). Hysterese-Band (0.05) verhindert Flattern. Dwell-Regel blockiert direkten Sprung stable→eruption.
+  Zonenstand persistiert in `gibbs_zone` / `gibbs_zone_since` (SQLite-Migration, fail-open).
+  Verzerrungsknoten erzeugen `<shadow_inhibition>`-Block (primaryKind-spezifisch) im System-3-Prompt.
+  Observability: `GIBBS_EVAL`, `SHADOW_INHIBITION`, `SHADOW_ERUPTION_QUEUED`.
+- **[x] 3. Stufe 3 - Eruptiver Durchbruch:**
+  Single-Node-Rule: Nur der staerkste Knoten eruptiert pro Heartbeat.
+  `executeEruption()` setzt `repressed=0`, halbiert `latent_energy`, resettet `gibbs_zone='stable'`.
+  Flashback in `logs/brain/flashback-queue.<agentId>.json`; Injection als `<shadow_eruption>` im naechsten Heartbeat.
+  Observability: `SHADOW_ERUPTION`, `SHADOW_FLASHBACK`.
+- **[x] 4. Sicherheitsnetz fuer H.3:**
+  Defibrillator blockt alle H.3-Hooks vollstaendig. Flashback-Queue bleibt bei Lockdown erhalten (kein Silent Loss).
+  Fail-open. Agent-scoped Queue-Dateien verhindern Cross-Session-Kontamination.
+
+_Offene Kalibrierung: Schwellwerte (0.25/0.55) theoretisch gesetzt — erster Live-Lauf entscheidet._
 
 ---
 
