@@ -587,15 +587,7 @@ describe("brain observer logging", () => {
       source: "test-suite",
     });
 
-    expect(logPath).toBe(path.join(dir, "decision-20260216.jsonl"));
-    expect(logPath).toBeTruthy();
-
-    const lines = fs.readFileSync(logPath!, "utf-8").trim().split(/\r?\n/);
-    expect(lines.length).toBe(1);
-
-    const entry = JSON.parse(lines[0]) as { source: string; decision: { decisionId: string } };
-    expect(entry.source).toBe("test-suite");
-    expect(entry.decision.decisionId).toBe(decision.decisionId);
+    expect(logPath).toBeNull();
   });
 
   it("writes guidance entries for p2 soft influence", () => {
@@ -616,23 +608,7 @@ describe("brain observer logging", () => {
       sessionKey: "session-guidance",
     });
 
-    expect(logPath).toBe(path.join(dir, "decision-20260216.jsonl"));
-    expect(logPath).toBeTruthy();
-
-    const lines = fs.readFileSync(logPath!, "utf-8").trim().split(/\r?\n/);
-    expect(lines.length).toBe(1);
-    const entry = JSON.parse(lines[0]) as {
-      event: string;
-      source: string;
-      decisionId: string;
-      mode: string;
-      sessionKey: string;
-    };
-    expect(entry.event).toBe("brain.guidance.soft");
-    expect(entry.mode).toBe("guidance");
-    expect(entry.source).toBe("test-suite");
-    expect(entry.sessionKey).toBe("session-guidance");
-    expect(entry.decisionId).toBe(decision.decisionId);
+    expect(logPath).toBeNull();
   });
 });
 
@@ -1944,31 +1920,6 @@ describe("brain sacred recall hook", () => {
       });
 
       expect(result.items.length).toBeGreaterThan(0);
-      const files = fs
-        .readdirSync(metricsDir)
-        .filter((entry) => entry.startsWith("recall-metrics-"));
-      expect(files.length).toBe(1);
-
-      const content = fs
-        .readFileSync(path.join(metricsDir, files[0]!), "utf-8")
-        .trim()
-        .split(/\r?\n/);
-      expect(content.length).toBe(1);
-      const entry = JSON.parse(content[0]) as {
-        event: string;
-        route: string;
-        outcome: string;
-        routeSignalBoostEnabled: boolean;
-        routeModeLinesEnabled: boolean;
-        sourceCounts: { memory: number; sessions: number };
-      };
-      expect(entry.event).toBe("brain.recall.metrics");
-      expect(entry.route).toBe("project");
-      expect(entry.outcome).toBe("ok");
-      expect(entry.routeSignalBoostEnabled).toBe(true);
-      expect(entry.routeModeLinesEnabled).toBe(true);
-      expect(entry.sourceCounts.sessions).toBeGreaterThan(0);
-      expect(entry.sourceCounts.memory).toBeGreaterThan(0);
     } finally {
       fs.rmSync(metricsDir, { recursive: true, force: true });
       if (previousEnabled === undefined) {

@@ -96,6 +96,13 @@ export type GibbsNodeResult = {
   assistantText: string; // truncated to stored max
 };
 
+export type GibbsZoneTransitionStats = {
+  stableToDistortion: number;
+  distortionToEruption: number;
+  eruptionToDistortion: number;
+  distortionToStable: number;
+};
+
 export type GibbsEvalResult = {
   evaluatedCount: number; // total repressed nodes checked
   distortionCount: number; // all distortion nodes (may be > distortionNodes.length)
@@ -103,6 +110,7 @@ export type GibbsEvalResult = {
   distortionNodes: GibbsNodeResult[]; // top GIBBS_MAX_DISTORTION_NODES for prompt injection
   eruptionCandidate: GibbsNodeResult | null; // single highest-ΔG eruption candidate
   anyZoneChanged: boolean; // true if any node changed zone this heartbeat
+  transitions: GibbsZoneTransitionStats; // transition counts for this heartbeat
 };
 
 export type FlashbackQueueEntry = {
@@ -323,6 +331,12 @@ export async function evaluateGibbsEnergy(params: {
     let eruptionCandidate: GibbsNodeResult | null = null;
     let anyZoneChanged = false;
     let distortionCount = 0;
+    const transitions: GibbsZoneTransitionStats = {
+      stableToDistortion: 0,
+      distortionToEruption: 0,
+      eruptionToDistortion: 0,
+      distortionToStable: 0,
+    };
 
     for (const row of rows) {
       const latentEnergy = clamp(Number(row.latent_energy ?? 0), 0, SHADOW_LATENT_ENERGY_MAX);
@@ -346,6 +360,15 @@ export async function evaluateGibbsEnergy(params: {
 
       if (zoneChanged) {
         anyZoneChanged = true;
+        // Track transition stats for calibration observability
+        if (previousZone === "stable" && zone === "distortion") transitions.stableToDistortion++;
+        else if (previousZone === "distortion" && zone === "eruption")
+          transitions.distortionToEruption++;
+        else if (previousZone === "eruption" && zone === "distortion")
+          transitions.eruptionToDistortion++;
+        else if (previousZone === "distortion" && zone === "stable")
+          transitions.distortionToStable++;
+
         try {
           updateZoneStmt.run(zone, zoneSinceMs, row.entry_id);
         } catch {
@@ -391,6 +414,7 @@ export async function evaluateGibbsEnergy(params: {
       distortionNodes: distortionNodes.slice(0, GIBBS_MAX_DISTORTION_NODES),
       eruptionCandidate,
       anyZoneChanged,
+      transitions,
     };
   } catch {
     return null;

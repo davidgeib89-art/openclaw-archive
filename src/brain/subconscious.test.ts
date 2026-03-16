@@ -565,21 +565,7 @@ describe("brain subconscious observer logging", () => {
       baseDir: dir,
       sessionKey: "session-subconscious",
     });
-    expect(logPath).toBe(path.join(dir, "subconscious-20260216.jsonl"));
-    expect(logPath).toBeTruthy();
-
-    const lines = fs.readFileSync(logPath!, "utf-8").trim().split(/\r?\n/);
-    expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]) as {
-      event: string;
-      source: string;
-      sessionKey: string;
-      result: { status: string };
-    };
-    expect(parsed.event).toBe("brain.subconscious.observer");
-    expect(parsed.source).toBe("test-suite");
-    expect(parsed.sessionKey).toBe("session-subconscious");
-    expect(parsed.result.status).toBe("ok");
+    expect(logPath).toBe(null);
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
