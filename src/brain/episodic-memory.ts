@@ -47,6 +47,70 @@ const MEMORY_INDEX_SIGNIFICANCE_THRESHOLD = 3;
 const HEARTBEAT_ACK = "HEARTBEAT_OK";
 const EPISODIC_METADATA_SCHEMA_VERSION = 3;
 const DEFAULT_FIBONACCI_RECALL_LIMIT = 8;
+const DEFAULT_SHADOW_RESONANCE_MAX_ROWS = 80;
+const SHADOW_RESONANCE_THRESHOLD = 0.2;
+const SHADOW_RESONANCE_DELTA_SCALE = 0.1;
+const SHADOW_LATENT_ENERGY_MAX = 25;
+const SHADOW_RESONANCE_MAX_TOKENS = 96;
+const SHADOW_RESONANCE_MIN_TOKEN_LENGTH = 3;
+const SHADOW_RESONANCE_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "have",
+  "has",
+  "will",
+  "just",
+  "into",
+  "over",
+  "under",
+  "then",
+  "also",
+  "can",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "you",
+  "your",
+  "yours",
+  "our",
+  "ours",
+  "they",
+  "their",
+  "them",
+  "ich",
+  "du",
+  "wir",
+  "ihr",
+  "sie",
+  "und",
+  "der",
+  "die",
+  "das",
+  "ein",
+  "eine",
+  "einen",
+  "einem",
+  "einer",
+  "den",
+  "dem",
+  "des",
+  "mit",
+  "auf",
+  "ist",
+  "sind",
+  "war",
+  "wie",
+  "auch",
+  "nicht",
+  "nur",
+]);
 const EPISODIC_HEADER = [
   "# EPISODIC JOURNAL",
   "",
@@ -137,6 +201,23 @@ export type FibonacciEpisodicRecallEntry = {
   assistantText: string;
 };
 
+export type ShadowResonanceUpdate = {
+  entryId: string;
+  proximity: number;
+  delta: number;
+  previousEnergy: number;
+  nextEnergy: number;
+  primaryKind: EpisodicKind;
+  signals: string[];
+};
+
+export type ShadowResonanceSummary = {
+  evaluatedCount: number;
+  updatedCount: number;
+  totalDelta: number;
+  updates: ShadowResonanceUpdate[];
+};
+
 type BrainEpisodicStructuredEntry = {
   schemaVersion: number;
   entryId: string;
@@ -215,6 +296,60 @@ function matchesAny(patterns: readonly RegExp[], value: string): boolean {
     }
   }
   return false;
+}
+
+function tokenizeForOverlap(text: string): string[] {
+  if (!text) {
+    return [];
+  }
+  const normalized = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  if (!normalized) {
+    return [];
+  }
+  const tokens: string[] = [];
+  for (const token of normalized.split(/\s+/)) {
+    if (token.length < SHADOW_RESONANCE_MIN_TOKEN_LENGTH) {
+      continue;
+    }
+    if (SHADOW_RESONANCE_STOPWORDS.has(token)) {
+      continue;
+    }
+    tokens.push(token);
+    if (tokens.length >= SHADOW_RESONANCE_MAX_TOKENS) {
+      break;
+    }
+  }
+  return tokens;
+}
+
+function scoreSetOverlap(base: Set<string>, candidate: Set<string>): number {
+  if (base.size === 0 || candidate.size === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const token of base) {
+    if (candidate.has(token)) {
+      intersection += 1;
+    }
+  }
+  const union = base.size + candidate.size - intersection;
+  if (union <= 0) {
+    return 0;
+  }
+  return intersection / union;
+}
+
+function parseSignalList(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function scoreTurnSignificance(userMessage: string, assistantMessage: string): EpisodicScore {
@@ -1436,6 +1571,16 @@ type FibonacciRecallRow = {
   assistant_text: string | null;
 };
 
+type ShadowResonanceRow = {
+  entry_id: string;
+  created_at: number;
+  signals: string | null;
+  primary_kind: EpisodicKind;
+  user_text: string | null;
+  assistant_text: string | null;
+  latent_energy: number | null;
+};
+
 export async function readFibonacciEpisodicEntries(params: {
   workspaceDir: string;
   limit?: number;
@@ -1501,6 +1646,142 @@ export async function readFibonacciEpisodicEntries(params: {
     return results;
   } catch {
     return [];
+  } finally {
+    db?.close();
+  }
+}
+
+export async function accumulateShadowLatentEnergy(params: {
+  workspaceDir: string;
+  userMessage: string;
+  assistantMessage: string;
+  maxRows?: number;
+}): Promise<ShadowResonanceSummary | null> {
+  const userMessage = normalizeTurnText(params.userMessage);
+  const assistantMessage = normalizeTurnText(params.assistantMessage);
+  if (!userMessage || !assistantMessage) {
+    return {
+      evaluatedCount: 0,
+      updatedCount: 0,
+      totalDelta: 0,
+      updates: [],
+    };
+  }
+
+  const scored = scoreTurnSignificance(userMessage, assistantMessage);
+  const kinds = deriveEpisodicKinds({
+    signals: scored.signals,
+    userMessage,
+    assistantMessage,
+  });
+  const primaryKind = resolvePrimaryEpisodicKind(kinds);
+  const currentSignals = new Set(scored.signals.map((signal) => String(signal)));
+  const currentTokens = new Set(tokenizeForOverlap(`${userMessage} ${assistantMessage}`));
+  if (currentSignals.size === 0 && currentTokens.size === 0) {
+    return {
+      evaluatedCount: 0,
+      updatedCount: 0,
+      totalDelta: 0,
+      updates: [],
+    };
+  }
+
+  const dbPath = resolveMetadataDbPath(params.workspaceDir);
+  try {
+    await fs.stat(dbPath);
+  } catch {
+    return null;
+  }
+
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(dbPath);
+    const tableInfo = db.prepare("PRAGMA table_info(episodic_entries)").all() as Array<{
+      name?: unknown;
+    }>;
+    const hasRepressed = tableInfo.some((column) => column.name === "repressed");
+    const hasLatentEnergy = tableInfo.some((column) => column.name === "latent_energy");
+    if (!hasRepressed || !hasLatentEnergy) {
+      return null;
+    }
+
+    const limit = Math.max(
+      1,
+      Math.min(params.maxRows ?? DEFAULT_SHADOW_RESONANCE_MAX_ROWS, DEFAULT_SHADOW_RESONANCE_MAX_ROWS),
+    );
+    const rows = db
+      .prepare(
+        `SELECT entry_id, created_at, signals, primary_kind, user_text, assistant_text, latent_energy
+           FROM episodic_entries
+          WHERE COALESCE(repressed, 0) = 1
+          ORDER BY created_at DESC
+          LIMIT ?`,
+      )
+      .all(limit) as ShadowResonanceRow[];
+
+    if (rows.length === 0) {
+      return {
+        evaluatedCount: 0,
+        updatedCount: 0,
+        totalDelta: 0,
+        updates: [],
+      };
+    }
+
+    const updateStatement = db.prepare(
+      "UPDATE episodic_entries SET latent_energy = ? WHERE entry_id = ?",
+    );
+    const updates: ShadowResonanceUpdate[] = [];
+    let totalDelta = 0;
+
+    for (const row of rows) {
+      const entrySignals = parseSignalList(row.signals);
+      const signalScore = scoreSetOverlap(currentSignals, new Set(entrySignals));
+      const kindScore = row.primary_kind === primaryKind ? 1 : 0;
+      const entryTokens = new Set(
+        tokenizeForOverlap(`${row.user_text ?? ""} ${row.assistant_text ?? ""}`),
+      );
+      const textScore = scoreSetOverlap(currentTokens, entryTokens);
+      const proximity = clampNumber(
+        signalScore * 0.4 + textScore * 0.4 + kindScore * 0.2,
+        0,
+        1,
+      );
+      if (proximity < SHADOW_RESONANCE_THRESHOLD) {
+        continue;
+      }
+
+      const delta = proximity * SHADOW_RESONANCE_DELTA_SCALE;
+      if (delta <= 0) {
+        continue;
+      }
+      const previousEnergy = Math.max(0, Number(row.latent_energy ?? 0));
+      const nextEnergy = clampNumber(previousEnergy + delta, 0, SHADOW_LATENT_ENERGY_MAX);
+      if (nextEnergy <= previousEnergy) {
+        continue;
+      }
+
+      updateStatement.run(nextEnergy, row.entry_id);
+      updates.push({
+        entryId: row.entry_id,
+        proximity,
+        delta,
+        previousEnergy,
+        nextEnergy,
+        primaryKind: row.primary_kind,
+        signals: entrySignals,
+      });
+      totalDelta += nextEnergy - previousEnergy;
+    }
+
+    return {
+      evaluatedCount: rows.length,
+      updatedCount: updates.length,
+      totalDelta,
+      updates,
+    };
+  } catch {
+    return null;
   } finally {
     db?.close();
   }

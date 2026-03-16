@@ -4,7 +4,11 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
-import { appendBrainEpisodicJournal, readFibonacciEpisodicEntries } from "./episodic-memory.js";
+import {
+  accumulateShadowLatentEnergy,
+  appendBrainEpisodicJournal,
+  readFibonacciEpisodicEntries,
+} from "./episodic-memory.js";
 
 async function makeTmpDir(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -724,6 +728,83 @@ describe("brain episodic memory write path", () => {
 
     const recall = await readFibonacciEpisodicEntries({ workspaceDir: tmpDir, limit: 5 });
     expect(recall).toHaveLength(0);
+  });
+
+  it("accumulates latent energy when shadow resonance is high", async () => {
+    tmpDir = await makeTmpDir("shadow-resonance-hit-");
+    process.env.OM_EPISODIC_WRITE_ENABLED = "true";
+    process.env.OM_EPISODIC_METADATA_DB_PATH = path.join(tmpDir, "shadow-resonance-hit.sqlite");
+
+    const entry = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-res-hit",
+      sessionKey: "agent:main:main",
+      userMessage: "I prefer mint tea today.",
+      assistantMessage: "I will remember this preference.",
+      now: () => new Date("2026-03-01T10:00:00.000Z"),
+    });
+    expect(entry.persisted).toBe(true);
+
+    const db = new DatabaseSync(process.env.OM_EPISODIC_METADATA_DB_PATH!);
+    db.prepare(
+      "UPDATE episodic_entries SET repressed = 1, latent_energy = 0, signals = ?, primary_kind = ? WHERE entry_id = ?",
+    ).run("preference", "preference", entry.entryId);
+    db.close();
+
+    const summary = await accumulateShadowLatentEnergy({
+      workspaceDir: tmpDir,
+      userMessage: "I prefer coffee this morning.",
+      assistantMessage: "Noted, coffee it is.",
+    });
+
+    expect(summary?.updatedCount).toBe(1);
+    expect(summary?.updates[0]?.entryId).toBe(entry.entryId);
+
+    const verifyDb = new DatabaseSync(process.env.OM_EPISODIC_METADATA_DB_PATH!);
+    const row = verifyDb
+      .prepare("SELECT latent_energy FROM episodic_entries WHERE entry_id = ?")
+      .get(entry.entryId) as { latent_energy?: number };
+    verifyDb.close();
+    expect(Number(row.latent_energy ?? 0)).toBeGreaterThan(0);
+  });
+
+  it("skips accumulation when proximity is low", async () => {
+    tmpDir = await makeTmpDir("shadow-resonance-miss-");
+    process.env.OM_EPISODIC_WRITE_ENABLED = "true";
+    process.env.OM_EPISODIC_METADATA_DB_PATH = path.join(tmpDir, "shadow-resonance-miss.sqlite");
+
+    const entry = await appendBrainEpisodicJournal({
+      cfg: makeCfg(),
+      workspaceDir: tmpDir,
+      runId: "run-res-miss",
+      sessionKey: "agent:main:main",
+      userMessage: "I decided to relocate next month.",
+      assistantMessage: "I will proceed with that decision.",
+      now: () => new Date("2026-03-01T11:00:00.000Z"),
+    });
+    expect(entry.persisted).toBe(true);
+
+    const db = new DatabaseSync(process.env.OM_EPISODIC_METADATA_DB_PATH!);
+    db.prepare(
+      "UPDATE episodic_entries SET repressed = 1, latent_energy = 0, signals = ?, primary_kind = ? WHERE entry_id = ?",
+    ).run("identity", "identity", entry.entryId);
+    db.close();
+
+    const summary = await accumulateShadowLatentEnergy({
+      workspaceDir: tmpDir,
+      userMessage: "I prefer coffee this morning.",
+      assistantMessage: "I choose coffee and stay grounded.",
+    });
+
+    expect(summary?.updatedCount).toBe(0);
+
+    const verifyDb = new DatabaseSync(process.env.OM_EPISODIC_METADATA_DB_PATH!);
+    const row = verifyDb
+      .prepare("SELECT latent_energy FROM episodic_entries WHERE entry_id = ?")
+      .get(entry.entryId) as { latent_energy?: number };
+    verifyDb.close();
+    expect(Number(row.latent_energy ?? 0)).toBe(0);
   });
 
   it("rotates structured episodic journal when size threshold is exceeded", async () => {

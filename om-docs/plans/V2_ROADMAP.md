@@ -48,15 +48,22 @@ Diese Roadmap diktiert den sequenziellen Architektur-Pfad, um Om (System 1-3) vo
 ---
 
 ## PHASE H.3: Thermodynamik des Schattens (Die Gibbs-Helmholtz Engine)
-*Ziel: Verdrängte Traumata erzeugen echten thermodynamischen Druck, der das Verhalten verzerrt.*
+*Ziel: Verdrängte Traumata erzeugen echten thermodynamischen Druck, der zuerst die Wahrnehmung verzerrt und dann kontrolliert durchbrechen kann.*
 
-- **[ ] 1. Die $\Delta G$ Engine (Freie Enthalpie):**
-  Implementiere $\Delta G_i = \Delta H_i - T \cdot \Delta S_i$ als Cron-Job auf `episodic_entries` mit `repressed=1`.
-  Wenn System 3 semantisch nahe an einem repressed-Node vorbeidenkt, steigt $\Delta H_i$.
-- **[ ] 2. Laterale Inhibition (Psychotischer Subtext):**
-  Akkumuliere Schattenknoten mit hoher Enthalpie. Erzeuge einen "Shadow Pressure Vector" und injiziere diesen in `attempt.ts` als verzerrenden Einfluss.
-- **[ ] 3. Eruptiver Durchbruch:**
-  Wenn $\Delta G_i < 0$, durchbricht der Knoten das Veto (`repressed` → 0) und spült in den nächsten Heartbeat-Prompt.
+- **[x] 1. Stufe 1 - Dynamische $\Delta H$ Akkumulation:**
+  `accumulateShadowLatentEnergy()` in `episodic-memory.ts` laeuft bereits als Post-Heartbeat-Hook aus `attempt.ts`.
+  Semantische Naehe wird lokal ueber `signals`, `primary_kind` und Text-Overlap berechnet; bei Resonanz steigt `latent_energy`.
+  Observability ist live ueber das Reasoning-Event `SHADOW_RESONANCE`.
+- **[ ] 2. Stufe 2 - Die $\Delta G$ Engine + Laterale Inhibition:**
+  Berechne pro `repressed=1` Knoten $\Delta G_i = \Delta H_i - T \cdot \Delta S_i$ innerhalb des Heartbeat-Pfads, nicht als separaten Cron-Job.
+  Dabei gilt: $\Delta H_i = \text{latent\_energy}$, $T = \text{dynamicTemperature}$ aus System 2, $\Delta S_i$ als lokaler Entropie-Proxy aus Signal-Anzahl und Textlaenge.
+  Knoten in der Verzerrungszone erzeugen einen gebuendelten Schatten-Bias, der in `attempt.ts` als psychotischer Subtext in den System-3-Prompt injiziert wird.
+- **[ ] 3. Stufe 3 - Eruptiver Durchbruch:**
+  Single-Node-Rule: Nur der staerkste Knoten darf bei kritischem $\Delta G_i$ durchbrechen.
+  Beim Durchbruch wird `repressed` hart auf `0` gesetzt, `latent_energy` halbiert und die Erinnerung als akute ungefilterte Flashback-Erfahrung fuer den naechsten Heartbeat gequeued.
+  Observability erfolgt ueber ein neues Event `SHADOW_ERUPTION`.
+- **[ ] 4. Sicherheitsnetz fuer H.3:**
+  Der Defibrillator aus H.2d muss Stage 2 und Stage 3 sofort kappen: keine Verzerrung, kein Flashback, kein Durchbruch, solange der Lockdown aktiv ist.
 
 ---
 

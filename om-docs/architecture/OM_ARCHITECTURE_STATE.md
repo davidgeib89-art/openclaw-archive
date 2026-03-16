@@ -45,7 +45,7 @@ Oms Architektur basiert auf einer symbiotischen Trennung von Instinkt, Physis un
 Die Speicherung erfolgt hybrid über Dateien und eine relationale/semantische SQLite-Datenbank.
 
 - **SQLite Basis:** Jeder Heartbeat wird in der Tabelle `episodic_entries` archiviert (inkl. Metriken, Emotionen, Latenz). Semantische Zusammenhänge landen als Graphen-Edges in `semantic_relationships`.
-- **Der Verdrängungs-Mechanismus:** Alte Lösch-Skripte wurden durch Psychoanalyse ersetzt. Erinnerungen erhalten das Flag `repressed=1`, sobald $W_R$ (Verdrängungsgewicht) oder mangelnde Relevanz sie aus dem aktiven Fokus drängen. Sie akkumulieren `latent_energy` ($E_L$) für zukünftige thermodynamische Simulationen. Verdrängte Einträge tauchen im klassischen Such-Recall nicht auf.
+- **Der Verdrängungs-Mechanismus:** Alte Lösch-Skripte wurden durch Psychoanalyse ersetzt. Erinnerungen erhalten das Flag `repressed=1`, sobald $W_R$ (Verdrängungsgewicht) oder mangelnde Relevanz sie aus dem aktiven Fokus drängen. Verdrängte Einträge akkumulieren `latent_energy` ($E_L$) bereits live ueber den Post-Heartbeat-Hook `accumulateShadowLatentEnergy()`; Resonanzwachstum wird als `SHADOW_RESONANCE` geloggt. Verdrängte Einträge tauchen im klassischen Such-Recall nicht auf, erzeugen aber schon jetzt somatischen Druck ueber `readShadowBridgeSnapshot()`.
 - **Fibonacci Dream Recall:** Der Abruf von Träumen (`attempt.ts`) geschieht **nicht** chronologisch. Der Kontext für System 3 akkumuliert sich fraktal an den Indizes **-1, -2, -3, -5, -8**. Das simuliert Resonanzverstärkung von Erinnerungen statt linearem Gedächtniszerfall.
 
 ---

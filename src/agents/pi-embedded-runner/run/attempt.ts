@@ -35,7 +35,10 @@ import {
   DEFIBRILLATOR_BASE_TEMPERATURE,
 } from "../../../brain/defibrillator.js";
 import { readEnergyStateHint, type EnergyStateHint, updateEnergy } from "../../../brain/energy.js";
-import { appendBrainEpisodicJournal } from "../../../brain/episodic-memory.js";
+import {
+  accumulateShadowLatentEnergy,
+  appendBrainEpisodicJournal,
+} from "../../../brain/episodic-memory.js";
 import { buildEnergyForecast } from "../../../brain/forecast.js";
 import {
   buildNeedsFileContent,
@@ -4696,6 +4699,35 @@ export async function runEmbeddedAttempt(
           );
         } catch (episodicErr) {
           log.warn(`brain episodic journal fail-open: ${String(episodicErr)}`);
+        }
+      }
+      if (params.isHeartbeat && assistantText && !defibrillatorActive) {
+        try {
+          const resonanceSummary = await accumulateShadowLatentEnergy({
+            workspaceDir: effectiveWorkspace,
+            userMessage: params.prompt,
+            assistantMessage: assistantText,
+          });
+          if (resonanceSummary && resonanceSummary.updatedCount > 0) {
+            const topUpdates = resonanceSummary.updates
+              .slice(0, 3)
+              .map(
+                (update) =>
+                  `${update.entryId}:Δ${update.delta.toFixed(2)}@${update.proximity.toFixed(2)}`,
+              )
+              .join(" | ");
+            emitBrainReasoningEvent(params, {
+              phase: "autonomy",
+              label: "SHADOW_RESONANCE",
+              summary:
+                `updates=${resonanceSummary.updatedCount}/${resonanceSummary.evaluatedCount}; ` +
+                `totalDelta=${resonanceSummary.totalDelta.toFixed(2)}`,
+              detail: topUpdates,
+              source: "proto33-h3.shadow-resonance",
+            });
+          }
+        } catch (resonanceErr) {
+          log.warn(`shadow resonance fail-open: ${String(resonanceErr)}`);
         }
       }
       if (params.isHeartbeat) {
