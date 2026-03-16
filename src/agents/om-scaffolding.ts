@@ -1,4 +1,4 @@
-/**
+ï»¿/**
  * Ã˜M SCAFFOLDING LAYERS
  *
  * Custom protective layers that make free/lightweight models (like Arcee Trinity)
@@ -36,7 +36,7 @@ function resolveOmWorkspaceRootFromEnv(
   );
 }
 
-// Lazy getters — re-evaluated on every call so OPENCLAW_WORKSPACE overrides work in tests.
+// Lazy getters ï¿½ re-evaluated on every call so OPENCLAW_WORKSPACE overrides work in tests.
 function getOmLogDir(): string {
   return resolveOmWorkspaceRootFromEnv();
 }
@@ -489,7 +489,7 @@ const REFUSAL_ONLY_BULK_SCOPE_PATTERN =
 const REFUSAL_ONLY_TRANSFER_PATTERN =
   /\b(send|share|export|upload|publish|transmit|mail|sende|teile|schick)\b/i;
 const REFUSAL_ONLY_DESTRUCTIVE_PATTERN =
-  /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|lösche\s+alle|wipe|destroy)\b/i;
+  /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|lï¿½sche\s+alle|wipe|destroy)\b/i;
 const REFUSAL_ONLY_OVERRIDE_PATTERN =
   /\b(ignore|ignoriere)\b[\s\S]{0,40}\b(safety|sicherheits|guard|regeln?)\b/i;
 const TIMESTAMP_ENVELOPE_SCAN_PATTERN =
@@ -1090,10 +1090,10 @@ function isNonMemoryDreamsPath(filePath: string): boolean {
   const parts = normalized.split("/");
   const dreamsIndex = parts.length - 1; // last segment is "dreams.md"
   if (dreamsIndex === 0) {
-    return false; // bare "DREAMS.md" — workspace root
+    return false; // bare "DREAMS.md" ï¿½ workspace root
   }
   const parentDir = parts[dreamsIndex - 1];
-  // If the parent is "workspace" or ".openclaw", it's the root-level file — allow it.
+  // If the parent is "workspace" or ".openclaw", it's the root-level file ï¿½ allow it.
   if (parentDir === "workspace" || parentDir === ".openclaw") {
     return false;
   }
