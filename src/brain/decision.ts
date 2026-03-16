@@ -2120,25 +2120,10 @@ export function writeMoodEntryForCycle(input: BrainMoodSignalInput): BrainMoodWr
   };
 }
 
-function appendOmActivityLine(layer: string, event: string, details: string): void {
-  try {
-    fs.mkdirSync(OM_ACTIVITY_LOG_DIR, { recursive: true });
-    const normalizedDetails = details.replace(/\r\n/g, "\n").trim();
-    const detailBlock = normalizedDetails
-      ? `\n${normalizedDetails
-          .split("\n")
-          .map((line) => `  ${line}`)
-          .join("\n")}`
-      : "";
-    const line = `[${getLocalIsoString(new Date()).replace("T", " ").slice(0, 19)}] [${layer}] ${event}${detailBlock}\n`;
-    fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
-  } catch {
-    // Fail-open: observer logs must not break runtime behavior.
-  }
-}
+import { omLog } from "../agents/om-scaffolding.js";
 
 function defaultActivityLogger(event: string, details: string): void {
-  appendOmActivityLine("BRAIN-RECALL", event, details);
+  omLog("BRAIN-RECALL", event, details);
 }
 
 function isSacredRecallEnabled(): boolean {
@@ -2262,15 +2247,8 @@ function createBrainRecallMetricsEntry(params: {
 }
 
 function appendBrainRecallMetricsEntry(entry: BrainRecallMetricsEntry): string | null {
-  try {
-    const targetDir = resolveRecallMetricsDir();
-    fs.mkdirSync(targetDir, { recursive: true });
-    const filePath = path.join(targetDir, `recall-metrics-${dateStamp(new Date(entry.ts))}.jsonl`);
-    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, "utf-8");
-    return filePath;
-  } catch {
-    return null;
-  }
+  omLog("BRAIN-RECALL", "METRICS", entry as unknown as Record<string, unknown>);
+  return null;
 }
 
 function logBrainRecallMetrics(params: {
@@ -2952,16 +2930,8 @@ export function createBrainGuidanceEntry(
 }
 
 function appendBrainAuditEntry(entry: BrainAuditEntry, baseDir?: string): string | null {
-  try {
-    const targetDir = baseDir ?? getDefaultBrainObserverDir();
-    fs.mkdirSync(targetDir, { recursive: true });
-    const day = dateStamp(new Date(entry.ts));
-    const filePath = path.join(targetDir, `decision-${day}.jsonl`);
-    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, "utf-8");
-    return filePath;
-  } catch {
-    return null;
-  }
+  omLog("BRAIN-DECISION", "AUDIT", entry as unknown as Record<string, unknown>);
+  return null;
 }
 
 export function appendBrainObserverEntry(

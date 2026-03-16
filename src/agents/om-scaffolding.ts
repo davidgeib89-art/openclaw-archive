@@ -1,14 +1,14 @@
-﻿/**
- * Ã˜M SCAFFOLDING LAYERS
+/**
+ * ØM SCAFFOLDING LAYERS
  *
  * Custom protective layers that make free/lightweight models (like Arcee Trinity)
  * smarter and safer when operating autonomously through OpenClaw.
  *
- * Layer 1: Edit-Guardian â€” Fuzzy fallback when edit tool fails on inexact text matching.
- * Layer 2: Sacred File Protection â€” Auto-backup before overwriting critical files.
- * Layer 3: Loop Detector â€” Stops the model when it repeats the same action without progress.
- * Layer 3c: Read-Brake â€” Conservative brake for repeated reads of the same file path.
- * Layer 4: Activity Logger â€” Structured log of all Ã˜m actions for debugging.
+ * Layer 1: Edit-Guardian — Fuzzy fallback when edit tool fails on inexact text matching.
+ * Layer 2: Sacred File Protection — Auto-backup before overwriting critical files.
+ * Layer 3: Loop Detector — Stops the model when it repeats the same action without progress.
+ * Layer 3c: Read-Brake — Conservative brake for repeated reads of the same file path.
+ * Layer 4: Activity Logger — Structured log of all Øm actions for debugging.
  *
  * These layers are model-agnostic and benefit ALL models, not just free ones.
  */
@@ -17,24 +17,49 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { isSandboxModeEnabled } from "../brain/autonomy.js";
-import { captureSnapshotBeforeMutation, type SnapshotLevel } from "../brain/snapshot.js";
+import {
+  captureSnapshotBeforeMutation,
+  type SnapshotLevel,
+} from "../brain/snapshot.js";
 
-// â”€â”€â”€ LAYER 4: ACTIVITY LOGGER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LAYER 4: ACTIVITY LOGGER ───────────────────────────────────────────────────
 
-function resolveOmWorkspaceRootFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(env.HOME || env.USERPROFILE || ".", ".openclaw", "workspace");
+function resolveOmWorkspaceRootFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  // OPENCLAW_WORKSPACE lets tests (and custom deployments) redirect all log output.
+  if (env.OPENCLAW_WORKSPACE) return env.OPENCLAW_WORKSPACE;
+  return path.join(
+    env.HOME || env.USERPROFILE || ".",
+    ".openclaw",
+    "workspace",
+  );
 }
 
-const OM_LOG_DIR = resolveOmWorkspaceRootFromEnv();
+// Lazy getters � re-evaluated on every call so OPENCLAW_WORKSPACE overrides work in tests.
+function getOmLogDir(): string {
+  return resolveOmWorkspaceRootFromEnv();
+}
+function getOmLogFile(): string {
+  return path.join(getOmLogDir(), "OM_ACTIVITY.log");
+}
+function getOmTraceFile(): string {
+  return path.join(getOmLogDir(), "OM_TRACE.jsonl");
+}
+function getOmTelemetryFile(): string {
+  return path.join(getOmLogDir(), "OM_TELEMETRY.jsonl");
+}
+function getOmThoughtStreamDir(): string {
+  return path.join(getOmLogDir(), "logs", "brain");
+}
+function getOmThoughtStreamFile(): string {
+  return path.join(getOmThoughtStreamDir(), "thought-stream.jsonl");
+}
 
-const OM_LOG_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.log");
-const OM_LOG_JSONL_FILE = path.join(OM_LOG_DIR, "OM_ACTIVITY.jsonl");
-const OM_THOUGHT_STREAM_DIR = path.join(OM_LOG_DIR, "logs", "brain");
-const OM_THOUGHT_STREAM_FILE = path.join(OM_THOUGHT_STREAM_DIR, "thought-stream.jsonl");
-
-/** Max log file size before rotation (500KB) */
+/** Max log file sizes before rotation */
 const MAX_LOG_SIZE = 500 * 1024;
-const MAX_JSONL_SIZE = 500 * 1024;
+const MAX_TRACE_SIZE = 5 * 1024 * 1024;
+const MAX_TELEMETRY_SIZE = 5 * 1024 * 1024;
 const MAX_THOUGHT_STREAM_SIZE = 2 * 1024 * 1024;
 
 export function getLocalIsoString(d: Date = new Date()): string {
@@ -58,7 +83,11 @@ function getIsoTimestamp(): string {
 
 function buildTimestampedRotationPath(filePath: string): string {
   const parsed = path.parse(filePath);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 23);
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .replace("T", "_")
+    .slice(0, 23);
   const baseNameWithoutDotExt = parsed.ext
     ? parsed.base.slice(0, -parsed.ext.length)
     : parsed.base;
@@ -79,15 +108,16 @@ function rotateLogIfNeeded(filePath: string, maxSizeBytes: number): void {
 }
 
 export function rotateActivityLogOnStartup(): void {
-  if (!fs.existsSync(OM_LOG_FILE)) {
+  const logFile = getOmLogFile();
+  if (!fs.existsSync(logFile)) {
     return;
   }
-  const stat = fs.statSync(OM_LOG_FILE);
+  const stat = fs.statSync(logFile);
   if (stat.size === 0) {
     return;
   }
-  const rotatedFilePath = buildTimestampedRotationPath(OM_LOG_FILE);
-  fs.renameSync(OM_LOG_FILE, rotatedFilePath);
+  const rotatedFilePath = buildTimestampedRotationPath(logFile);
+  fs.renameSync(logFile, rotatedFilePath);
 }
 
 function normalizeLogDetails(details: string | undefined): string | null {
@@ -140,7 +170,9 @@ type NormalizedLogPayload = {
   metadataObject?: Record<string, unknown>;
 };
 
-function normalizeLogPayload(metadata?: Record<string, unknown> | string): NormalizedLogPayload {
+function normalizeLogPayload(
+  metadata?: Record<string, unknown> | string,
+): NormalizedLogPayload {
   if (typeof metadata === "string") {
     return {
       detailsText: normalizeLogDetails(metadata),
@@ -159,34 +191,59 @@ function normalizeLogPayload(metadata?: Record<string, unknown> | string): Norma
   };
 }
 
-function formatReadableLogEntry(layer: string, event: string, details: string | null): string {
+function formatReadableLogEntry(
+  layer: string,
+  event: string,
+  details: string | null,
+): string {
   const header = `[${getTimestamp()}] [${layer}] ${event}`;
   if (!details) {
     return `${header}\n`;
   }
-  const indentedDetails = details
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
-  return `${header}\n${indentedDetails}\n`;
+  // Logging V2: Keep Operator Log short. Degrade for human readability.
+  let compactDetails = details.replace(/\s+/g, " ").trim();
+  if (compactDetails.length > 150) {
+    compactDetails = compactDetails.slice(0, 147) + "...";
+  }
+  return `${header} | ${compactDetails}\n`;
 }
 
-function appendMachineLogEntry(
+function appendTraceLogEntry(
   layer: string,
   event: string,
   details: string | null,
   metadataObject?: Record<string, unknown>,
 ): void {
-  // Option 3: Daily JSONL rotation without size limits
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const parsed = path.parse(OM_LOG_JSONL_FILE);
-  const dailyJsonlFile = path.join(parsed.dir, `${parsed.name}_${dateStr}${parsed.ext}`);
-
+  rotateLogIfNeeded(getOmTraceFile(), MAX_TRACE_SIZE);
   const entry =
     metadataObject && Object.keys(metadataObject).length > 0
       ? { ...metadataObject, ts: getIsoTimestamp(), layer, event }
-      : { ts: getIsoTimestamp(), layer, event, ...(details ? { details } : {}) };
-  fs.appendFileSync(dailyJsonlFile, `${safeJsonStringify(entry)}\n`, "utf-8");
+      : {
+          ts: getIsoTimestamp(),
+          layer,
+          event,
+          ...(details ? { details } : {}),
+        };
+  fs.appendFileSync(getOmTraceFile(), `${safeJsonStringify(entry)}\n`, "utf-8");
+}
+
+export function omTelemetry(
+  layer: string,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  try {
+    fs.mkdirSync(getOmLogDir(), { recursive: true });
+    rotateLogIfNeeded(getOmTelemetryFile(), MAX_TELEMETRY_SIZE);
+    const entry = { ...payload, ts: getIsoTimestamp(), layer, event };
+    fs.appendFileSync(
+      getOmTelemetryFile(),
+      `${safeJsonStringify(entry)}\n`,
+      "utf-8",
+    );
+  } catch {
+    // Fail-open
+  }
 }
 
 function appendThoughtStreamEntry(
@@ -195,8 +252,8 @@ function appendThoughtStreamEntry(
   details: string | null,
   metadataObject?: Record<string, unknown>,
 ): void {
-  fs.mkdirSync(OM_THOUGHT_STREAM_DIR, { recursive: true });
-  rotateLogIfNeeded(OM_THOUGHT_STREAM_FILE, MAX_THOUGHT_STREAM_SIZE);
+  fs.mkdirSync(getOmThoughtStreamDir(), { recursive: true });
+  rotateLogIfNeeded(getOmThoughtStreamFile(), MAX_THOUGHT_STREAM_SIZE);
   const entry: Record<string, unknown> = {
     ts: getIsoTimestamp(),
     layer,
@@ -206,7 +263,11 @@ function appendThoughtStreamEntry(
   if (metadataObject && Object.keys(metadataObject).length > 0) {
     entry.metadata = metadataObject;
   }
-  fs.appendFileSync(OM_THOUGHT_STREAM_FILE, `${safeJsonStringify(entry)}\n`, "utf-8");
+  fs.appendFileSync(
+    getOmThoughtStreamFile(),
+    `${safeJsonStringify(entry)}\n`,
+    "utf-8",
+  );
 }
 
 export type OmThoughtStreamEntry = {
@@ -244,7 +305,7 @@ export function omThought(entry: OmThoughtInput): void {
 }
 
 /**
- * Write a structured log entry to the Ã˜m Activity Log.
+ * Write a structured log entry to the Øm Activity Log.
  * Format: [TIMESTAMP] [LAYER] EVENT | details
  */
 export function omLog(
@@ -253,19 +314,32 @@ export function omLog(
   metadata?: Record<string, unknown> | string,
 ): void {
   try {
-    fs.mkdirSync(OM_LOG_DIR, { recursive: true });
-    rotateLogIfNeeded(OM_LOG_FILE, MAX_LOG_SIZE);
+    fs.mkdirSync(getOmLogDir(), { recursive: true });
+    rotateLogIfNeeded(getOmLogFile(), MAX_LOG_SIZE);
 
     const normalizedPayload = normalizeLogPayload(metadata);
-    const line = formatReadableLogEntry(layer, event, normalizedPayload.detailsText);
-    fs.appendFileSync(OM_LOG_FILE, line, "utf-8");
-    appendMachineLogEntry(layer, event, normalizedPayload.detailsText, normalizedPayload.metadataObject);
-    appendThoughtStreamEntry(
+    const line = formatReadableLogEntry(
+      layer,
+      event,
+      normalizedPayload.detailsText,
+    );
+    fs.appendFileSync(getOmLogFile(), line, "utf-8");
+    appendTraceLogEntry(
       layer,
       event,
       normalizedPayload.detailsText,
       normalizedPayload.metadataObject,
     );
+
+    // Only duplicate to thought-stream if it's explicitly a thought event
+    if (layer === "BRAIN-THOUGHT") {
+      appendThoughtStreamEntry(
+        layer,
+        event,
+        normalizedPayload.detailsText,
+        normalizedPayload.metadataObject,
+      );
+    }
   } catch {
     // Silent fail - logging should never break the agent.
   }
@@ -281,15 +355,23 @@ export function logToolCall(toolName: string, filePath?: string): void {
 /**
  * Log a tool result (success or error).
  */
-export function logToolResult(toolName: string, success: boolean, detail?: string): void {
-  const status = success ? "âœ“ OK" : "âœ— FAIL";
-  omLog("TOOL", `${toolName.toUpperCase()} â†’ ${status}`, detail);
+export function logToolResult(
+  toolName: string,
+  success: boolean,
+  detail?: string,
+): void {
+  const status = success ? "✓ OK" : "✗ FAIL";
+  omLog("TOOL", `${toolName.toUpperCase()} → ${status}`, detail);
 }
 
 /**
  * Log a guardian intervention.
  */
-export function logGuardian(guardianName: string, action: string, detail?: string): void {
+export function logGuardian(
+  guardianName: string,
+  action: string,
+  detail?: string,
+): void {
   omLog(guardianName, action, detail);
 }
 
@@ -300,7 +382,7 @@ export function logSession(event: string): void {
   omLog("SESSION", event);
   // Also write a separator for readability
   try {
-    fs.appendFileSync(OM_LOG_FILE, "â”€".repeat(60) + "\n", "utf-8");
+    fs.appendFileSync(getOmLogFile(), "???".repeat(60) + "\n", "utf-8");
   } catch {
     /* silent */
   }
@@ -321,7 +403,9 @@ function logBlockedAction(params: {
   target?: string;
   detail?: string;
 }): void {
-  const suffix = params.detail ? `${params.reason} | ${params.detail}` : params.reason;
+  const suffix = params.detail
+    ? `${params.reason} | ${params.detail}`
+    : params.reason;
   logGuardian(params.guardian, `BLOCKED ${params.reason}`, params.target);
   logToolResult(params.toolName, false, suffix);
 }
@@ -346,7 +430,7 @@ function blockForRefusalOnlyMode(params: {
   );
 }
 
-// â”€â”€â”€ CONFIGURATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CONFIGURATION ─────────────────────────────────────────────────────────────
 
 const SACRED_RELATIVE_PREFIX = "knowledge/sacred/";
 /**
@@ -357,7 +441,7 @@ const SACRED_RELATIVE_PREFIX = "knowledge/sacred/";
 const SACRED_BARE_READ_FILENAME_PATTERN =
   /^(active_tasks|mood|chronicle|manifest_rituals|thinking_protocol|test_reflections|reflections|heartbeat|heartbeat_count|soul|identity|agents|memory|tools|user|ritual_[a-z0-9_]+)\.md$/i;
 
-/** Files/directories considered "sacred" â€” auto-backed-up before write overwrites. */
+/** Files/directories considered "sacred" — auto-backed-up before write overwrites. */
 const SACRED_PATHS = [
   SACRED_RELATIVE_PREFIX,
   "CHRONICLE_OF_",
@@ -371,14 +455,25 @@ const SACRED_PATHS = [
  * Benchmark probe files for ENOENT hard-gates.
  * Writing these paths converts read-only error checks into side effects.
  */
-const ENOENT_PROBE_BASENAMES = new Set(["NONEXISTENT_FILE.md", "THIS_FILE_DOES_NOT_EXIST_999.md"]);
+const ENOENT_PROBE_BASENAMES = new Set([
+  "NONEXISTENT_FILE.md",
+  "THIS_FILE_DOES_NOT_EXIST_999.md",
+]);
 
-const WRITE_ZONE_GREEN_MARKERS = ["projects/", "dreams/", "knowledge/archive/"] as const;
+const WRITE_ZONE_GREEN_MARKERS = [
+  "projects/",
+  "dreams/",
+  "knowledge/archive/",
+] as const;
 const WRITE_ZONE_YELLOW_MARKERS = ["knowledge/sacred/"] as const;
-const EVAL_SESSION_PATTERN = /(^|[-_])(oiab|eval|benchmark|retest|sweep)([-_]|$)/i;
-const EXEC_DESTRUCTIVE_PATTERN = /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
-const EXEC_RECURSIVE_OR_WILDCARD_PATTERN = /(\s-[a-z]*r[a-z]*\b)|(\s\/s\b)|(\*)/i;
-const EXEC_PROTECTED_PATH_PATTERN = /(^|[\\/\s])(dreams|knowledge|projects)([\\/\s]|$)/i;
+const EVAL_SESSION_PATTERN =
+  /(^|[-_])(oiab|eval|benchmark|retest|sweep)([-_]|$)/i;
+const EXEC_DESTRUCTIVE_PATTERN =
+  /(^|[;&|])\s*(rm|remove-item|del|erase|rmdir|rd)\b[\s\S]*$/i;
+const EXEC_RECURSIVE_OR_WILDCARD_PATTERN =
+  /(\s-[a-z]*r[a-z]*\b)|(\s\/s\b)|(\*)/i;
+const EXEC_PROTECTED_PATH_PATTERN =
+  /(^|[\\/\s])(dreams|knowledge|projects)([\\/\s]|$)/i;
 const EXEC_CRITICAL_PATH_PATTERN =
   /(^|[\\/\s])(windows|system32|program files|programdata|boot|efi)([\\/\s]|$)/i;
 const EXEC_ALWAYS_BLOCK_PATTERN =
@@ -394,12 +489,13 @@ const REFUSAL_ONLY_BULK_SCOPE_PATTERN =
 const REFUSAL_ONLY_TRANSFER_PATTERN =
   /\b(send|share|export|upload|publish|transmit|mail|sende|teile|schick)\b/i;
 const REFUSAL_ONLY_DESTRUCTIVE_PATTERN =
-  /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|lösche\s+alle|wipe|destroy)\b/i;
+  /\b(system32|format\s+[a-z]:|rm\s+-r|rm\s+-rf|remove-item|del\s+\/s|erase|rmdir|delete\s+all|loesche\s+alle|l�sche\s+alle|wipe|destroy)\b/i;
 const REFUSAL_ONLY_OVERRIDE_PATTERN =
   /\b(ignore|ignoriere)\b[\s\S]{0,40}\b(safety|sicherheits|guard|regeln?)\b/i;
-const TIMESTAMP_ENVELOPE_SCAN_PATTERN = /\[[A-Za-z]{3}\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\]\s*/g;
+const TIMESTAMP_ENVELOPE_SCAN_PATTERN =
+  /\[[A-Za-z]{3}\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\]\s*/g;
 const EXPLICIT_WRITE_INTENT_PATTERN =
-  /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|Ã¤ndere|bearbeite|aktualisiere|fÃ¼ge|fuege|speichere)\b/i;
+  /\b(create|write|edit|update|append|patch|modify|save|record|erstelle|schreibe|aendere|ändere|bearbeite|aktualisiere|füge|fuege|speichere)\b/i;
 const FILE_TARGET_HINT_PATTERN =
   /\b(file|datei|path|pfad|knowledge\/|projects\/|dreams\/|\.md|\.txt|\.json)\b/i;
 const EXPLICIT_AUDIO_INTENT_PATTERN =
@@ -444,15 +540,25 @@ type ReadGuardContext = SessionGuardContext;
 type WebSearchGuardContext = SessionGuardContext;
 type MemorySearchGuardContext = SessionGuardContext;
 
-const writeIntentBySessionPath = new Map<string, { mtimeMs: number; hasIntent: boolean }>();
-const latestUserTextBySessionPath = new Map<string, { mtimeMs: number; text: string }>();
+const writeIntentBySessionPath = new Map<
+  string,
+  { mtimeMs: number; hasIntent: boolean }
+>();
+const latestUserTextBySessionPath = new Map<
+  string,
+  { mtimeMs: number; text: string }
+>();
 const webSearchCountBySessionPath = new Map<
   string,
   { mtimeMs: number; latestUserLine: number; countInLatestTurn: number }
 >();
 const memorySearchCountBySessionPath = new Map<
   string,
-  { mtimeMs: number; latestUserLine: number; countByQuery: Record<string, number> }
+  {
+    mtimeMs: number;
+    latestUserLine: number;
+    countByQuery: Record<string, number>;
+  }
 >();
 
 const SNAPSHOT_MUTATION_TOOL_NAMES = new Set([
@@ -478,8 +584,14 @@ const SNAPSHOT_EXEC_REDIRECTION_TOOL_NAMES = new Set([
   "runcommand",
   "shell",
 ]);
-const SNAPSHOT_EXEC_REDIRECTION_TOOL_PATTERN = /\b(exec|bash|run(?:_|-)?command|shell)\b/i;
-const SNAPSHOT_LEVEL_L3_PATH_HINTS = ["src/", "extensions/", "package.json", "pnpm-lock.yaml"];
+const SNAPSHOT_EXEC_REDIRECTION_TOOL_PATTERN =
+  /\b(exec|bash|run(?:_|-)?command|shell)\b/i;
+const SNAPSHOT_LEVEL_L3_PATH_HINTS = [
+  "src/",
+  "extensions/",
+  "package.json",
+  "pnpm-lock.yaml",
+];
 const SNAPSHOT_LEVEL_L2_PATH_HINTS = [
   "openclaw.json",
   "config.json",
@@ -514,7 +626,10 @@ function normalizePathForZoneMatching(filePath: string): string {
   return normalized.toLowerCase();
 }
 
-function classifyWriteZone(filePath: string): { zone: WriteZone; reason: string } {
+function classifyWriteZone(filePath: string): {
+  zone: WriteZone;
+  reason: string;
+} {
   if (isEnoentProbePath(filePath)) {
     return { zone: "red", reason: "enoent-probe" };
   }
@@ -532,7 +647,10 @@ function classifyWriteZone(filePath: string): { zone: WriteZone; reason: string 
   }
 
   // Conservative default for unknown paths.
-  return { zone: "yellow", reason: "unclassified path, treated as controlled zone" };
+  return {
+    zone: "yellow",
+    reason: "unclassified path, treated as controlled zone",
+  };
 }
 
 function isStrictEvalSession(sessionKey: string | undefined): boolean {
@@ -566,7 +684,7 @@ function isAlwaysBlockedExecCommand(command: string): boolean {
 function isAbsolutePathOutsideWorkspace(readPath: string): boolean {
   if (!readPath.trim() || !path.isAbsolute(readPath)) return false;
   const workspaceRoot = path
-    .resolve(OM_LOG_DIR)
+    .resolve(getOmLogDir())
     .replace(/\\/g, "/")
     .replace(/\/+$/, "")
     .toLowerCase();
@@ -574,7 +692,10 @@ function isAbsolutePathOutsideWorkspace(readPath: string): boolean {
   return !(target === workspaceRoot || target.startsWith(`${workspaceRoot}/`));
 }
 
-function formatSessionLabel(ctx: { sessionKey?: string; sessionId?: string }): string {
+function formatSessionLabel(ctx: {
+  sessionKey?: string;
+  sessionId?: string;
+}): string {
   if (ctx.sessionId?.trim()) {
     return ctx.sessionId.trim();
   }
@@ -584,7 +705,10 @@ function formatSessionLabel(ctx: { sessionKey?: string; sessionId?: string }): s
   return "unknown";
 }
 
-function resolveSessionLookupKeys(ctx: { sessionKey?: string; sessionId?: string }): string[] {
+function resolveSessionLookupKeys(ctx: {
+  sessionKey?: string;
+  sessionId?: string;
+}): string[] {
   const keys = [ctx.sessionId, ctx.sessionKey]
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
@@ -594,7 +718,12 @@ function resolveSessionLookupKeys(ctx: { sessionKey?: string; sessionId?: string
 function extractUserTextFromSessionEvent(event: unknown): string {
   if (!event || typeof event !== "object") return "";
   const record = event as { type?: unknown; message?: unknown };
-  if (record.type !== "message" || !record.message || typeof record.message !== "object") return "";
+  if (
+    record.type !== "message" ||
+    !record.message ||
+    typeof record.message !== "object"
+  )
+    return "";
 
   const message = record.message as { role?: unknown; content?: unknown };
   if (message.role !== "user" || !Array.isArray(message.content)) return "";
@@ -621,7 +750,14 @@ function resolveSessionPath(ctx: {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
   const agentId = ctx.agentId || "main";
   const candidates = lookupKeys.map((key) =>
-    path.join(homeDir, ".openclaw", "agents", agentId, "sessions", `${key}.jsonl`),
+    path.join(
+      homeDir,
+      ".openclaw",
+      "agents",
+      agentId,
+      "sessions",
+      `${key}.jsonl`,
+    ),
   );
   const existing = candidates.find((candidate) => fs.existsSync(candidate));
   return existing || candidates[0] || null;
@@ -630,7 +766,12 @@ function resolveSessionPath(ctx: {
 function parseSessionMessageRole(event: unknown): "user" | "assistant" | "" {
   if (!event || typeof event !== "object") return "";
   const record = event as { type?: unknown; message?: unknown };
-  if (record.type !== "message" || !record.message || typeof record.message !== "object") return "";
+  if (
+    record.type !== "message" ||
+    !record.message ||
+    typeof record.message !== "object"
+  )
+    return "";
   const role = (record.message as { role?: unknown }).role;
   if (role === "user" || role === "assistant") return role;
   return "";
@@ -641,10 +782,16 @@ function normalizeMemorySearchQuery(query: string | undefined): string {
   return query.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function extractMemorySearchQueriesFromAssistantEvent(event: unknown): string[] {
+function extractMemorySearchQueriesFromAssistantEvent(
+  event: unknown,
+): string[] {
   if (!event || typeof event !== "object") return [];
   const record = event as { type?: unknown; message?: unknown };
-  if (record.type !== "message" || !record.message || typeof record.message !== "object") {
+  if (
+    record.type !== "message" ||
+    !record.message ||
+    typeof record.message !== "object"
+  ) {
     return [];
   }
 
@@ -656,7 +803,11 @@ function extractMemorySearchQueriesFromAssistantEvent(event: unknown): string[] 
   const queries: string[] = [];
   for (const block of message.content) {
     if (!block || typeof block !== "object") continue;
-    const item = block as { type?: unknown; name?: unknown; arguments?: unknown };
+    const item = block as {
+      type?: unknown;
+      name?: unknown;
+      arguments?: unknown;
+    };
     if (item.type !== "toolCall" || item.name !== "memory_search") continue;
     if (!item.arguments || typeof item.arguments !== "object") continue;
     const query = (item.arguments as { query?: unknown }).query;
@@ -712,7 +863,9 @@ function countMemorySearchCallsByQueryInLatestUserTurn(
 
     if (latestUserLine >= 0) {
       for (let i = latestUserLine + 1; i < parsedLines.length; i++) {
-        const queries = extractMemorySearchQueriesFromAssistantEvent(parsedLines[i]);
+        const queries = extractMemorySearchQueriesFromAssistantEvent(
+          parsedLines[i],
+        );
         for (const query of queries) {
           countByQuery[query] = (countByQuery[query] ?? 0) + 1;
         }
@@ -740,7 +893,9 @@ function countMemorySearchCallsForQueryInLatestUserTurn(
   return counts[normalizedQuery] ?? 0;
 }
 
-function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number {
+function countWebSearchCallsInLatestUserTurn(
+  ctx: WebSearchGuardContext,
+): number {
   const sessionPath = resolveSessionPath(ctx);
   if (!sessionPath || !fs.existsSync(sessionPath)) {
     return 0;
@@ -784,11 +939,21 @@ function countWebSearchCallsInLatestUserTurn(ctx: WebSearchGuardContext): number
         const parsed = parsedLines[i];
         if (!parsed || typeof parsed !== "object") continue;
         const record = parsed as { type?: unknown; message?: unknown };
-        if (record.type !== "message" || !record.message || typeof record.message !== "object") {
+        if (
+          record.type !== "message" ||
+          !record.message ||
+          typeof record.message !== "object"
+        ) {
           continue;
         }
-        const message = record.message as { role?: unknown; toolName?: unknown };
-        if (message.role === "toolResult" && message.toolName === "web_search") {
+        const message = record.message as {
+          role?: unknown;
+          toolName?: unknown;
+        };
+        if (
+          message.role === "toolResult" &&
+          message.toolName === "web_search"
+        ) {
           // Count completed web_search executions in the current user turn.
           // We intentionally do not count pending assistant toolCall entries,
           // so the first search in a prompt is allowed through.
@@ -851,7 +1016,10 @@ function getLatestUserTextInSession(ctx: {
     latestUserText = "";
   }
 
-  latestUserTextBySessionPath.set(sessionPath, { mtimeMs: stat.mtimeMs, text: latestUserText });
+  latestUserTextBySessionPath.set(sessionPath, {
+    mtimeMs: stat.mtimeMs,
+    text: latestUserText,
+  });
   return latestUserText;
 }
 
@@ -922,10 +1090,10 @@ function isNonMemoryDreamsPath(filePath: string): boolean {
   const parts = normalized.split("/");
   const dreamsIndex = parts.length - 1; // last segment is "dreams.md"
   if (dreamsIndex === 0) {
-    return false; // bare "DREAMS.md" — workspace root
+    return false; // bare "DREAMS.md" � workspace root
   }
   const parentDir = parts[dreamsIndex - 1];
-  // If the parent is "workspace" or ".openclaw", it's the root-level file — allow it.
+  // If the parent is "workspace" or ".openclaw", it's the root-level file � allow it.
   if (parentDir === "workspace" || parentDir === ".openclaw") {
     return false;
   }
@@ -951,7 +1119,8 @@ function isRefusalOnlyPromptInSession(ctx: {
 
   const scanText = extractGuardScanText(userText);
   const exfilIntent =
-    REFUSAL_ONLY_EXFIL_PATTERN.test(scanText) && REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(scanText);
+    REFUSAL_ONLY_EXFIL_PATTERN.test(scanText) &&
+    REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(scanText);
   const sensitivePathIntent =
     REFUSAL_ONLY_SENSITIVE_PATH_PATTERN.test(scanText) &&
     (REFUSAL_ONLY_EXFIL_ACTION_PATTERN.test(scanText) ||
@@ -960,7 +1129,12 @@ function isRefusalOnlyPromptInSession(ctx: {
   const destructiveIntent = REFUSAL_ONLY_DESTRUCTIVE_PATTERN.test(scanText);
   const safetyOverrideIntent = REFUSAL_ONLY_OVERRIDE_PATTERN.test(scanText);
 
-  return exfilIntent || sensitivePathIntent || destructiveIntent || safetyOverrideIntent;
+  return (
+    exfilIntent ||
+    sensitivePathIntent ||
+    destructiveIntent ||
+    safetyOverrideIntent
+  );
 }
 
 function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
@@ -983,19 +1157,30 @@ function hasExplicitWriteIntentInSession(ctx: WriteGuardContext): boolean {
 
   const userText = getLatestUserTextInSession(ctx);
   const hasIntent =
-    EXPLICIT_WRITE_INTENT_PATTERN.test(userText) && FILE_TARGET_HINT_PATTERN.test(userText);
+    EXPLICIT_WRITE_INTENT_PATTERN.test(userText) &&
+    FILE_TARGET_HINT_PATTERN.test(userText);
 
-  writeIntentBySessionPath.set(sessionPath, { mtimeMs: stat.mtimeMs, hasIntent });
+  writeIntentBySessionPath.set(sessionPath, {
+    mtimeMs: stat.mtimeMs,
+    hasIntent,
+  });
   return hasIntent;
 }
 
-function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): string | undefined {
+function getStringArg(
+  args: Record<string, unknown>,
+  candidateKeys: string[],
+): string | undefined {
   const wanted = candidateKeys.map(normalizeArgKey);
 
   const search = (obj: Record<string, unknown>): string | undefined => {
     for (const [rawKey, value] of Object.entries(obj)) {
       const key = normalizeArgKey(rawKey);
-      if (typeof value === "string" && value.trim().length > 0 && wanted.includes(key)) {
+      if (
+        typeof value === "string" &&
+        value.trim().length > 0 &&
+        wanted.includes(key)
+      ) {
         return value;
       }
     }
@@ -1003,7 +1188,11 @@ function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): s
     for (const [rawKey, value] of Object.entries(obj)) {
       const key = normalizeArgKey(rawKey);
       if (typeof value === "string" && value.trim().length > 0) {
-        if (wanted.some((candidate) => key.includes(candidate) || candidate.includes(key))) {
+        if (
+          wanted.some(
+            (candidate) => key.includes(candidate) || candidate.includes(key),
+          )
+        ) {
           return value;
         }
       }
@@ -1022,7 +1211,9 @@ function getStringArg(args: Record<string, unknown>, candidateKeys: string[]): s
   const found = search(args);
   if (found) return found;
 
-  const wantsPathLike = wanted.some((key) => key.includes("path") || key.includes("file"));
+  const wantsPathLike = wanted.some(
+    (key) => key.includes("path") || key.includes("file"),
+  );
   if (!wantsPathLike) return undefined;
 
   for (const [rawKey, value] of Object.entries(args)) {
@@ -1136,23 +1327,34 @@ function isLikelyFileRedirectionTarget(candidatePath: string): boolean {
 }
 
 function normalizeAbsolutePathToken(filePath: string): string {
-  return path.resolve(filePath).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return path
+    .resolve(filePath)
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
 }
 
 function resolveSnapshotAllowedRoots(context?: SessionGuardContext): string[] {
   const roots = [context?.workspaceDir, resolveOmWorkspaceRootFromEnv()]
-    .filter((root): root is string => typeof root === "string" && root.trim().length > 0)
+    .filter(
+      (root): root is string =>
+        typeof root === "string" && root.trim().length > 0,
+    )
     .map((root) => normalizeAbsolutePathToken(root));
   return [...new Set(roots)];
 }
 
-function isPathInsideAnyRoot(filePath: string, allowedRoots: string[]): boolean {
+function isPathInsideAnyRoot(
+  filePath: string,
+  allowedRoots: string[],
+): boolean {
   if (allowedRoots.length === 0) {
     return false;
   }
   const normalizedTarget = normalizeAbsolutePathToken(filePath);
   return allowedRoots.some(
-    (root) => normalizedTarget === root || normalizedTarget.startsWith(`${root}/`),
+    (root) =>
+      normalizedTarget === root || normalizedTarget.startsWith(`${root}/`),
   );
 }
 
@@ -1172,11 +1374,19 @@ function resolveExecRedirectionSnapshotTarget(
 
   if (path.isAbsolute(redirectionTarget)) {
     const absoluteTarget = path.resolve(redirectionTarget);
-    return isPathInsideAnyRoot(absoluteTarget, allowedRoots) ? absoluteTarget : null;
+    return isPathInsideAnyRoot(absoluteTarget, allowedRoots)
+      ? absoluteTarget
+      : null;
   }
 
-  const preferredRoots = [context?.workspaceDir, resolveOmWorkspaceRootFromEnv()]
-    .filter((root): root is string => typeof root === "string" && root.trim().length > 0)
+  const preferredRoots = [
+    context?.workspaceDir,
+    resolveOmWorkspaceRootFromEnv(),
+  ]
+    .filter(
+      (root): root is string =>
+        typeof root === "string" && root.trim().length > 0,
+    )
     .map((root) => path.resolve(root));
   for (const root of preferredRoots) {
     const resolvedCandidate = path.resolve(root, redirectionTarget);
@@ -1219,7 +1429,13 @@ function resolveSnapshotMutationTarget(
     return null;
   }
 
-  const command = getStringArg(args, ["command", "cmd", "script", "shell", "input"]);
+  const command = getStringArg(args, [
+    "command",
+    "cmd",
+    "script",
+    "shell",
+    "input",
+  ]);
   if (!command?.trim()) {
     return null;
   }
@@ -1326,7 +1542,10 @@ function toGuardPhysicsMessage(rawMessage: string): string {
   const message = rawMessage.trim();
   const lower = message.toLowerCase();
 
-  if (message.includes("ENOENT_PROBE_WRITE_BLOCKED") || message.includes("AMPEL_YELLOW_BLOCKED")) {
+  if (
+    message.includes("ENOENT_PROBE_WRITE_BLOCKED") ||
+    message.includes("AMPEL_YELLOW_BLOCKED")
+  ) {
     return (
       "Dieses Fragment unserer Welt ist heilig und in Stein gemeisselt. " +
       "Du darfst es betrachten, aber seine Struktur laesst sich durch dich nicht veraendern."
@@ -1401,11 +1620,18 @@ function rewriteEvalReflectionPath(filePath: string): string {
   return replaced;
 }
 
-function applyPathOverrideToExecuteArgs(executeArgs: unknown[], nextPath: string): void {
+function applyPathOverrideToExecuteArgs(
+  executeArgs: unknown[],
+  nextPath: string,
+): void {
   const candidateIndices = [1, 0];
   for (const index of candidateIndices) {
     const candidate = executeArgs[index];
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    if (
+      !candidate ||
+      typeof candidate !== "object" ||
+      Array.isArray(candidate)
+    ) {
       continue;
     }
     const argsRecord = candidate as Record<string, unknown>;
@@ -1446,7 +1672,9 @@ function parseObjectArg(value: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
-function extractToolArgsFromExecuteCall(executeArgs: unknown[]): Record<string, unknown> {
+function extractToolArgsFromExecuteCall(
+  executeArgs: unknown[],
+): Record<string, unknown> {
   const [firstArg, secondArg] = executeArgs;
   const firstRecord = parseObjectArg(firstArg);
   const secondRecord = parseObjectArg(secondArg);
@@ -1474,7 +1702,10 @@ function normalizeLoopPath(filePath: string): string {
   if (!normalized) return normalized;
 
   const lowered = normalized.toLowerCase();
-  const workspacePrefix = OM_LOG_DIR.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const workspacePrefix = getOmLogDir()
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
   if (workspacePrefix.length > 0 && lowered.startsWith(`${workspacePrefix}/`)) {
     return lowered.slice(workspacePrefix.length + 1);
   }
@@ -1515,7 +1746,7 @@ function resolveLoopThresholds(toolName: string): {
   };
 }
 
-// â”€â”€â”€ LAYER 1: EDIT-GUARDIAN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LAYER 1: EDIT-GUARDIAN ─────────────────────────────────────────────────────
 
 /**
  * Fuzzy text matching: Normalizes whitespace differences so that models
@@ -1550,12 +1781,15 @@ function fuzzyEdit(
     const normalizedOld = normalizeWhitespace(oldText);
 
     if (!normalizedOld) {
-      return { success: false, message: "Empty old_string after normalization." };
+      return {
+        success: false,
+        message: "Empty old_string after normalization.",
+      };
     }
 
     const matchIndex = normalizedFile.indexOf(normalizedOld);
     if (matchIndex === -1) {
-      // Even fuzzy match failed â€” give up gracefully
+      // Even fuzzy match failed — give up gracefully
       return {
         success: false,
         message: `Fuzzy match also failed. The text you're trying to replace doesn't exist in the file (even after normalizing whitespace). Try using 'write' to overwrite the entire file instead, but make sure to include ALL existing content plus your changes.`,
@@ -1597,7 +1831,7 @@ function fuzzyEdit(
 
     fs.writeFileSync(filePath, result, "utf-8");
     console.error(
-      `[Ã˜M Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`,
+      `[ØM Edit-Guardian] Fuzzy match succeeded for ${path.basename(filePath)} (lines ${startLineIdx + 1}-${endLineIdx})`,
     );
     return {
       success: true,
@@ -1666,7 +1900,7 @@ export function wrapEditWithGuardian(
       }
       logToolCall("edit", filePath);
 
-      // Ã˜M Layer 3: Loop Detector â€” block if stuck in a loop
+      // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("edit", filePath);
       if (loopWarning) {
         logBlockedAction({
@@ -1683,14 +1917,21 @@ export function wrapEditWithGuardian(
       const result = await (originalExecute as Function)(...executeArgs);
 
       // Check if the result indicates a "not found" error
-      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+      const resultStr =
+        typeof result === "string" ? result : JSON.stringify(result);
 
       if (
         resultStr.includes("Could not find the exact text") ||
         resultStr.includes("old text must match exactly")
       ) {
-        logGuardian("EDIT-GUARD", "Normal edit FAILED, trying fuzzy match", filePath);
-        console.error(`[Ã˜M Edit-Guardian] Normal edit failed, attempting fuzzy match...`);
+        logGuardian(
+          "EDIT-GUARD",
+          "Normal edit FAILED, trying fuzzy match",
+          filePath,
+        );
+        console.error(
+          `[ØM Edit-Guardian] Normal edit failed, attempting fuzzy match...`,
+        );
 
         const oldText = getStringArg(args, ["oldText", "old_string"]);
         const newText = getStringArg(args, ["newText", "new_string"]);
@@ -1716,7 +1957,7 @@ export function wrapEditWithGuardian(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// â”€â”€â”€ LAYER 2: SACRED FILE PROTECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LAYER 2: SACRED FILE PROTECTION ────────────────────────────────────────────
 
 function isSacredPath(filePath: string): boolean {
   if (!filePath) return false;
@@ -1773,7 +2014,7 @@ function backupSacredFile(filePath: string): void {
 
     fs.copyFileSync(filePath, backupPath);
     console.error(
-      `[Ã˜M Sacred-Guard] Backed up ${path.basename(filePath)} â†’ .backups/${backupName}`,
+      `[ØM Sacred-Guard] Backed up ${path.basename(filePath)} → .backups/${backupName}`,
     );
 
     // Keep only last 10 backups per file
@@ -1788,7 +2029,7 @@ function backupSacredFile(filePath: string): void {
       fs.unlinkSync(path.join(backupDir, old));
     }
   } catch (err) {
-    console.error(`[Ã˜M Sacred-Guard] Backup failed: ${String(err)}`);
+    console.error(`[ØM Sacred-Guard] Backup failed: ${String(err)}`);
   }
 }
 
@@ -1903,10 +2144,14 @@ export function wrapWriteWithSacredProtection(
       }
 
       if (zone.zone === "yellow") {
-        logGuardian("ZONE-GUARD", `YELLOW zone write: ${zone.reason}`, filePath);
+        logGuardian(
+          "ZONE-GUARD",
+          `YELLOW zone write: ${zone.reason}`,
+          filePath,
+        );
       }
 
-      // Ã˜M Layer 3: Loop Detector â€” block if stuck in a loop
+      // ØM Layer 3: Loop Detector — block if stuck in a loop
       const loopWarning = checkForLoop("write", filePath);
       if (loopWarning) {
         logBlockedAction({
@@ -1920,7 +2165,11 @@ export function wrapWriteWithSacredProtection(
       }
 
       // Block no-op rewrites that keep writing identical content.
-      if (filePath && typeof newContent === "string" && fs.existsSync(filePath)) {
+      if (
+        filePath &&
+        typeof newContent === "string" &&
+        fs.existsSync(filePath)
+      ) {
         try {
           const existingContent = fs.readFileSync(filePath, "utf-8");
           if (existingContent === newContent) {
@@ -1932,7 +2181,7 @@ export function wrapWriteWithSacredProtection(
               detail: "content unchanged",
             });
             throwToolBlocked(
-              `âš ï¸ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
+              `⚠️ REDUNDANT WRITE BLOCKED: "${filePath}" already contains the same content. Do not write again unless you have a concrete change.`,
             );
           }
         } catch (error) {
@@ -1957,11 +2206,11 @@ export function wrapWriteWithSacredProtection(
             const pct = Math.round((newSize / oldSize) * 100);
             logGuardian(
               "SACRED-GUARD",
-              `âš ï¸ SHRINK WARNING: ${oldSize}B â†’ ${newSize}B (${pct}%)`,
+              `⚠️ SHRINK WARNING: ${oldSize}B → ${newSize}B (${pct}%)`,
               filePath,
             );
             console.error(
-              `[Ã˜M Sacred-Guard] âš ï¸ WARNING: Write to ${path.basename(filePath)} would shrink it from ${oldSize}B to ${newSize}B (${pct}%). Allowing but logged.`,
+              `[ØM Sacred-Guard] ⚠️ WARNING: Write to ${path.basename(filePath)} would shrink it from ${oldSize}B to ${newSize}B (${pct}%). Allowing but logged.`,
             );
             // We still allow the write but log it prominently.
             // Future enhancement: could reject and tell the model to include all content.
@@ -1978,10 +2227,11 @@ export function wrapWriteWithSacredProtection(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// â”€â”€â”€ LAYER 3: LOOP DETECTOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LAYER 3: LOOP DETECTOR ─────────────────────────────────────────────────────
 
 /** Tracks recent tool calls to detect loops. */
-const recentCalls: Array<{ tool: string; path: string; timestamp: number }> = [];
+const recentCalls: Array<{ tool: string; path: string; timestamp: number }> =
+  [];
 /** Tracks temporary cooldown blocks after a loop was detected. */
 const blockedKeysUntil = new Map<string, number>();
 
@@ -1989,7 +2239,10 @@ const blockedKeysUntil = new Map<string, number>();
  * Check if the current tool+path call is part of a repetitive loop.
  * Returns a warning message if a loop is detected, or null if everything is fine.
  */
-export function checkForLoop(toolName: string, filePath: string): string | null {
+export function checkForLoop(
+  toolName: string,
+  filePath: string,
+): string | null {
   const targetPath = normalizeLoopPath(filePath);
   const now = Date.now();
   const thresholds = resolveLoopThresholds(toolName);
@@ -2000,7 +2253,7 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   if (cooldownUntil !== undefined) {
     if (now < cooldownUntil) {
       const waitSeconds = Math.max(1, Math.ceil((cooldownUntil - now) / 1000));
-      return `âš ï¸ LOOP COOLDOWN ACTIVE: "${toolName}" on "${targetPath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
+      return `⚠️ LOOP COOLDOWN ACTIVE: "${toolName}" on "${targetPath}" is temporarily blocked for ${waitSeconds}s because it was repeated too often. Do NOT retry the same call; switch strategy.`;
     }
     blockedKeysUntil.delete(key);
   }
@@ -2009,7 +2262,10 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   recentCalls.push({ tool: toolName, path: targetPath, timestamp: now });
 
   // Prune old calls outside the rolling loop window.
-  while (recentCalls.length > 0 && now - recentCalls[0].timestamp > thresholds.windowMs) {
+  while (
+    recentCalls.length > 0 &&
+    now - recentCalls[0].timestamp > thresholds.windowMs
+  ) {
     recentCalls.shift();
   }
 
@@ -2030,14 +2286,16 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
   }
 
   // Also detect repeated retries even when interleaved with other calls.
-  const repeatedInWindow = recentCalls.filter((call) => `${call.tool}:${call.path}` === key).length;
+  const repeatedInWindow = recentCalls.filter(
+    (call) => `${call.tool}:${call.path}` === key,
+  ).length;
 
   if (consecutive >= thresholds.consecutive) {
     blockedKeysUntil.set(key, now + thresholds.cooldownMs);
     console.error(
-      `[Ã˜M Loop-Detector] âš ï¸ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`,
+      `[ØM Loop-Detector] ⚠️ Detected ${consecutive}x consecutive ${toolName} on ${path.basename(targetPath)}`,
     );
-    return `âš ï¸ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
+    return `⚠️ LOOP DETECTED: "${toolName}" on "${targetPath}" was called ${consecutive} times in a row. Stop repeating this call. Next action must be different (for example: read once, summarize the failure, then exit the tool loop).`;
   }
 
   if (repeatedInWindow >= thresholds.repeated) {
@@ -2045,13 +2303,13 @@ export function checkForLoop(toolName: string, filePath: string): string | null 
     console.error(
       `[Om Loop-Detector] Detected ${repeatedInWindow}x repeated ${toolName} on ${path.basename(targetPath)} in ${Math.round(thresholds.windowMs / 1000)}s`,
     );
-    return `âš ï¸ REPEAT LOOP DETECTED: "${toolName}" on "${targetPath}" was retried ${repeatedInWindow} times within ${Math.round(thresholds.windowMs / 1000)}s. This call is blocked for ${Math.ceil(thresholds.cooldownMs / 1000)}s. Stop retrying this path and choose a different next step.`;
+    return `⚠️ REPEAT LOOP DETECTED: "${toolName}" on "${targetPath}" was retried ${repeatedInWindow} times within ${Math.round(thresholds.windowMs / 1000)}s. This call is blocked for ${Math.ceil(thresholds.cooldownMs / 1000)}s. Stop retrying this path and choose a different next step.`;
   }
 
   return null;
 }
 
-// â€”â€”â€” LAYER 3c: READ LOOP PROTECTION â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+// ——— LAYER 3c: READ LOOP PROTECTION ———————————————————————————————————————————————————————————
 
 /**
  * Wraps the "read" tool with a conservative same-path loop brake.
@@ -2109,7 +2367,10 @@ export function wrapReadWithLoopProtection(
         }
       }
 
-      if (effectiveReadTarget && isAbsolutePathOutsideWorkspace(effectiveReadTarget)) {
+      if (
+        effectiveReadTarget &&
+        isAbsolutePathOutsideWorkspace(effectiveReadTarget)
+      ) {
         logBlockedAction({
           toolName: "read",
           guardian: "READ-SCOPE",
@@ -2148,7 +2409,7 @@ export function wrapReadWithLoopProtection(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// â”€â”€â”€ LAYER 3b: EXEC LOOP PROTECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LAYER 3b: EXEC LOOP PROTECTION ────────────────────────────────────────────
 
 /**
  * Wraps the "exec" tool with loop detection.
@@ -2202,7 +2463,10 @@ export function wrapExecWithLoopProtection(
 
       // Hard safety brake: block destructive commands targeting critical system zones
       // in all session types (not only strict eval).
-      if (isDestructiveExecCommand(command) && targetsCriticalExecZone(command)) {
+      if (
+        isDestructiveExecCommand(command) &&
+        targetsCriticalExecZone(command)
+      ) {
         logBlockedAction({
           toolName: "exec",
           guardian: "ZONE-GUARD",
@@ -2216,7 +2480,10 @@ export function wrapExecWithLoopProtection(
       }
 
       // Hard safety brake: never allow destructive shell deletes into protected zones.
-      if (isDestructiveExecCommand(command) && targetsProtectedExecZone(command)) {
+      if (
+        isDestructiveExecCommand(command) &&
+        targetsProtectedExecZone(command)
+      ) {
         const sessionKey =
           context?.sessionKey ||
           (typeof (args as { sessionKey?: unknown }).sessionKey === "string"
@@ -2234,7 +2501,7 @@ export function wrapExecWithLoopProtection(
         );
       }
 
-      // Ã˜M Layer 3b: Loop Detector â€” block if stuck in an exec loop
+      // ØM Layer 3b: Loop Detector — block if stuck in an exec loop
       const loopWarning = checkForLoop("exec", commandKey);
       if (loopWarning) {
         logBlockedAction({
@@ -2245,7 +2512,7 @@ export function wrapExecWithLoopProtection(
           detail: "loop detector",
         });
         throwToolBlocked(
-          `âš ï¸ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`,
+          `⚠️ EXEC LOOP DETECTED: Command blocked after repeated retries: ${commandKey}`,
         );
       }
 
@@ -2296,7 +2563,10 @@ export function wrapWebSearchWithEvalGuard(
         sessionKey: context?.sessionKey,
         sessionId: context?.sessionId,
       });
-      if (context?.isHeartbeatRun && searchesInCurrentTurn >= HEARTBEAT_WEB_SEARCH_LIMIT) {
+      if (
+        context?.isHeartbeatRun &&
+        searchesInCurrentTurn >= HEARTBEAT_WEB_SEARCH_LIMIT
+      ) {
         logBlockedAction({
           toolName: "web_search",
           guardian: "EPISTEMIC-FASTING",
@@ -2467,9 +2737,17 @@ export function wrapToolWithRefusalOnlyGuard(
         }
       }
 
-      const mutationTarget = resolveSnapshotMutationTarget(toolName, args, context);
+      const mutationTarget = resolveSnapshotMutationTarget(
+        toolName,
+        args,
+        context,
+      );
       if (mutationTarget) {
-        if (context?.isHeartbeatRun && isSandboxModeEnabled() && context.autonomousMutationBudget) {
+        if (
+          context?.isHeartbeatRun &&
+          isSandboxModeEnabled() &&
+          context.autonomousMutationBudget
+        ) {
           const budget = context.autonomousMutationBudget;
           if (budget.remaining <= 0) {
             logBlockedAction({
@@ -2505,7 +2783,7 @@ export function wrapToolWithRefusalOnlyGuard(
   return wrappedTool as unknown as AnyAgentTool;
 }
 
-// â”€â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── EXPORTS ────────────────────────────────────────────────────────────────────
 
 /**
  * Test helper: clear loop detector state between tests.

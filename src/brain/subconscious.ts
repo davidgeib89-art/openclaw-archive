@@ -840,31 +840,16 @@ export function resolveBrainSubconsciousDaemonRuntimeConfig(
   };
 }
 
+import { omLog } from "../agents/om-scaffolding.js";
+
 function sanitizeLogDetail(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact.length <= MAX_TEXT_FOR_LOG) return compact;
   return `${compact.slice(0, MAX_TEXT_FOR_LOG)}...`;
 }
 
-function appendOmActivityLine(layer: string, event: string, details: string): void {
-  try {
-    fs.mkdirSync(OM_ACTIVITY_LOG_DIR, { recursive: true });
-    const normalizedDetails = details.replace(/\r\n/g, "\n").trim();
-    const detailBlock = normalizedDetails
-      ? `\n${normalizedDetails
-          .split("\n")
-          .map((line) => `  ${line}`)
-          .join("\n")}`
-      : "";
-    const line = `[${getLocalIsoString(new Date()).replace("T", " ").slice(0, 19)}] [${layer}] ${event}${detailBlock}\n`;
-    fs.appendFileSync(OM_ACTIVITY_LOG_FILE, line, "utf-8");
-  } catch {
-    // Fail-open: observer logging must never break the runtime.
-  }
-}
-
 function defaultActivityLogger(event: string, details: string): void {
-  appendOmActivityLine("BRAIN-SUBCONSCIOUS", event, details);
+  omLog("BRAIN-SUBCONSCIOUS", event, details);
 }
 
 function normalizeErrorMessage(err: unknown): string {
@@ -2348,7 +2333,7 @@ export async function runBrainSubconsciousDaemonIteration(
   const logger =
     input.activityLogger ??
     ((event: string, details: string) => {
-      appendOmActivityLine(SUBCONSCIOUS_DAEMON_LAYER, event, details);
+      omLog(SUBCONSCIOUS_DAEMON_LAYER, event, details);
     });
 
   const cfg = input.resolveCfg?.() ?? input.cfg;
@@ -2569,7 +2554,7 @@ export function startBrainSubconsciousDaemon(
   const logger =
     input.activityLogger ??
     ((event: string, details: string) => {
-      appendOmActivityLine(SUBCONSCIOUS_DAEMON_LAYER, event, details);
+      omLog(SUBCONSCIOUS_DAEMON_LAYER, event, details);
     });
 
   const cfg = input.resolveCfg?.() ?? input.cfg;
@@ -2664,16 +2649,8 @@ export function appendBrainSubconsciousObserverEntry(
   entry: BrainSubconsciousObserverEntry,
   baseDir?: string,
 ): string | null {
-  try {
-    const targetDir = baseDir ?? getDefaultBrainObserverDir();
-    fs.mkdirSync(targetDir, { recursive: true });
-    const day = dateStamp(new Date(entry.ts));
-    const filePath = path.join(targetDir, `subconscious-${day}.jsonl`);
-    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, "utf-8");
-    return filePath;
-  } catch {
-    return null;
-  }
+  omLog("BRAIN-SUBCONSCIOUS", "OBSERVER", entry as unknown as Record<string, unknown>);
+  return null;
 }
 
 export function logBrainSubconsciousObserver(
