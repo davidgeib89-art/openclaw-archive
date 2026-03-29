@@ -161,4 +161,37 @@ describe("WhatsApp dmPolicy precedence", () => {
     expect(upsertPairingRequestMock).not.toHaveBeenCalled();
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
+
+  it("silently blocks unknown DMs in self-chat mode when no explicit allowFrom is configured", async () => {
+    setAccessControlTestConfig({
+      channels: {
+        whatsapp: {
+          dmPolicy: "pairing",
+          selfChatMode: true,
+        },
+      },
+    });
+
+    const result = await checkUnauthorizedWorkDmSender();
+
+    expectSilentlyBlocked(result);
+  });
+
+  it("still allows previously approved pairing senders in self-chat mode", async () => {
+    setAccessControlTestConfig({
+      channels: {
+        whatsapp: {
+          dmPolicy: "pairing",
+          selfChatMode: true,
+        },
+      },
+    });
+    readAllowFromStoreMock.mockResolvedValue(["+15550001111"]);
+
+    const result = await checkUnauthorizedWorkDmSender();
+
+    expect(result.allowed).toBe(true);
+    expect(upsertPairingRequestMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
 });

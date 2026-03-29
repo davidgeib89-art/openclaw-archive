@@ -198,6 +198,36 @@ describe("web monitor inbox", () => {
     await listener.close();
   });
 
+  it("suppresses pairing replies for third-party DMs in self-chat mode without allowFrom", async () => {
+    mockLoadConfig.mockReturnValue({
+      channels: {
+        whatsapp: {
+          dmPolicy: "pairing",
+          selfChatMode: true,
+        },
+      },
+      messages: DEFAULT_MESSAGES_CFG,
+    });
+
+    const { onMessage, listener, sock } = await openInboxMonitor();
+
+    const upsertBlocked = buildNotifyMessageUpsert({
+      id: "self-chat-third-party-1",
+      remoteJid: "999@s.whatsapp.net",
+      text: "ping",
+      timestamp: nowSeconds(),
+    });
+
+    sock.ev.emit("messages.upsert", upsertBlocked);
+    await settleInboundWork();
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(upsertPairingRequestMock).not.toHaveBeenCalled();
+    expect(sock.sendMessage).not.toHaveBeenCalled();
+
+    await listener.close();
+  });
+
   it("skips pairing replies for outbound DMs in same-phone mode", async () => {
     await expectOutboundDmSkipsPairing({
       selfChatMode: true,

@@ -128,6 +128,12 @@ export async function checkInboundAccessControl(params: {
         : normalizedEntrySet.has(normalizedDmSender);
     },
   });
+  const suppressThirdPartyPairingReply =
+    !params.group &&
+    isSelfChat &&
+    configuredAllowFrom.length === 0 &&
+    access.decision === "pairing" &&
+    !isSamePhone;
   if (params.group && access.decision !== "allow") {
     if (access.reason === "groupPolicy=disabled") {
       logVerbose("Blocked group message (groupPolicy: disabled)");
@@ -159,6 +165,17 @@ export async function checkInboundAccessControl(params: {
     }
     if (access.decision === "block" && access.reason === "dmPolicy=disabled") {
       logVerbose("Blocked dm (dmPolicy: disabled)");
+      return {
+        allowed: false,
+        shouldMarkRead: false,
+        isSelfChat,
+        resolvedAccountId: account.accountId,
+      };
+    }
+    if (suppressThirdPartyPairingReply) {
+      logVerbose(
+        `Blocked unauthorized DM from ${params.from} in self-chat mode without explicit allowFrom; skipping pairing reply.`,
+      );
       return {
         allowed: false,
         shouldMarkRead: false,
